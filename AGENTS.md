@@ -6,11 +6,16 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto e' nella fase iniziale di analisi e pianificazione.
+- Il progetto ha completato la Milestone 1: setup repository e progetto Next.js.
+- E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
+- L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
+- Esiste una pagina placeholder tecnica in `src/app/page.tsx`; non sono ancora implementate funzionalita' applicative.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
-- Non e' ancora stata scaffoldata l'app Next.js.
-- La cartella potrebbe non essere ancora una repository Git inizializzata.
-- Non esistono ancora migration, codice applicativo, dipendenze o configurazioni Supabase locali.
+- Esiste `.env.example` con le variabili Supabase previste.
+- Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
+- Il progetto Vercel `giovaniperlapaces-projects/segreteria-segidio` e' linkato localmente in `.vercel/project.json` (gitignored).
+- Le variabili Supabase sono state impostate su Vercel in Production, Development e Preview.
+- Non esistono ancora migration, schema database applicativo o client Supabase nel codice.
 
 File di contesto da leggere all'inizio di una sessione:
 
@@ -84,14 +89,13 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prima sessione di sviluppo vera dovrebbe partire da:
+La prossima sessione dovrebbe proseguire con la Milestone 3:
 
-1. verificare `git status` o inizializzare Git se manca;
-2. scaffoldare Next.js con lo stack previsto;
-3. creare `.env.example`, `.gitignore` e `.vercelignore`;
-4. non configurare segreti reali nel repo;
-5. avviare dev server e verificare build base;
-6. fare commit iniziale solo se richiesto dall'utente.
+1. verificare `git status`;
+2. rivedere `PIANO_DI_LAVORO.md`;
+3. progettare le prime migration MVP;
+4. non applicare migration distruttive;
+5. verificare RLS e ruoli fin dall'inizio.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -157,18 +161,24 @@ Scelta progettuale da non dimenticare: nel MVP si puo' tenere `contacts` come re
 
 Quando si aggiornano variabili Vercel, preferire il flusso CLI non interattivo.
 
+Account/scope attuale:
+
+- account CLI: `giovaniperlapace`
+- scope Vercel: `giovaniperlapaces-projects`
+- progetto: `segreteria-segidio`
+
 Prima confermare account/scope e link progetto:
 
 ```bash
 npx vercel whoami
-npx vercel project ls --scope stefano-orlandos-projects-de2d57cb
-npx vercel link --yes --project <vercel-project-name> --scope stefano-orlandos-projects-de2d57cb
+npx vercel project ls --scope giovaniperlapaces-projects
+npx vercel link --yes --project segreteria-segidio --scope giovaniperlapaces-projects
 ```
 
 Tenere i segreti in variabili shell e non stamparli. Usare `--value`, `--force`, `--yes`:
 
 ```bash
-scope=stefano-orlandos-projects-de2d57cb
+scope=giovaniperlapaces-projects
 npx vercel env add NEXT_PUBLIC_SUPABASE_URL production --value "$url" --force --yes --scope "$scope"
 npx vercel env add SUPABASE_URL production --value "$url" --force --yes --scope "$scope"
 npx vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production --value "$anon_key" --force --yes --scope "$scope"
@@ -176,7 +186,13 @@ npx vercel env add SUPABASE_ANON_KEY production --value "$anon_key" --force --ye
 npx vercel env add SUPABASE_SERVICE_ROLE_KEY production --value "$service_key" --force --yes --scope "$scope"
 ```
 
-Ripetere per `development`. Per `preview`, Vercel puo' chiedere il branch anche con `--value`: eseguire in TTY e premere Invio al prompt del branch per applicare a tutti i branch Preview.
+Ripetere per `development`. Per `preview`, Vercel puo' chiedere il branch anche con `--value`. In questa repo il metodo non interattivo che ha funzionato e':
+
+```bash
+npx vercel env add NEXT_PUBLIC_SUPABASE_URL preview "" --value "$url" --force --yes --scope "$scope"
+```
+
+L'argomento branch vuoto (`""`) applica la variabile a tutti i branch Preview.
 
 Prima di deploy da sorgente locale, creare `.vercelignore` se manca:
 
@@ -187,7 +203,17 @@ Prima di deploy da sorgente locale, creare `.vercelignore` se manca:
 
 ## Credenziali e accessi
 
-Se servono dati Supabase, database o Coolify, cercarli tramite Coolify solo se l'accesso e' disponibile e solo quando la milestone lo richiede.
+Supabase di questo progetto:
+
+- URL: `https://supabase-segreteria.stefano-orlando.it`
+- Coolify project/container suffix: `c13y7vgiy5k5gbs9r9edpgeu`
+- container Kong: `supabase-kong-c13y7vgiy5k5gbs9r9edpgeu`
+
+Per recuperare le chiavi self-hosted Supabase, usare SSH/Docker sul server Hetzner e leggere `ANON_KEY` e `SERVICE_KEY` dal container Kong. Non stamparle in chat.
+
+Il file Coolify API locale previsto e' `/Users/stefanolaptop/.config/coolify/codex.env`; al momento della Milestone 2 il token API ha risposto `401`, mentre SSH root verso `178.105.59.79` funzionava.
+
+Se servono dati Supabase, database o Coolify, cercarli tramite Coolify/SSH solo se l'accesso e' disponibile e solo quando la milestone lo richiede.
 
 Se non si riesce ad accedere, non inventare credenziali o workaround. Dire chiaramente cosa manca:
 

@@ -15,7 +15,9 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
 - Il progetto Vercel `giovaniperlapaces-projects/segreteria-segidio` e' linkato localmente in `.vercel/project.json` (gitignored).
 - Le variabili Supabase sono state impostate su Vercel in Production, Development e Preview.
-- Non esistono ancora migration, schema database applicativo o client Supabase nel codice.
+- Esiste la prima migration MVP in `supabase/migrations/20260602163000_initial_mvp_schema.sql`.
+- La migration MVP e' stata applicata in modo persistente al database self-hosted.
+- Non esiste ancora client Supabase nel codice applicativo.
 
 File di contesto da leggere all'inizio di una sessione:
 
@@ -89,13 +91,13 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe proseguire con la Milestone 3:
+La prossima sessione dovrebbe passare alla Milestone 4:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. progettare le prime migration MVP;
-4. non applicare migration distruttive;
-5. verificare RLS e ruoli fin dall'inizio.
+3. avviare autenticazione, profili e ruoli;
+4. verificare RLS con utenti manager/reference;
+5. mantenere service role solo lato server.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -156,6 +158,21 @@ Da prevedere per il post-MVP:
 - `attachments`
 
 Scelta progettuale da non dimenticare: nel MVP si puo' tenere `contacts` come record corrente con storico minimo; la separazione piu' raffinata tra persona fisica, carica e istituzione va progettata senza bloccare lo sviluppo iniziale.
+
+Migration MVP creata:
+
+- `supabase/migrations/20260602163000_initial_mvp_schema.sql`
+
+Include:
+
+- enum applicativi per ruoli, stati contatto, priorita', eventi, inviti, risposte e presenze;
+- tabelle `profiles`, `internal_references`, `groups`, `contacts`, `contact_groups`, `contact_references`, `events`, `event_invitations`, `contact_versions`, `audit_logs`;
+- vista `contacts_missing_required_data`;
+- trigger `updated_at`, storico contatti e audit log;
+- helper RLS `is_manager`, `current_internal_reference_id`, `can_access_contact`, `can_access_event`;
+- policy RLS per manager e riferimenti.
+
+La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
 
 ## Vercel env vars
 

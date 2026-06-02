@@ -1,0 +1,13 @@
+(Trascritto da TurboScribe. Aggiorna a Illimitato per rimuovere questo messaggio.)
+
+Oltre al ruolo del manager, c'è anche il ruolo del cosiddetto riferimento, quella famosa lista di persone che seguono i contatti. Queste persone, oltre a essere una informazione legata al contatto, sono dei veri e propri utenti dell'app, che quindi avranno un utente password. Queste persone potranno visualizzare tutti i contatti a loro associati e potranno, quando lo necessitano, inserire nuovi contatti, che chiaramente verranno associati a loro, o modificare i contatti già associati.
+
+La modifica deve essere storicizzata, quindi ogni volta che si modifica un contatto non si cancellano i record, ma si crea un nuovo record e l'amministratore può vedere l'ultima modifica quando è stata fatta e da chi, e può eventualmente risalire alle modifiche precedenti per recuperare dati passati. Questo in generale tutta l'archivio contatti è storicizzato, quindi viene sempre mostrata l'ultima versione, ma si può risalire alle versioni precedenti. I contatti devono anche avere una funzione che li considera attiva o in stand-by.
+
+Quando sono in stand-by non vengono più mostrati dei potenziali invitati per un evento, ma quando si va a inserire un nuovo contatto si può inserirlo da zero o riattivare un contatto per andare in stand-by. Ad esempio una persona ha una carica, quando cessa quella carica va in stand-by, se poi ritorna in quella carica o ha una nuova carica, si può semplicemente riattivare il contatto senza rinserirlo di nuovo. Una volta fatta la MVP, cioè la funzione di base, andremo ad aggiungere alcune funzioni supplementari.
+
+Una funzione molto importante è la gestione delle risposte. Quando un invitato riceve l'email di invito, l'email deve contenere un pulsante con un link attraverso il quale l'invitato può dire se viene o non viene o vuole in forze. Comunque poi decidiamo le opzioni.
+
+Comunque l'importante è che quest'email contenga la risposta e chiaramente quando viene cliccato il link la risposta viene registrata nel database.
+
+(Trascritto da TurboScribe. Aggiorna a Illimitato per rimuovere questo messaggio.)

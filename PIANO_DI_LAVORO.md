@@ -202,7 +202,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Verifiche tecniche**: test manuale completo del primo login manager, inclusi richiesta magic link, ricezione email, callback, sessione, dashboard e logout; tentativo con email non autorizzata; test con utenti diversi; test RLS.
 - **Rischi**: permessi troppo larghi.
 - **Decisioni adottate**: magic link senza password; nessun selettore ruolo al login; accesso consentito solo a profili pre-autorizzati; provisioning utenti tramite comando amministrativo.
-- **Stato produzione**: dominio adottato `https://archivio-segreteria.segidio.org`; `APP_URL` Production configurata sul dominio custom; repository ufficiale unica `giovaniperlapace/segreteria-segidio`, collegata a Vercel sul branch Production `main`.
+- **Stato produzione**: dominio operativo `https://archivio-segreteria.segidio.org`; `APP_URL` Production configurata sul dominio custom; repository pubblica ufficiale unica `giovaniperlapace/segreteria-segidio`, collegata a Vercel sul branch Production `main` con deploy automatico verificato.
 
 ### Milestone 5 - Gestione utenti e ruoli da interfaccia manager
 

@@ -39,3 +39,13 @@ export async function requireProfile(): Promise<AppProfile> {
 
   return profile as AppProfile;
 }
+
+export async function requireManager(): Promise<AppProfile> {
+  const profile = await requireProfile();
+
+  if (profile.role !== "manager") {
+    redirect("/dashboard");
+  }
+
+  return profile;
+}

@@ -206,13 +206,15 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 5 - Gestione utenti e ruoli da interfaccia manager
 
+- **Stato**: implementata e verificata tecnicamente il 2026-06-04; resta il collaudo operativo con la creazione e il primo login di utenti reali.
 - **Obiettivo**: rendere autonoma e sicura l'amministrazione degli accessi applicativi dopo il provisioning iniziale.
 - **Scope**: pagina riservata ai manager con elenco utenti; creazione/invito di utenti autorizzati; assegnazione e modifica del ruolo `manager` o `reference`; collegamento del profilo reference al relativo riferimento interno; attivazione/disattivazione accesso.
 - **Output atteso**: un manager puo' gestire gli utenti autorizzati senza usare il comando amministrativo, che resta disponibile come strumento di emergenza/bootstrap.
 - **Criteri di accettazione**: il primo manager effettua il login tramite l'interfaccia realizzata nella Milestone 4 e accede alla gestione utenti; solo i manager accedono alla pagina e alle operazioni; un nuovo utente creato dal manager puo' ricevere il magic link e accedere con il ruolo assegnato; un utente disattivato non puo' richiedere nuovi magic link; non e' possibile rimuovere o disattivare l'ultimo manager attivo.
 - **Verifiche tecniche**: test end-to-end dal login del primo manager alla creazione di un secondo manager e di un reference, seguito dal loro primo login; controlli ruolo lato server; uso della service role solo lato server; validazione email e ruoli; test cambio ruolo, collegamento riferimento, disattivazione e tentativi da utente reference; audit delle modifiche ai profili.
 - **Rischi**: escalation di privilegi, account duplicati, perdita dell'ultimo accesso manager, disallineamento tra profilo applicativo e utente Supabase Auth.
-- **Decisioni aperte**: inviare automaticamente il primo magic link alla creazione oppure creare soltanto l'utente autorizzato; consentire la cancellazione definitiva o solo la disattivazione; regole per modifica/disattivazione del proprio account manager.
+- **Decisioni adottate**: la creazione autorizza l'utente, che richiede poi il magic link dalla pagina di login; gli utenti vengono disattivati senza cancellazione definitiva; l'email non e' modificabile dall'interfaccia per evitare disallineamenti con Supabase Auth; un profilo reference puo' essere collegato a un riferimento esistente oppure crearne uno automaticamente.
+- **Collaudo operativo residuo**: creare dall'interfaccia almeno un manager e un reference reali, quindi verificare il loro primo login e la visibilita' coerente al ruolo.
 
 ### Milestone 6 - CRUD contatti, gruppi e riferimenti
 
@@ -416,13 +418,12 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Primo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe essere la **Milestone 5: Gestione utenti e ruoli da interfaccia manager**.
+Il prossimo blocco operativo dovrebbe completare il collaudo della **Milestone 5: Gestione utenti e ruoli da interfaccia manager**, quindi passare alla Milestone 6.
 
 Prima di iniziare conviene confermare:
 
-- che il primo manager completi con successo il flusso `/login` -> magic link -> callback -> dashboard;
-- se alla creazione utente il primo magic link debba essere inviato automaticamente;
-- come collegare un profilo `reference` al relativo riferimento interno quando questo non esiste ancora;
-- se un manager possa modificare o disattivare il proprio account.
+- quali utenti reali creare per il collaudo manager/reference;
+- che ciascun nuovo utente completi il flusso `/login` -> magic link -> callback -> dashboard;
+- che il reference veda soltanto le funzioni e i dati consentiti.
 
-Output atteso del prossimo blocco: il primo manager accede tramite l'interfaccia di login, crea gli altri utenti dalla gestione riservata e ne verifica il primo accesso; operazioni protette lato server, ruoli coerenti e impossibilita' di perdere accidentalmente l'ultimo accesso manager.
+Output atteso del prossimo blocco: collaudo operativo completato con utenti reali e avvio della Milestone 6 sui CRUD di contatti, gruppi e riferimenti.

@@ -10,6 +10,8 @@ Questa cartella contiene le migration SQL del progetto.
 - `20260603090000_add_legacy_access_contact_fields.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-03.
 - `20260604120000_auth_profiles_hardening.sql` rende obbligatoria e univoca l'email dei profili autorizzati al magic link.
 - `20260604120000_auth_profiles_hardening.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-04.
+- `20260604180000_manager_user_administration.sql` aggiunge l'amministrazione atomica e auditata dei profili, protegge l'ultimo manager attivo e collega i profili reference ai riferimenti interni.
+- `20260604180000_manager_user_administration.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-04.
 - Le migration necessarie e non distruttive possono essere applicate dopo review; chiedere conferma esplicita per migration distruttive o modifiche fuori scope.
 
 ## Utenti autorizzati

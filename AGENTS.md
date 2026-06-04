@@ -7,9 +7,11 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 ## Stato attuale
 
 - Il progetto ha completato le Milestone 1-4: setup, ambiente, schema MVP e autenticazione.
+- La Milestone 5 e' implementata e verificata tecnicamente; resta il collaudo operativo creando utenti reali manager/reference e verificandone il primo login.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
+- La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -96,14 +98,13 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe passare alla Milestone 5:
+La prossima sessione dovrebbe completare il collaudo della Milestone 5 e poi passare alla Milestone 6:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. verificare il flusso completo di login del primo manager gia' provisionato: `/login`, magic link, callback, dashboard e logout;
-4. costruire l'interfaccia manager per creare utenti autorizzati, assegnare i ruoli manager/reference e disattivare gli accessi;
-5. verificare il primo login degli utenti creati dal manager;
-6. proteggere ogni operazione lato server, impedire la disattivazione dell'ultimo manager attivo e mantenere service role solo lato server.
+3. creare dall'interfaccia gli utenti reali necessari al collaudo manager/reference;
+4. verificare il loro primo login e i permessi coerenti al ruolo;
+5. avviare CRUD contatti, gruppi e riferimenti mantenendo RLS e controlli ruolo.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -170,6 +171,7 @@ Migration MVP creata:
 
 - `supabase/migrations/20260602163000_initial_mvp_schema.sql`
 - `supabase/migrations/20260604120000_auth_profiles_hardening.sql`
+- `supabase/migrations/20260604180000_manager_user_administration.sql`
 
 Include:
 
@@ -190,6 +192,8 @@ La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5
 - `/auth/callback` verifica il token e crea la sessione.
 - `/dashboard` e' protetta lato proxy e lato server.
 - Manager e riferimenti vedono navigazione coerente al proprio ruolo.
+- I manager gestiscono utenti autorizzati, ruoli e disattivazioni da `/dashboard/users`.
+- L'ultimo manager attivo non puo' essere disattivato o declassato.
 - Per aggiungere o aggiornare un utente autorizzato:
 
 ```bash

@@ -16,7 +16,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Il progetto Vercel `giovaniperlapaces-projects/segreteria-segidio` e' linkato localmente in `.vercel/project.json` (gitignored).
 - Il dominio di produzione e' `https://archivio-segreteria.segidio.org`.
 - Al 2026-06-04 il dominio custom serve ancora la deployment Vercel del 2026-06-02, precedente alla Milestone 4: serve una nuova deployment per pubblicare `/login`, `/auth/callback`, `/dashboard` e l'API magic link.
-- L'unica repository ufficiale e' `https://github.com/steorlando/segreteria-segidio`; il progetto Vercel deve restare collegato a questa repository sul branch Production `main`.
+- L'unica repository ufficiale e' `https://github.com/giovaniperlapace/segreteria-segidio`; il progetto Vercel e' collegato a questa repository sul branch Production `main`.
 - Le variabili Supabase sono state impostate su Vercel in Production, Development e Preview.
 - Esiste la prima migration MVP in `supabase/migrations/20260602163000_initial_mvp_schema.sql`.
 - La migration MVP e' stata applicata in modo persistente al database self-hosted.
@@ -56,7 +56,7 @@ Il problema principale da risolvere e' ridurre lavoro manuale e liste cartacee: 
 - Supabase
 - Supabase self-hosted/gestito su VM Hetzner tramite Coolify
 - Deploy Vercel
-- Repository prevista: `https://github.com/steorlando/segreteria-segidio`
+- Repository ufficiale: `https://github.com/giovaniperlapace/segreteria-segidio`
 - Supabase URL previsto: `https://supabase-segreteria.stefano-orlando.it`
 - Coolify URL: `https://coolify.stefano-orlando.it/`
 

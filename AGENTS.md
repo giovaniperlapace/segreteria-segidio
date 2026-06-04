@@ -12,6 +12,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
 - La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`.
+- I profili utente hanno `first_name` e `last_name` separati; `full_name` resta sincronizzato per compatibilita'.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -172,6 +173,7 @@ Migration MVP creata:
 - `supabase/migrations/20260602163000_initial_mvp_schema.sql`
 - `supabase/migrations/20260604120000_auth_profiles_hardening.sql`
 - `supabase/migrations/20260604180000_manager_user_administration.sql`
+- `supabase/migrations/20260605100000_split_profile_names.sql`
 
 Include:
 
@@ -197,8 +199,8 @@ La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5
 - Per aggiungere o aggiornare un utente autorizzato:
 
 ```bash
-npm run user:provision -- email@example.org manager "Nome Cognome"
-npm run user:provision -- email@example.org reference "Nome Cognome"
+npm run user:provision -- email@example.org manager Nome Cognome
+npm run user:provision -- email@example.org reference Nome Cognome
 ```
 
 - Il comando crea, se necessario, l'utente Supabase Auth e fa upsert del profilo applicativo.

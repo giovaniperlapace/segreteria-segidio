@@ -9,9 +9,10 @@ export default async function UsersPage() {
 
   const { data: profiles, error: profilesError } = await service
     .from("profiles")
-    .select("id,full_name,email,role,active")
+    .select("id,first_name,last_name,email,role,active")
     .order("active", { ascending: false })
-    .order("full_name");
+    .order("last_name")
+    .order("first_name");
 
   if (profilesError) throw profilesError;
 

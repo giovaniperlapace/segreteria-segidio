@@ -22,7 +22,7 @@ export default async function DashboardPage() {
               Segreteria Segidio
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-[#173f5f]">
-              Bentornato, {profile.full_name}
+              Bentornato, {profile.first_name}
             </h1>
             <p className="mt-1 text-sm text-slate-600">
               Ruolo: {isManager ? "Manager" : "Persona di riferimento"}

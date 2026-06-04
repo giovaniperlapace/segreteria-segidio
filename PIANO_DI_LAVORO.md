@@ -214,6 +214,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Verifiche tecniche**: test end-to-end dal login del primo manager alla creazione di un secondo manager e di un reference, seguito dal loro primo login; controlli ruolo lato server; uso della service role solo lato server; validazione email e ruoli; test cambio ruolo, collegamento riferimento, disattivazione e tentativi da utente reference; audit delle modifiche ai profili.
 - **Rischi**: escalation di privilegi, account duplicati, perdita dell'ultimo accesso manager, disallineamento tra profilo applicativo e utente Supabase Auth.
 - **Decisioni adottate**: la creazione autorizza l'utente, che richiede poi il magic link dalla pagina di login; gli utenti vengono disattivati senza cancellazione definitiva; l'email non e' modificabile dall'interfaccia per evitare disallineamenti con Supabase Auth; un profilo reference puo' essere collegato a un riferimento esistente oppure crearne uno automaticamente.
+- **Evoluzione adottata**: nome e cognome dei profili sono salvati separatamente per consentire comunicazioni personalizzate usando soltanto il nome; `full_name` resta sincronizzato per compatibilita' con audit e codice storico.
 - **Collaudo operativo residuo**: creare dall'interfaccia almeno un manager e un reference reali, quindi verificare il loro primo login e la visibilita' coerente al ruolo.
 
 ### Milestone 6 - CRUD contatti, gruppi e riferimenti

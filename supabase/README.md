@@ -12,6 +12,8 @@ Questa cartella contiene le migration SQL del progetto.
 - `20260604120000_auth_profiles_hardening.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-04.
 - `20260604180000_manager_user_administration.sql` aggiunge l'amministrazione atomica e auditata dei profili, protegge l'ultimo manager attivo e collega i profili reference ai riferimenti interni.
 - `20260604180000_manager_user_administration.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-04.
+- `20260605100000_split_profile_names.sql` separa nome e cognome dei profili, mantenendo `full_name` sincronizzato per compatibilita'.
+- `20260605100000_split_profile_names.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
 - Le migration necessarie e non distruttive possono essere applicate dopo review; chiedere conferma esplicita per migration distruttive o modifiche fuori scope.
 
 ## Utenti autorizzati
@@ -19,8 +21,8 @@ Questa cartella contiene le migration SQL del progetto.
 Ogni utente deve avere sia un record Supabase Auth sia un record `profiles` con lo stesso UUID. Il provisioning amministrativo si esegue dalla root:
 
 ```bash
-npm run user:provision -- email@example.org manager "Nome Cognome"
-npm run user:provision -- email@example.org reference "Nome Cognome"
+npm run user:provision -- email@example.org manager Nome Cognome
+npm run user:provision -- email@example.org reference Nome Cognome
 ```
 
 ## Import futuro da Access

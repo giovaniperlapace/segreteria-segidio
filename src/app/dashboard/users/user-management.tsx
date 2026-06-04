@@ -11,13 +11,14 @@ const INITIAL_STATE: UserActionState = { status: "idle", message: "" };
 
 type ManagedUser = {
   id: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   role: "manager" | "reference";
   active: boolean;
 };
 
-type SortKey = "full_name" | "email" | "role" | "active";
+type SortKey = "first_name" | "last_name" | "email" | "role" | "active";
 type SortDirection = "asc" | "desc";
 
 function ActionMessage({ state }: { state: UserActionState }) {
@@ -90,13 +91,22 @@ function CreateUserForm() {
 
   return (
     <form action={action} className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <label className="block text-sm font-medium text-slate-700">
-          Nome completo
+          Nome
           <input
             required
-            name="fullName"
-            autoComplete="name"
+            name="firstName"
+            autoComplete="given-name"
+            className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5"
+          />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">
+          Cognome
+          <input
+            required
+            name="lastName"
+            autoComplete="family-name"
             className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5"
           />
         </label>
@@ -152,14 +162,24 @@ function UserEditor({
           <input
             required
             form={formId}
-            name="fullName"
-            defaultValue={user.full_name}
-            aria-label={`Nome completo di ${user.full_name}`}
-            className="min-w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            name="firstName"
+            defaultValue={user.first_name}
+            aria-label={`Nome di ${user.first_name} ${user.last_name}`}
+            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
           />
           {isCurrentUser ? (
             <span className="ml-2 text-xs font-semibold text-[#b56b32]">Tu</span>
           ) : null}
+        </td>
+        <td className="px-4 py-3">
+          <input
+            required
+            form={formId}
+            name="lastName"
+            defaultValue={user.last_name}
+            aria-label={`Cognome di ${user.first_name} ${user.last_name}`}
+            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+          />
         </td>
         <td className="px-4 py-3 text-slate-600">{user.email}</td>
         <td className="px-4 py-3">
@@ -168,7 +188,7 @@ function UserEditor({
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
-            aria-label={`Ruolo di ${user.full_name}`}
+            aria-label={`Ruolo di ${user.first_name} ${user.last_name}`}
             className="min-w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
           >
             <option value="reference">Persona di riferimento</option>
@@ -195,7 +215,7 @@ function UserEditor({
       </tr>
       {state.status !== "idle" ? (
         <tr className="border-t border-slate-100">
-          <td colSpan={5} className="px-4 py-2">
+          <td colSpan={6} className="px-4 py-2">
             <ActionMessage state={state} />
           </td>
         </tr>
@@ -214,7 +234,7 @@ export function UserManagement({
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sortKey, setSortKey] = useState<SortKey>("full_name");
+  const [sortKey, setSortKey] = useState<SortKey>("last_name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
@@ -226,7 +246,9 @@ export function UserManagement({
       .filter((user) => {
         const matchesSearch =
           !term ||
-          user.full_name.toLowerCase().includes(term) ||
+          user.first_name.toLowerCase().includes(term) ||
+          user.last_name.toLowerCase().includes(term) ||
+          `${user.first_name} ${user.last_name}`.toLowerCase().includes(term) ||
           user.email.toLowerCase().includes(term) ||
           user.role.toLowerCase().includes(term);
         const matchesRole = roleFilter === "all" || user.role === roleFilter;
@@ -240,11 +262,11 @@ export function UserManagement({
         const aValue =
           sortKey === "active"
             ? Number(a.active)
-            : a[sortKey].toString().toLowerCase();
+            : String(a[sortKey] ?? "").toLowerCase();
         const bValue =
           sortKey === "active"
             ? Number(b.active)
-            : b[sortKey].toString().toLowerCase();
+            : String(b[sortKey] ?? "").toLowerCase();
 
         if (aValue < bValue) return -1 * direction;
         if (aValue > bValue) return direction;
@@ -316,12 +338,17 @@ export function UserManagement({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[850px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort("full_name")}>
-                    Nome{sortLabel("full_name")}
+                  <button type="button" onClick={() => toggleSort("first_name")}>
+                    Nome{sortLabel("first_name")}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
+                  <button type="button" onClick={() => toggleSort("last_name")}>
+                    Cognome{sortLabel("last_name")}
                   </button>
                 </th>
                 <th className="px-4 py-3">
@@ -347,7 +374,7 @@ export function UserManagement({
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                     Nessun utente trovato con i filtri selezionati.
                   </td>
                 </tr>

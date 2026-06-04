@@ -50,20 +50,20 @@ async function manageProfile(input: {
   actorProfileId: string;
   targetProfileId: string;
   email: string;
-  fullName: string;
+  firstName: string;
+  lastName: string;
   role: AppRole;
   active: boolean;
-  referenceId: number | null;
 }) {
   const service = createSupabaseServiceClient();
   const { error } = await service.rpc("admin_manage_profile", {
     actor_profile_id: input.actorProfileId,
     target_profile_id: input.targetProfileId,
     target_email: input.email,
-    target_full_name: input.fullName,
+    target_first_name: input.firstName,
+    target_last_name: input.lastName,
     target_role: input.role,
     target_active: input.active,
-    target_reference_id: input.referenceId,
   });
 
   if (error) {
@@ -76,12 +76,16 @@ export async function createUserAction(
   formData: FormData,
 ): Promise<UserActionState> {
   const manager = await requireManager();
-  const fullName = getRequiredString(formData, "fullName");
+  const firstName = getRequiredString(formData, "firstName");
+  const lastName = getRequiredString(formData, "lastName");
   const email = getRequiredString(formData, "email").toLowerCase();
   const role = parseRole(formData);
 
-  if (!fullName || !EMAIL_PATTERN.test(email) || !role) {
-    return { status: "error", message: "Nome, email e ruolo sono obbligatori." };
+  if (!firstName || !lastName || !EMAIL_PATTERN.test(email) || !role) {
+    return {
+      status: "error",
+      message: "Nome, cognome, email e ruolo sono obbligatori.",
+    };
   }
 
   try {
@@ -114,17 +118,17 @@ export async function createUserAction(
       actorProfileId: manager.id,
       targetProfileId: authUser.id,
       email,
-      fullName,
+      firstName,
+      lastName,
       role,
       active: true,
-      referenceId: null,
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/users");
     return {
       status: "success",
-      message: `${fullName} e' ora autorizzato come ${
+      message: `${[firstName, lastName].filter(Boolean).join(" ")} e' ora autorizzato come ${
         role === "manager" ? "manager" : "riferimento"
       }.`,
     };
@@ -139,12 +143,13 @@ export async function updateUserAction(
 ): Promise<UserActionState> {
   const manager = await requireManager();
   const profileId = getRequiredString(formData, "profileId");
-  const fullName = getRequiredString(formData, "fullName");
+  const firstName = getRequiredString(formData, "firstName");
+  const lastName = getRequiredString(formData, "lastName");
   const role = parseRole(formData);
   const active = formData.get("active") === "on";
 
-  if (!profileId || !fullName || !role) {
-    return { status: "error", message: "Nome e ruolo sono obbligatori." };
+  if (!profileId || !firstName || !lastName || !role) {
+    return { status: "error", message: "Nome, cognome e ruolo sono obbligatori." };
   }
 
   try {
@@ -164,10 +169,10 @@ export async function updateUserAction(
       actorProfileId: manager.id,
       targetProfileId: profileId,
       email: profile.email,
-      fullName,
+      firstName,
+      lastName,
       role,
       active,
-      referenceId: null,
     });
 
     revalidatePath("/dashboard");

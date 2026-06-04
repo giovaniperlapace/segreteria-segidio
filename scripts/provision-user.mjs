@@ -1,13 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 
-const [emailInput, roleInput = "reference", ...nameParts] = process.argv.slice(2);
+const [emailInput, roleInput = "reference", firstNameInput, ...lastNameParts] =
+  process.argv.slice(2);
 const email = emailInput?.trim().toLowerCase();
-const fullName = nameParts.join(" ").trim() || email?.split("@")[0] || "";
+const firstName = firstNameInput?.trim() || email?.split("@")[0] || "";
+const lastName = lastNameParts.join(" ").trim();
+const fullName = [firstName, lastName].filter(Boolean).join(" ");
 const role = roleInput.trim().toLowerCase();
 
-if (!email || !["manager", "reference"].includes(role)) {
+if (!email || !firstName || !lastName || !["manager", "reference"].includes(role)) {
   console.error(
-    "Usage: npm run user:provision -- email@example.org manager|reference Full Name",
+    "Usage: npm run user:provision -- email@example.org manager|reference FirstName LastName",
   );
   process.exit(1);
 }
@@ -43,6 +46,8 @@ if (!user) {
 const { error: profileError } = await supabase.from("profiles").upsert({
   id: user.id,
   email,
+  first_name: firstName,
+  last_name: lastName,
   full_name: fullName,
   role,
   active: true,

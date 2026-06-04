@@ -7,6 +7,8 @@ export type AppRole = (typeof APP_ROLES)[number];
 
 export type AppProfile = {
   id: string;
+  first_name: string;
+  last_name: string;
   full_name: string;
   email: string | null;
   role: AppRole;
@@ -29,7 +31,7 @@ export async function requireProfile(): Promise<AppProfile> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id,full_name,email,role,active")
+    .select("id,first_name,last_name,full_name,email,role,active")
     .eq("id", user.id)
     .maybeSingle();
 

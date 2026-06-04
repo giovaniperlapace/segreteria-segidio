@@ -16,7 +16,7 @@ const REQUEST_INTERVAL_MS = 60_000;
 
 function getBaseUrl(request: Request) {
   return (
-    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ||
+    process.env.APP_URL?.trim().replace(/\/+$/, "") ||
     new URL(request.url).origin
   );
 }

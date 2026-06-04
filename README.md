@@ -2,6 +2,8 @@
 
 Applicazione web per gestione contatti, eventi, liste invitati e risposte.
 
+Produzione: [https://archivio-segreteria.segidio.org](https://archivio-segreteria.segidio.org)
+
 ## Setup locale
 
 ```bash

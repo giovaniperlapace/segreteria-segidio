@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-In questa sessione non viene scritto codice applicativo. Il prossimo blocco operativo dovra' partire dal setup della repository e dal progetto Next.js.
+Le Milestone 1-4 sono completate. Il prossimo blocco operativo deve partire dalla gestione utenti e ruoli tramite interfaccia riservata ai manager.
 
 ## 2. Sintesi della visione dell'app
 
@@ -61,6 +61,7 @@ Scope MVP consigliato:
 
 - autenticazione con Supabase Auth;
 - ruoli applicativi iniziali: manager e riferimento interno;
+- interfaccia riservata ai manager per creare utenti autorizzati, assegnare il ruolo manager/riferimento e disattivare gli accessi;
 - schema database iniziale con contatti, gruppi, riferimenti, eventi, inviti e audit minimo;
 - gestione contatti con campi principali: nome, cognome, email, telefono, indirizzo, carica, istituzione, nazione, lingua, note, stato attivo/stand-by, priorita', dati mancanti;
 - associazione molti-a-molti tra contatti e gruppi;
@@ -148,6 +149,8 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - il riferimento puo' vedere solo i contatti associati e le funzioni pertinenti;
 - proteggere pagine e layout lato server, non solo lato client;
 - proteggere server actions/API routes con controllo ruolo;
+- consentire la gestione di utenti e ruoli solo ai manager, tramite operazioni server-side;
+- impedire che un manager disattivi o declassi accidentalmente l'ultimo manager attivo;
 - usare la service role key solo lato server e mai nel client;
 - conservare segreti solo in variabili d'ambiente;
 - non stampare segreti nei log;
@@ -193,14 +196,25 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 - **Stato**: completata il 2026-06-04.
 - **Obiettivo**: accesso protetto per manager e riferimenti.
-- **Scope**: login, sessione, profili, ruoli, navigazione condizionata.
-- **Output atteso**: utenti con viste coerenti al ruolo.
-- **Criteri di accettazione**: manager vede tutto, riferimento vede solo cio' che gli compete.
-- **Verifiche tecniche**: test manuali con utenti diversi, test RLS.
+- **Scope**: interfaccia `/login` con inserimento email e feedback di invio/errore; richiesta e invio magic link; callback e sessione; profili, ruoli e navigazione condizionata; provisioning iniziale del primo manager tramite comando amministrativo.
+- **Output atteso**: il primo manager provisionato puo' usare l'interfaccia di login e accedere alla dashboard; gli utenti autenticati vedono viste coerenti al ruolo.
+- **Criteri di accettazione**: la pagina di login e' utilizzabile su desktop e mobile; solo email autorizzate e attive possono richiedere il magic link; il primo manager completa login e callback; manager vede tutto, riferimento vede solo cio' che gli compete.
+- **Verifiche tecniche**: test manuale completo del primo login manager, inclusi richiesta magic link, ricezione email, callback, sessione, dashboard e logout; tentativo con email non autorizzata; test con utenti diversi; test RLS.
 - **Rischi**: permessi troppo larghi.
 - **Decisioni adottate**: magic link senza password; nessun selettore ruolo al login; accesso consentito solo a profili pre-autorizzati; provisioning utenti tramite comando amministrativo.
+- **Stato produzione**: dominio adottato `https://archivio-segreteria.segidio.org`; `APP_URL` Production configurata sul dominio custom; repository ufficiale unica `steorlando/segreteria-segidio`, da mantenere collegata a Vercel sul branch Production `main`.
 
-### Milestone 5 - CRUD contatti, gruppi e riferimenti
+### Milestone 5 - Gestione utenti e ruoli da interfaccia manager
+
+- **Obiettivo**: rendere autonoma e sicura l'amministrazione degli accessi applicativi dopo il provisioning iniziale.
+- **Scope**: pagina riservata ai manager con elenco utenti; creazione/invito di utenti autorizzati; assegnazione e modifica del ruolo `manager` o `reference`; collegamento del profilo reference al relativo riferimento interno; attivazione/disattivazione accesso.
+- **Output atteso**: un manager puo' gestire gli utenti autorizzati senza usare il comando amministrativo, che resta disponibile come strumento di emergenza/bootstrap.
+- **Criteri di accettazione**: il primo manager effettua il login tramite l'interfaccia realizzata nella Milestone 4 e accede alla gestione utenti; solo i manager accedono alla pagina e alle operazioni; un nuovo utente creato dal manager puo' ricevere il magic link e accedere con il ruolo assegnato; un utente disattivato non puo' richiedere nuovi magic link; non e' possibile rimuovere o disattivare l'ultimo manager attivo.
+- **Verifiche tecniche**: test end-to-end dal login del primo manager alla creazione di un secondo manager e di un reference, seguito dal loro primo login; controlli ruolo lato server; uso della service role solo lato server; validazione email e ruoli; test cambio ruolo, collegamento riferimento, disattivazione e tentativi da utente reference; audit delle modifiche ai profili.
+- **Rischi**: escalation di privilegi, account duplicati, perdita dell'ultimo accesso manager, disallineamento tra profilo applicativo e utente Supabase Auth.
+- **Decisioni aperte**: inviare automaticamente il primo magic link alla creazione oppure creare soltanto l'utente autorizzato; consentire la cancellazione definitiva o solo la disattivazione; regole per modifica/disattivazione del proprio account manager.
+
+### Milestone 6 - CRUD contatti, gruppi e riferimenti
 
 - **Obiettivo**: costruire l'archivio operativo.
 - **Scope**: contatti, gruppi, riferimenti, associazioni, attivo/stand-by, dati mancanti.
@@ -210,7 +224,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: campi obbligatori non chiari.
 - **Decisioni aperte**: elenco definitivo campi obbligatori e priorita'.
 
-### Milestone 6 - Import contatti dal vecchio Access
+### Milestone 7 - Import contatti dal vecchio Access
 
 - **Obiettivo**: portare nel nuovo archivio i dati reali di contatti, gruppi e referenti interni senza perdere relazioni utili.
 - **Scope**: esportazione da `old_software/Segreteria2.mdb`, revisione CSV, import di contatti/invitati, gruppi, relazioni contatto-gruppo, referenti interni derivati da `EXPO2000.Contatto` e relazioni contatto-referente.
@@ -220,7 +234,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
 - **Decisioni aperte**: regole di deduplica prima/dopo import, normalizzazione nomi referenti, trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access.
 
-### Milestone 7 - Storicizzazione minima e audit
+### Milestone 8 - Storicizzazione minima e audit
 
 - **Obiettivo**: non perdere modifiche importanti.
 - **Scope**: snapshot contatto o audit log su modifica, autore, data, prima/dopo.
@@ -230,7 +244,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: audit troppo pesante o incompleto.
 - **Decisioni aperte**: possibilita' di ripristino versione precedente gia' in MVP o post-MVP.
 
-### Milestone 8 - CRUD eventi
+### Milestone 9 - CRUD eventi
 
 - **Obiettivo**: creare e gestire eventi semplici.
 - **Scope**: titolo, descrizione, date, orari, luogo, note, stato.
@@ -240,7 +254,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: segmenti evento anticipati troppo presto.
 - **Decisioni aperte**: stati definitivi evento.
 
-### Milestone 9 - Lista invitati con filtri base
+### Milestone 10 - Lista invitati con filtri base
 
 - **Obiettivo**: ridurre selezione manuale nome per nome.
 - **Scope**: selezione contatti per gruppo, riferimento, stato, priorita', dati mancanti; aggiunta massiva a evento.
@@ -250,7 +264,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: query complesse e UX confusa.
 - **Decisioni aperte**: includere subito filtro per evento passato.
 
-### Milestone 10 - Gestione manuale inviti e risposte
+### Milestone 11 - Gestione manuale inviti e risposte
 
 - **Obiettivo**: tracciare stato invito e risposta senza automazione email.
 - **Scope**: stati invito/risposta, note, proponente, inserimento manuale risposte.
@@ -260,7 +274,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: stati non allineati al processo reale.
 - **Decisioni aperte**: nomenclatura stati risposta.
 
-### Milestone 11 - Dashboard MVP
+### Milestone 12 - Dashboard MVP
 
 - **Obiettivo**: dare visione operativa immediata.
 - **Scope**: eventi attivi/futuri, conteggi inviti/risposte, dati mancanti, stand-by.
@@ -270,7 +284,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: dashboard troppo ricca per MVP.
 - **Decisioni aperte**: metriche prioritarie.
 
-### Milestone 12 - Export e stampe base
+### Milestone 13 - Export e stampe base
 
 - **Obiettivo**: supportare lavoro offline e condivisione liste.
 - **Scope**: export CSV/PDF o stampa browser di contatti, liste evento, risposte.
@@ -280,7 +294,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: formato stampa non adatto agli usi reali.
 - **Decisioni aperte**: PDF, CSV, Excel o stampa HTML come priorita'.
 
-### Milestone 13 - Hardening, test, build, deploy
+### Milestone 14 - Hardening, test, build, deploy
 
 - **Obiettivo**: rendere l'MVP usabile in modo affidabile.
 - **Scope**: test, error handling, permessi, build, deploy Vercel, checklist privacy.
@@ -290,7 +304,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: differenze tra locale e produzione.
 - **Decisioni aperte**: dominio e ambiente di staging.
 
-### Milestone 14 - Post-MVP email robuste e template
+### Milestone 15 - Post-MVP email robuste e template
 
 - **Obiettivo**: inviare comunicazioni dall'app in modo affidabile.
 - **Scope**: provider email, template, batch, retry, logging, reinvio.
@@ -300,7 +314,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: deliverability, limiti provider, gestione allegati.
 - **Decisioni aperte**: provider email.
 
-### Milestone 15 - Post-MVP risposte via link pubblico
+### Milestone 16 - Post-MVP risposte via link pubblico
 
 - **Obiettivo**: registrare risposte direttamente dal destinatario.
 - **Scope**: token sicuri, pagina pubblica, scadenza, storico risposte.
@@ -310,7 +324,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: privacy e link inoltrati.
 - **Decisioni aperte**: opzioni risposta definitive.
 
-### Milestone 16 - Post-MVP workflow riferimenti
+### Milestone 17 - Post-MVP workflow riferimenti
 
 - **Obiettivo**: sostituire verifica cartacea con flusso digitale.
 - **Scope**: liste proposte, conferma/esclusione, note, nuovi contatti, aggiornamenti dati.
@@ -320,7 +334,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: processo organizzativo non definito.
 - **Decisioni aperte**: stati proposta e responsabilita' finale.
 
-### Milestone 17 - Post-MVP segmenti, QR code e check-in
+### Milestone 18 - Post-MVP segmenti, QR code e check-in
 
 - **Obiettivo**: gestire eventi complessi e presenze reali.
 - **Scope**: segmenti, scelta segmento, QR code, scansione, check-in.
@@ -330,7 +344,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: gestione operativa all'ingresso.
 - **Decisioni aperte**: dispositivi e processo check-in.
 
-### Milestone 18 - Post-MVP alert, deduplica e reportistica avanzata
+### Milestone 19 - Post-MVP alert, deduplica e reportistica avanzata
 
 - **Obiettivo**: prevenire dimenticanze e migliorare qualita' dati.
 - **Scope**: contatti importanti, inviti ricorrenti, deduplica, report evoluti.
@@ -372,7 +386,8 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - **Test manuali**: necessari sui flussi principali manager/riferimento.
 - **Test RLS**: obbligatori per verificare che il riferimento non veda dati non associati.
 - **Verifica migration**: review prima dell'applicazione, test su ambiente non produttivo.
-- **Verifica accessi**: login manager, login riferimento, utente disattivato.
+- **Verifica accessi**: interfaccia login, richiesta e ricezione magic link, callback, sessione, dashboard, logout, email non autorizzata, login manager, login riferimento e utente disattivato.
+- **Verifica amministrazione utenti**: flusso end-to-end dal login del primo manager alla creazione e al primo login di un secondo manager e di un reference; cambio ruolo, collegamento riferimento, disattivazione, protezione ultimo manager e tentativi senza permesso.
 - **Verifica dati seed**: dataset minimo con gruppi, riferimenti, contatti, eventi e inviti.
 - **Controllo responsive UI**: desktop e mobile/tablet per dashboard e liste.
 - **Controllo error handling**: form invalidi, dati mancanti, rete assente, permessi insufficienti.
@@ -391,7 +406,7 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - Quali regole di pulizia e deduplica applicare all'import dal vecchio Access?
 - Quale formato e' prioritario per le stampe/export: CSV, Excel, PDF o stampa HTML?
 - Serve un ambiente di staging separato dalla preview Vercel?
-- Quale dominio usare per produzione?
+- Dominio di produzione adottato: `https://archivio-segreteria.segidio.org`.
 - Quali policy GDPR/data retention adottare per contatti non piu' attivi?
 - Come definire un "contatto importante" per gli alert?
 - Come classificare eventi simili per suggerire persone spesso invitate?
@@ -401,15 +416,13 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Primo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe essere la **Milestone 1: Setup repository e progetto Next.js**.
+Il prossimo blocco operativo dovrebbe essere la **Milestone 5: Gestione utenti e ruoli da interfaccia manager**.
 
 Prima di iniziare conviene confermare:
 
-- nome definitivo o provvisorio dell'app;
-- repository GitHub da usare e accesso;
-- stack esatto da inizializzare;
-- convenzioni minime per UI e cartelle;
-- se creare subito `.env.example` e `.vercelignore`;
-- se predisporre gia' una struttura per Supabase senza applicare migration.
+- che il primo manager completi con successo il flusso `/login` -> magic link -> callback -> dashboard;
+- se alla creazione utente il primo magic link debba essere inviato automaticamente;
+- come collegare un profilo `reference` al relativo riferimento interno quando questo non esiste ancora;
+- se un manager possa modificare o disattivare il proprio account.
 
-Output atteso del primo blocco: repository inizializzata, progetto Next.js avviabile, nessun segreto committato, controlli base funzionanti e commit iniziale descrittivo se richiesto.
+Output atteso del prossimo blocco: il primo manager accede tramite l'interfaccia di login, crea gli altri utenti dalla gestione riservata e ne verifica il primo accesso; operazioni protette lato server, ruoli coerenti e impossibilita' di perdere accidentalmente l'ultimo accesso manager.

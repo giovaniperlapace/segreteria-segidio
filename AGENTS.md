@@ -9,11 +9,14 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Il progetto ha completato le Milestone 1-4: setup, ambiente, schema MVP e autenticazione.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
-- Esiste una pagina placeholder tecnica in `src/app/page.tsx`; non sono ancora implementate funzionalita' applicative.
+- Il codice applicativo include login magic link, callback, dashboard protetta e logout.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
 - Il progetto Vercel `giovaniperlapaces-projects/segreteria-segidio` e' linkato localmente in `.vercel/project.json` (gitignored).
+- Il dominio di produzione e' `https://archivio-segreteria.segidio.org`.
+- Al 2026-06-04 il dominio custom serve ancora la deployment Vercel del 2026-06-02, precedente alla Milestone 4: serve una nuova deployment per pubblicare `/login`, `/auth/callback`, `/dashboard` e l'API magic link.
+- L'unica repository ufficiale e' `https://github.com/steorlando/segreteria-segidio`; il progetto Vercel deve restare collegato a questa repository sul branch Production `main`.
 - Le variabili Supabase sono state impostate su Vercel in Production, Development e Preview.
 - Esiste la prima migration MVP in `supabase/migrations/20260602163000_initial_mvp_schema.sql`.
 - La migration MVP e' stata applicata in modo persistente al database self-hosted.
@@ -97,9 +100,10 @@ La prossima sessione dovrebbe passare alla Milestone 5:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. avviare CRUD contatti, gruppi e riferimenti;
-4. mantenere RLS e controlli ruolo su ogni operazione;
-5. mantenere service role solo lato server.
+3. verificare il flusso completo di login del primo manager gia' provisionato: `/login`, magic link, callback, dashboard e logout;
+4. costruire l'interfaccia manager per creare utenti autorizzati, assegnare i ruoli manager/reference e disattivare gli accessi;
+5. verificare il primo login degli utenti creati dal manager;
+6. proteggere ogni operazione lato server, impedire la disattivazione dell'ultimo manager attivo e mantenere service role solo lato server.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -195,6 +199,8 @@ npm run user:provision -- email@example.org reference "Nome Cognome"
 
 - Il comando crea, se necessario, l'utente Supabase Auth e fa upsert del profilo applicativo.
 - Variabili server necessarie per l'invio: `GMAIL_USER` e `GMAIL_APP_PASSWORD`.
+- `APP_URL` definisce l'origine dei magic link: in Production deve essere `https://archivio-segreteria.segidio.org`, in Development `http://localhost:3000`.
+- In Preview `APP_URL` deve restare assente, cosi' ogni deployment usa automaticamente la propria origine Vercel.
 
 ## Vercel env vars
 
@@ -223,6 +229,7 @@ npx vercel env add SUPABASE_URL production --value "$url" --force --yes --scope 
 npx vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production --value "$anon_key" --force --yes --scope "$scope"
 npx vercel env add SUPABASE_ANON_KEY production --value "$anon_key" --force --yes --scope "$scope"
 npx vercel env add SUPABASE_SERVICE_ROLE_KEY production --value "$service_key" --force --yes --scope "$scope"
+npx vercel env add APP_URL production --value "https://archivio-segreteria.segidio.org" --force --yes --scope "$scope"
 ```
 
 Ripetere per `development`. Per `preview`, Vercel puo' chiedere il branch anche con `--value`. In questa repo il metodo non interattivo che ha funzionato e':

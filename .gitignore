@@ -30,6 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# python
+__pycache__/
+*.pyc
+
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
@@ -39,6 +43,9 @@ yarn-error.log*
 
 # supabase
 supabase/.temp/
+
+# old Access software/data
+old_software/
 
 # typescript
 *.tsbuildinfo

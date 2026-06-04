@@ -6,7 +6,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato la Milestone 1: setup repository e progetto Next.js.
+- Il progetto ha completato le Milestone 1-4: setup, ambiente, schema MVP e autenticazione.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Esiste una pagina placeholder tecnica in `src/app/page.tsx`; non sono ancora implementate funzionalita' applicative.
@@ -17,7 +17,9 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Le variabili Supabase sono state impostate su Vercel in Production, Development e Preview.
 - Esiste la prima migration MVP in `supabase/migrations/20260602163000_initial_mvp_schema.sql`.
 - La migration MVP e' stata applicata in modo persistente al database self-hosted.
-- Non esiste ancora client Supabase nel codice applicativo.
+- Esistono client Supabase browser, server e service-role separati.
+- Il login usa magic link Supabase inviato tramite Gmail SMTP da `segreteriagenerale@santegidio.org`.
+- Il primo profilo manager e' `segreteriagenerale@santegidio.org`.
 
 File di contesto da leggere all'inizio di una sessione:
 
@@ -91,12 +93,12 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe passare alla Milestone 4:
+La prossima sessione dovrebbe passare alla Milestone 5:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. avviare autenticazione, profili e ruoli;
-4. verificare RLS con utenti manager/reference;
+3. avviare CRUD contatti, gruppi e riferimenti;
+4. mantenere RLS e controlli ruolo su ogni operazione;
 5. mantenere service role solo lato server.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
@@ -113,8 +115,9 @@ Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 - Tenere i diff piccoli e leggibili.
 - Dopo modifiche applicative eseguire controlli adeguati: TypeScript, lint, build, test.
 - Prima di applicare migration, mostrarle o rivederle con attenzione.
+- Quando una migration `.sql` e' necessaria per il lavoro richiesto e non e' distruttiva, applicarla senza attendere un ulteriore ok esplicito dopo averla rivista.
 - Non applicare migration distruttive senza conferma esplicita.
-- Non toccare produzione senza conferma esplicita.
+- Non toccare produzione per operazioni distruttive, deploy o modifiche fuori scope senza conferma esplicita.
 - Distinguere sempre locale, preview/staging e produzione.
 
 ## Sicurezza e Supabase
@@ -162,6 +165,7 @@ Scelta progettuale da non dimenticare: nel MVP si puo' tenere `contacts` come re
 Migration MVP creata:
 
 - `supabase/migrations/20260602163000_initial_mvp_schema.sql`
+- `supabase/migrations/20260604120000_auth_profiles_hardening.sql`
 
 Include:
 
@@ -173,6 +177,24 @@ Include:
 - policy RLS per manager e riferimenti.
 
 La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
+
+## Autenticazione e provisioning utenti
+
+- La pagina `/login` richiede soltanto l'email: il ruolo non viene scelto dall'utente.
+- Solo email presenti in `profiles` con `active = true` possono richiedere un magic link.
+- Supabase genera il token; l'API route server invia il link tramite Gmail SMTP.
+- `/auth/callback` verifica il token e crea la sessione.
+- `/dashboard` e' protetta lato proxy e lato server.
+- Manager e riferimenti vedono navigazione coerente al proprio ruolo.
+- Per aggiungere o aggiornare un utente autorizzato:
+
+```bash
+npm run user:provision -- email@example.org manager "Nome Cognome"
+npm run user:provision -- email@example.org reference "Nome Cognome"
+```
+
+- Il comando crea, se necessario, l'utente Supabase Auth e fa upsert del profilo applicativo.
+- Variabili server necessarie per l'invio: `GMAIL_USER` e `GMAIL_APP_PASSWORD`.
 
 ## Vercel env vars
 

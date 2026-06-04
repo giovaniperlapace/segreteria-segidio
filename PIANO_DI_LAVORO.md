@@ -13,8 +13,9 @@ Regole di lavoro consigliate con Codex:
 - verificare `git status` prima e dopo ogni blocco di lavoro;
 - produrre diff leggibili, evitando cambiamenti mescolati tra loro;
 - controllare sempre le migration prima di applicarle;
+- applicare le migration `.sql` necessarie e non distruttive senza attendere un ulteriore ok esplicito dopo review;
 - non applicare migration distruttive senza conferma esplicita;
-- non toccare produzione senza conferma;
+- non toccare produzione per operazioni distruttive, deploy o modifiche fuori scope senza conferma;
 - distinguere ambiente locale, staging/preview e produzione;
 - non committare segreti, chiavi Supabase, password database o token;
 - usare `.env.example` per documentare le variabili necessarie;
@@ -190,13 +191,14 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 4 - Autenticazione, profili e ruoli
 
+- **Stato**: completata il 2026-06-04.
 - **Obiettivo**: accesso protetto per manager e riferimenti.
 - **Scope**: login, sessione, profili, ruoli, navigazione condizionata.
 - **Output atteso**: utenti con viste coerenti al ruolo.
 - **Criteri di accettazione**: manager vede tutto, riferimento vede solo cio' che gli compete.
 - **Verifiche tecniche**: test manuali con utenti diversi, test RLS.
 - **Rischi**: permessi troppo larghi.
-- **Decisioni aperte**: gestione inviti utenti e reset password.
+- **Decisioni adottate**: magic link senza password; nessun selettore ruolo al login; accesso consentito solo a profili pre-autorizzati; provisioning utenti tramite comando amministrativo.
 
 ### Milestone 5 - CRUD contatti, gruppi e riferimenti
 
@@ -208,7 +210,17 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: campi obbligatori non chiari.
 - **Decisioni aperte**: elenco definitivo campi obbligatori e priorita'.
 
-### Milestone 6 - Storicizzazione minima e audit
+### Milestone 6 - Import contatti dal vecchio Access
+
+- **Obiettivo**: portare nel nuovo archivio i dati reali di contatti, gruppi e referenti interni senza perdere relazioni utili.
+- **Scope**: esportazione da `old_software/Segreteria2.mdb`, revisione CSV, import di contatti/invitati, gruppi, relazioni contatto-gruppo, referenti interni derivati da `EXPO2000.Contatto` e relazioni contatto-referente.
+- **Output atteso**: archivio popolato con i contatti legacy e relazioni verificabili nella nuova app.
+- **Criteri di accettazione**: `contacts.legacy_access_id` valorizzato e univoco, conteggi coerenti con l'export, nessun dato operativo/evento importato come campo contatto, referenti interni creati da valori distinti di `Contatto`, relazioni preservate in `contact_references`.
+- **Verifiche tecniche**: eseguire `scripts/export_legacy_access_contacts.py`, controllare CSV generati in `old_software/export/`, importare in transazione o con script idempotente, confrontare conteggi, testare filtri per gruppo e referente, verificare RLS manager/riferimento sui dati importati.
+- **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
+- **Decisioni aperte**: regole di deduplica prima/dopo import, normalizzazione nomi referenti, trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access.
+
+### Milestone 7 - Storicizzazione minima e audit
 
 - **Obiettivo**: non perdere modifiche importanti.
 - **Scope**: snapshot contatto o audit log su modifica, autore, data, prima/dopo.
@@ -218,7 +230,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: audit troppo pesante o incompleto.
 - **Decisioni aperte**: possibilita' di ripristino versione precedente gia' in MVP o post-MVP.
 
-### Milestone 7 - CRUD eventi
+### Milestone 8 - CRUD eventi
 
 - **Obiettivo**: creare e gestire eventi semplici.
 - **Scope**: titolo, descrizione, date, orari, luogo, note, stato.
@@ -228,7 +240,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: segmenti evento anticipati troppo presto.
 - **Decisioni aperte**: stati definitivi evento.
 
-### Milestone 8 - Lista invitati con filtri base
+### Milestone 9 - Lista invitati con filtri base
 
 - **Obiettivo**: ridurre selezione manuale nome per nome.
 - **Scope**: selezione contatti per gruppo, riferimento, stato, priorita', dati mancanti; aggiunta massiva a evento.
@@ -238,7 +250,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: query complesse e UX confusa.
 - **Decisioni aperte**: includere subito filtro per evento passato.
 
-### Milestone 9 - Gestione manuale inviti e risposte
+### Milestone 10 - Gestione manuale inviti e risposte
 
 - **Obiettivo**: tracciare stato invito e risposta senza automazione email.
 - **Scope**: stati invito/risposta, note, proponente, inserimento manuale risposte.
@@ -248,7 +260,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: stati non allineati al processo reale.
 - **Decisioni aperte**: nomenclatura stati risposta.
 
-### Milestone 10 - Dashboard MVP
+### Milestone 11 - Dashboard MVP
 
 - **Obiettivo**: dare visione operativa immediata.
 - **Scope**: eventi attivi/futuri, conteggi inviti/risposte, dati mancanti, stand-by.
@@ -258,7 +270,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: dashboard troppo ricca per MVP.
 - **Decisioni aperte**: metriche prioritarie.
 
-### Milestone 11 - Export e stampe base
+### Milestone 12 - Export e stampe base
 
 - **Obiettivo**: supportare lavoro offline e condivisione liste.
 - **Scope**: export CSV/PDF o stampa browser di contatti, liste evento, risposte.
@@ -268,7 +280,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: formato stampa non adatto agli usi reali.
 - **Decisioni aperte**: PDF, CSV, Excel o stampa HTML come priorita'.
 
-### Milestone 12 - Hardening, test, build, deploy
+### Milestone 13 - Hardening, test, build, deploy
 
 - **Obiettivo**: rendere l'MVP usabile in modo affidabile.
 - **Scope**: test, error handling, permessi, build, deploy Vercel, checklist privacy.
@@ -278,7 +290,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: differenze tra locale e produzione.
 - **Decisioni aperte**: dominio e ambiente di staging.
 
-### Milestone 13 - Post-MVP email robuste e template
+### Milestone 14 - Post-MVP email robuste e template
 
 - **Obiettivo**: inviare comunicazioni dall'app in modo affidabile.
 - **Scope**: provider email, template, batch, retry, logging, reinvio.
@@ -288,7 +300,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: deliverability, limiti provider, gestione allegati.
 - **Decisioni aperte**: provider email.
 
-### Milestone 14 - Post-MVP risposte via link pubblico
+### Milestone 15 - Post-MVP risposte via link pubblico
 
 - **Obiettivo**: registrare risposte direttamente dal destinatario.
 - **Scope**: token sicuri, pagina pubblica, scadenza, storico risposte.
@@ -298,7 +310,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: privacy e link inoltrati.
 - **Decisioni aperte**: opzioni risposta definitive.
 
-### Milestone 15 - Post-MVP workflow riferimenti
+### Milestone 16 - Post-MVP workflow riferimenti
 
 - **Obiettivo**: sostituire verifica cartacea con flusso digitale.
 - **Scope**: liste proposte, conferma/esclusione, note, nuovi contatti, aggiornamenti dati.
@@ -308,7 +320,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: processo organizzativo non definito.
 - **Decisioni aperte**: stati proposta e responsabilita' finale.
 
-### Milestone 16 - Post-MVP segmenti, QR code e check-in
+### Milestone 17 - Post-MVP segmenti, QR code e check-in
 
 - **Obiettivo**: gestire eventi complessi e presenze reali.
 - **Scope**: segmenti, scelta segmento, QR code, scansione, check-in.
@@ -318,7 +330,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: gestione operativa all'ingresso.
 - **Decisioni aperte**: dispositivi e processo check-in.
 
-### Milestone 17 - Post-MVP alert, deduplica e reportistica avanzata
+### Milestone 18 - Post-MVP alert, deduplica e reportistica avanzata
 
 - **Obiettivo**: prevenire dimenticanze e migliorare qualita' dati.
 - **Scope**: contatti importanti, inviti ricorrenti, deduplica, report evoluti.
@@ -331,6 +343,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ## 9. Guardrails tecnici
 
 - Non modificare schema database senza migration.
+- Applicare le migration `.sql` necessarie e non distruttive dopo review.
 - Non applicare migration distruttive senza conferma.
 - Non committare chiavi, password, token o file `.env`.
 - Non usare la service role key nel client.
@@ -344,7 +357,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - Produrre diff comprensibili e reviewabili.
 - Fermarsi e chiedere se emergono credenziali mancanti, conflitti o decisioni di prodotto bloccanti.
 - Tenere separati ambiente locale, preview/staging e produzione.
-- Non toccare produzione senza conferma esplicita.
+- Non toccare produzione per operazioni distruttive, deploy o modifiche fuori scope senza conferma esplicita.
 - Documentare ogni variabile d'ambiente in `.env.example`.
 - Verificare che i dati personali siano accessibili solo ai ruoli autorizzati.
 
@@ -375,7 +388,7 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - Come distinguere nel primo schema persona fisica, carica e istituzione senza rendere il sistema troppo complesso?
 - Il ripristino di versioni precedenti deve essere disponibile gia' nell'MVP o solo consultazione storico?
 - Oltre a manager e riferimento servono altri ruoli, per esempio operatore check-in o sola lettura?
-- Esiste un archivio iniziale da importare da Excel/CSV o dal sistema attuale?
+- Quali regole di pulizia e deduplica applicare all'import dal vecchio Access?
 - Quale formato e' prioritario per le stampe/export: CSV, Excel, PDF o stampa HTML?
 - Serve un ambiente di staging separato dalla preview Vercel?
 - Quale dominio usare per produzione?

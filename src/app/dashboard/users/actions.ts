@@ -64,6 +64,7 @@ async function manageProfile(input: {
     target_last_name: input.lastName,
     target_role: input.role,
     target_active: input.active,
+    target_reference_id: null,
   });
 
   if (error) {

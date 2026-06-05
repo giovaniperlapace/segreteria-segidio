@@ -6,13 +6,14 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato le Milestone 1-4: setup, ambiente, schema MVP e autenticazione.
-- La Milestone 5 e' implementata e verificata tecnicamente; resta il collaudo operativo creando utenti reali manager/reference e verificandone il primo login.
+- Il progetto ha completato le Milestone 1-7: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio e import contatti Access.
+- La prossima milestone operativa e' la Milestone 8: storicizzazione minima e audit consultabile.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
-- La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`.
+- La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`, contatti in `/dashboard/contacts`, gruppi in `/dashboard/groups`, riferimenti in `/dashboard/references` e impostazioni in `/dashboard/settings`.
 - I profili utente hanno `first_name` e `last_name` separati; `full_name` resta sincronizzato per compatibilita'.
+- L'archivio e' stato popolato dal vecchio Access con 3033 contatti legacy, 27 gruppi, 3033 relazioni contatto-gruppo, 260 riferimenti interni normalizzati attivi e 2447 relazioni contatto-riferimento.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -99,13 +100,14 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe completare il collaudo della Milestone 5 e poi passare alla Milestone 6:
+La prossima sessione dovrebbe consolidare il post-import e poi passare alla Milestone 8:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. creare dall'interfaccia gli utenti reali necessari al collaudo manager/reference;
-4. verificare il loro primo login e i permessi coerenti al ruolo;
-5. avviare CRUD contatti, gruppi e riferimenti mantenendo RLS e controlli ruolo.
+3. rivedere i paesi legacy non normalizzati rimasti (`OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`);
+4. verificare operativamente filtri per gruppo e riferimento con utente manager;
+5. creare/collaudare un utente reference reale e verificare che veda solo i contatti assegnati;
+6. avviare Milestone 8 su storicizzazione consultabile e audit visibile.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -174,6 +176,8 @@ Migration MVP creata:
 - `supabase/migrations/20260604120000_auth_profiles_hardening.sql`
 - `supabase/migrations/20260604180000_manager_user_administration.sql`
 - `supabase/migrations/20260605100000_split_profile_names.sql`
+- `supabase/migrations/20260605120000_contact_language_settings.sql`
+- `supabase/migrations/20260605130000_legacy_access_import_upsert.sql`
 
 Include:
 
@@ -183,8 +187,36 @@ Include:
 - trigger `updated_at`, storico contatti e audit log;
 - helper RLS `is_manager`, `current_internal_reference_id`, `can_access_contact`, `can_access_event`;
 - policy RLS per manager e riferimenti.
+- tabella impostazioni `contact_languages` per alimentare il selettore lingua;
+- indice unico pieno su `contacts.legacy_access_id` per import idempotenti via PostgREST.
 
 La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
+
+## Import Access completato
+
+La Milestone 7 e' stata completata importando `old_software/Segreteria2.mdb` tramite:
+
+```bash
+python3 scripts/export_legacy_access_contacts.py
+python3 scripts/import_legacy_access_contacts.py --apply --allow-insecure-tls
+```
+
+Risultato persistente sul database self-hosted:
+
+- 3033 contatti con `legacy_access_id` valorizzato e univoco;
+- 27 gruppi;
+- 3033 relazioni `contact_groups`;
+- 260 riferimenti interni normalizzati attivi derivati da `EXPO2000.Contatto`;
+- 2447 relazioni `contact_references`.
+- i riferimenti legacy composti con virgola sono stati splittati in referenti atomici, deduplicati e rimossi quando non piu' collegati.
+
+I riferimenti interni hanno `first_name` e `last_name` separati, con `full_name` mantenuto sincronizzato. La pagina `/dashboard/references` mostra una tabella di consultazione; cliccando una riga si apre la scheda modificabile con i contatti associati. I riferimenti non collegati possono essere convertiti in utenti `reference` se hanno nome, cognome ed email valida.
+
+Le pagine che leggono molti record usano fetch paginato per evitare il limite PostgREST di 1000 righe per query.
+
+La tabella Access non contiene una colonna lingua; `contacts.spoken_language` resta quindi vuoto e coerente con l'opzione UI "Non indicata".
+
+`EXPO2000.Paese` e' stato normalizzato solo per alias certi verso l'elenco standard usato dall'autocomplete. Valori non-paese o ambigui conservati per revisione post-import: `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`.
 
 ## Autenticazione e provisioning utenti
 

@@ -45,6 +45,23 @@ def clean(value: object) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def split_reference_names(value: object) -> list[str]:
+    """Split legacy Contatto values into atomic internal reference labels."""
+    raw = clean(value)
+    if not raw:
+        return []
+    return [part for part in (clean(part) for part in raw.split(",")) if part]
+
+
+def split_person_name(value: object) -> tuple[str, str]:
+    parts = clean(value).split()
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
 def export_table(mdb_path: Path, table: str) -> list[dict[str, str]]:
     result = subprocess.run(
         ["mdb-export", str(mdb_path), table],
@@ -76,14 +93,14 @@ def build_exports(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]
     groups: dict[str, dict[str, str]] = {}
     contact_groups: set[tuple[str, str]] = set()
     references: dict[str, dict[str, str]] = {}
-    contact_references: set[tuple[str, str]] = set()
+    contact_references: dict[tuple[str, str], bool] = {}
 
     city_column = next((key for key in rows[0].keys() if key.lower().startswith("citt")), "")
 
     for row in rows:
         legacy_id = get_value(row, "ID")
         group_name = get_value(row, "Gruppo")
-        reference_name = get_value(row, "Contatto")
+        reference_names = split_reference_names(get_value(row, "Contatto"))
 
         contacts.append(
             {
@@ -113,17 +130,20 @@ def build_exports(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]
             if legacy_id:
                 contact_groups.add((legacy_id, group_name))
 
-        if reference_name:
+        for index, reference_name in enumerate(reference_names):
+            reference_first_name, reference_last_name = split_person_name(reference_name)
             references.setdefault(
                 reference_name.lower(),
                 {
                     "legacy_access_contact_name": reference_name,
+                    "first_name": reference_first_name,
+                    "last_name": reference_last_name,
                     "full_name": reference_name,
                     "active": "true",
                 },
             )
             if legacy_id:
-                contact_references.add((legacy_id, reference_name))
+                contact_references.setdefault((legacy_id, reference_name), index == 0)
 
     return {
         "contacts": contacts,
@@ -141,9 +161,12 @@ def build_exports(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]
                 "contact_legacy_access_id": contact_id,
                 "reference_legacy_access_contact_name": reference_name,
                 "relationship_kind": "legacy_access_contatto",
-                "is_primary": "true",
+                "is_primary": "true" if is_primary else "false",
             }
-            for contact_id, reference_name in sorted(contact_references, key=lambda item: (int(item[0]), item[1].lower()))
+            for (contact_id, reference_name), is_primary in sorted(
+                contact_references.items(),
+                key=lambda item: (int(item[0][0]), item[0][1].lower()),
+            )
         ],
     }
 
@@ -180,7 +203,7 @@ def main() -> None:
     )
     write_csv(
         args.out / "internal_references.csv",
-        ["legacy_access_contact_name", "full_name", "active"],
+        ["legacy_access_contact_name", "first_name", "last_name", "full_name", "active"],
         exports["internal_references"],
     )
     write_csv(

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/profile";
+import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ContactManagement, type ContactRecord } from "./contact-management";
 
@@ -7,13 +8,15 @@ export default async function ContactsPage() {
   const profile = await requireProfile();
   const supabase = await createSupabaseServerClient();
 
-  const [contactsResult, groupsResult, referencesResult, languagesResult, contactGroupsResult, contactReferencesResult, missingResult] =
+  const [contacts, groupsResult, referencesResult, languagesResult, contactGroups, contactReferences, missingRows] =
     await Promise.all([
-      supabase
-        .from("contacts")
-        .select("id,honorific_title,first_name,last_name,institutional_role,institution,email,phone,mobile_phone,address_line,postal_code,city,country,spoken_language,website,notes,missing_data_notes,status,priority")
-        .order("last_name")
-        .order("first_name"),
+      fetchAllSupabaseRows(() =>
+        supabase
+          .from("contacts")
+          .select("id,honorific_title,first_name,last_name,institutional_role,institution,email,phone,mobile_phone,address_line,postal_code,city,country,spoken_language,website,notes,missing_data_notes,status,priority")
+          .order("last_name")
+          .order("first_name"),
+      ),
       supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
       supabase.from("internal_references").select("id,full_name,active").order("active", { ascending: false }).order("full_name"),
       supabase
@@ -22,31 +25,42 @@ export default async function ContactsPage() {
         .order("active", { ascending: false })
         .order("sort_order")
         .order("name"),
-      supabase.from("contact_groups").select("contact_id,group_id"),
-      supabase.from("contact_references").select("contact_id,reference_id"),
-      supabase.from("contacts_missing_required_data").select("id,missing_fields"),
+      fetchAllSupabaseRows(() => supabase.from("contact_groups").select("contact_id,group_id")),
+      fetchAllSupabaseRows(() => supabase.from("contact_references").select("contact_id,reference_id")),
+      fetchAllSupabaseRows(() => supabase.from("contacts_missing_required_data").select("id,missing_fields")),
     ]);
 
-  for (const result of [contactsResult, groupsResult, referencesResult, languagesResult, contactGroupsResult, contactReferencesResult, missingResult]) {
+  for (const result of [groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
   }
 
   const groupIdsByContact = new Map<number, number[]>();
-  for (const relation of contactGroupsResult.data ?? []) {
+  for (const relation of contactGroups) {
     groupIdsByContact.set(relation.contact_id, [...(groupIdsByContact.get(relation.contact_id) ?? []), relation.group_id]);
   }
   const referenceIdsByContact = new Map<number, number[]>();
-  for (const relation of contactReferencesResult.data ?? []) {
+  for (const relation of contactReferences) {
     referenceIdsByContact.set(relation.contact_id, [...(referenceIdsByContact.get(relation.contact_id) ?? []), relation.reference_id]);
   }
-  const missingByContact = new Map((missingResult.data ?? []).map((row) => [row.id, row.missing_fields ?? []]));
+  const selectedReferenceIds = new Set(contactReferences.map((relation) => relation.reference_id));
+  const missingByContact = new Map(missingRows.map((row) => [row.id, row.missing_fields ?? []]));
 
-  const contacts = (contactsResult.data ?? []).map((contact) => ({
+  const contactRecords = contacts.map((contact) => ({
     ...contact,
     group_ids: groupIdsByContact.get(contact.id) ?? [],
     reference_ids: referenceIdsByContact.get(contact.id) ?? [],
     missing_fields: missingByContact.get(contact.id) ?? [],
   })) as ContactRecord[];
+
+  contactRecords.sort((a, b) => {
+    const aHasPersonName = Boolean(a.first_name || a.last_name);
+    const bHasPersonName = Boolean(b.first_name || b.last_name);
+    if (aHasPersonName !== bHasPersonName) return aHasPersonName ? -1 : 1;
+
+    const aLabel = [a.last_name, a.first_name, a.institution].filter(Boolean).join(" ");
+    const bLabel = [b.last_name, b.first_name, b.institution].filter(Boolean).join(" ");
+    return aLabel.localeCompare(bLabel, "it", { sensitivity: "base" });
+  });
 
   return (
     <main className="min-h-screen bg-[#f4f1e8] px-4 py-8 sm:px-6">
@@ -60,16 +74,19 @@ export default async function ContactsPage() {
               : "Visualizza e aggiorna i contatti assegnati al tuo profilo."}
           </p>
         </header>
-        <ContactManagement
-          contacts={contacts}
+          <ContactManagement
+          contacts={contactRecords}
           groups={(groupsResult.data ?? []).map((group) => ({ id: group.id, name: group.name, active: group.active }))}
-          references={(referencesResult.data ?? []).map((reference) => ({ id: reference.id, name: reference.full_name, active: reference.active }))}
+          references={(referencesResult.data ?? [])
+            .filter((reference) => reference.active || selectedReferenceIds.has(reference.id))
+            .map((reference) => ({ id: reference.id, name: reference.full_name, active: reference.active }))}
           languages={(languagesResult.data ?? []).map((language) => ({
             id: language.id,
             name: language.name,
             active: language.active,
           }))}
           isManager={profile.role === "manager"}
+          viewPreferenceKey={`contacts-view:${profile.id}`}
         />
       </div>
     </main>

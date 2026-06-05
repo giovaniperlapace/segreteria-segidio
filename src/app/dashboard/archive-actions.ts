@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireManager, requireProfile } from "@/lib/auth/profile";
+import { findAuthUserByEmail } from "@/lib/auth/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 export type ArchiveActionState = {
   status: "idle" | "success" | "error";
@@ -11,6 +13,7 @@ export type ArchiveActionState = {
 
 const CONTACT_STATUSES = ["active", "standby"] as const;
 const CONTACT_PRIORITIES = ["standard", "important", "critical"] as const;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -44,9 +47,40 @@ function friendlyError(error: unknown) {
   if (message.includes("row-level security")) {
     return "Non hai i permessi necessari per questa operazione.";
   }
+  if (message.includes("profiles_email_unique_idx")) {
+    return "Esiste gia' un utente autorizzato con questa email.";
+  }
+  if (message.includes("REFERENCE_ALREADY_LINKED")) {
+    return "Questo riferimento e' gia' collegato a un altro utente.";
+  }
+  if (message.includes("REFERENCE_NOT_FOUND")) {
+    return "Il riferimento selezionato non esiste piu'.";
+  }
 
   console.error("Archive operation failed", error);
   return "Operazione non riuscita. Controlla i dati e riprova.";
+}
+
+function splitReferenceName(fullName: string) {
+  const normalized = fullName.replace(/\s+/g, " ").trim();
+  if (!normalized) return { firstName: "", lastName: "" };
+
+  const parts = normalized.split(" ");
+  if (parts.length < 2) return { firstName: normalized, lastName: "" };
+
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1) ?? "",
+  };
+}
+
+function referenceNameInput(formData: FormData) {
+  const fallback = splitReferenceName(text(formData, "fullName"));
+  const firstName = text(formData, "firstName") || fallback.firstName;
+  const lastName = text(formData, "lastName") || fallback.lastName;
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  return { firstName, lastName, fullName };
 }
 
 function contactInput(formData: FormData) {
@@ -259,14 +293,16 @@ export async function createReferenceAction(
   formData: FormData,
 ): Promise<ArchiveActionState> {
   const manager = await requireManager();
-  const fullName = text(formData, "fullName");
-  if (!fullName) {
+  const { firstName, lastName, fullName } = referenceNameInput(formData);
+  if (!firstName) {
     return { status: "error", message: "Il nome del riferimento e' obbligatorio." };
   }
 
   try {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.from("internal_references").insert({
+      first_name: firstName,
+      last_name: lastName || null,
       full_name: fullName,
       email: optionalText(formData, "email")?.toLowerCase() ?? null,
       phone: optionalText(formData, "phone"),
@@ -288,8 +324,8 @@ export async function updateReferenceAction(
 ): Promise<ArchiveActionState> {
   await requireManager();
   const referenceId = Number(text(formData, "referenceId"));
-  const fullName = text(formData, "fullName");
-  if (!Number.isSafeInteger(referenceId) || !fullName) {
+  const { firstName, lastName, fullName } = referenceNameInput(formData);
+  if (!Number.isSafeInteger(referenceId) || !firstName) {
     return { status: "error", message: "Nome o riferimento non valido." };
   }
 
@@ -298,6 +334,8 @@ export async function updateReferenceAction(
     const { error } = await supabase
       .from("internal_references")
       .update({
+        first_name: firstName,
+        last_name: lastName || null,
         full_name: fullName,
         email: optionalText(formData, "email")?.toLowerCase() ?? null,
         phone: optionalText(formData, "phone"),
@@ -309,6 +347,104 @@ export async function updateReferenceAction(
     revalidatePath("/dashboard/references");
     revalidatePath("/dashboard/contacts");
     return { status: "success", message: "Riferimento aggiornato correttamente." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
+export async function convertReferenceToUserAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const manager = await requireManager();
+  const referenceId = Number(text(formData, "referenceId"));
+  const { firstName, lastName, fullName } = referenceNameInput(formData);
+  const email = optionalText(formData, "email")?.toLowerCase() ?? "";
+  const missingFields = [
+    firstName ? null : "nome",
+    lastName ? null : "cognome",
+    EMAIL_PATTERN.test(email) ? null : "email valida",
+  ].filter(Boolean);
+
+  if (!Number.isSafeInteger(referenceId)) {
+    return { status: "error", message: "Riferimento non valido." };
+  }
+
+  if (missingFields.length > 0) {
+    return {
+      status: "error",
+      message: `Per convertire il riferimento in utente mancano: ${missingFields.join(", ")}.`,
+    };
+  }
+
+  try {
+    const service = createSupabaseServiceClient();
+    const { data: reference, error: referenceError } = await service
+      .from("internal_references")
+      .select("id,profile_id")
+      .eq("id", referenceId)
+      .maybeSingle();
+
+    if (referenceError) throw referenceError;
+    if (!reference) {
+      return { status: "error", message: "Il riferimento selezionato non esiste piu'." };
+    }
+    if (reference.profile_id) {
+      return { status: "error", message: "Questo riferimento e' gia' collegato a un utente." };
+    }
+
+    const { data: existingProfile, error: profileError } = await service
+      .from("profiles")
+      .select("id,role,active")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+    if (existingProfile && existingProfile.role !== "reference") {
+      return {
+        status: "error",
+        message: "Esiste gia' un utente con questa email, ma non e' un riferimento.",
+      };
+    }
+
+    let targetProfileId = existingProfile?.id ?? null;
+    if (!targetProfileId) {
+      let authUser = await findAuthUserByEmail(email);
+      if (!authUser) {
+        const { data, error } = await service.auth.admin.createUser({
+          email,
+          email_confirm: true,
+        });
+        if (error) throw error;
+        authUser = data.user;
+      }
+      targetProfileId = authUser.id;
+    }
+
+    const { error } = await service.rpc("admin_manage_profile", {
+      actor_profile_id: manager.id,
+      target_profile_id: targetProfileId,
+      target_email: email,
+      target_first_name: firstName,
+      target_last_name: lastName,
+      target_role: "reference",
+      target_active: true,
+      target_reference_id: referenceId,
+    });
+
+    if (error) throw error;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/users");
+    revalidatePath("/dashboard/references");
+    revalidatePath("/dashboard/contacts");
+
+    return {
+      status: "success",
+      message: existingProfile
+        ? `${fullName} e' stato collegato all'utente riferimento esistente.`
+        : `${fullName} e' ora un utente riferimento e puo' accedere ai contatti assegnati.`,
+    };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }

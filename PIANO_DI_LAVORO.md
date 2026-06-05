@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-Le Milestone 1-4 sono completate. Il prossimo blocco operativo deve partire dalla gestione utenti e ruoli tramite interfaccia riservata ai manager.
+Le Milestone 1-7 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 8 su storicizzazione minima e audit consultabile.
 
 ## 2. Sintesi della visione dell'app
 
@@ -230,12 +230,14 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ### Milestone 7 - Import contatti dal vecchio Access
 
 - **Obiettivo**: portare nel nuovo archivio i dati reali di contatti, gruppi e referenti interni senza perdere relazioni utili.
+- **Stato 2026-06-05**: completata sul database self-hosted.
 - **Scope**: esportazione da `old_software/Segreteria2.mdb`, revisione CSV, import di contatti/invitati, gruppi, relazioni contatto-gruppo, referenti interni derivati da `EXPO2000.Contatto` e relazioni contatto-referente.
 - **Output atteso**: archivio popolato con i contatti legacy e relazioni verificabili nella nuova app.
 - **Criteri di accettazione**: `contacts.legacy_access_id` valorizzato e univoco, conteggi coerenti con l'export, nessun dato operativo/evento importato come campo contatto, referenti interni creati da valori distinti di `Contatto`, relazioni preservate in `contact_references`.
 - **Verifiche tecniche**: eseguire `scripts/export_legacy_access_contacts.py`, controllare CSV generati in `old_software/export/`, importare in transazione o con script idempotente, confrontare conteggi, testare filtri per gruppo e referente, verificare RLS manager/riferimento sui dati importati.
+- **Esito import**: 3033 contatti legacy, 27 gruppi, 3033 relazioni contatto-gruppo, 260 riferimenti interni normalizzati attivi, 2447 relazioni contatto-riferimento. I valori `EXPO2000.Contatto` con virgole sono stati splittati in referenti distinti, poi i record composti residui sono stati rimossi; `internal_references` ha ora `first_name` e `last_name` separati. Nessuna colonna lingua in Access; paese normalizzato solo per alias certi, con `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario` conservati per revisione.
 - **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
-- **Decisioni aperte**: regole di deduplica prima/dopo import, normalizzazione nomi referenti, trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access.
+- **Decisioni aperte**: trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access, revisione manuale dei valori paese non normalizzati.
 
 ### Milestone 8 - Storicizzazione minima e audit
 
@@ -419,12 +421,13 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Primo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe completare il collaudo della **Milestone 5: Gestione utenti e ruoli da interfaccia manager**, quindi passare alla Milestone 6.
+Il prossimo blocco operativo dovrebbe avviare la **Milestone 8: Storicizzazione minima e audit**.
 
 Prima di iniziare conviene confermare:
 
-- quali utenti reali creare per il collaudo manager/reference;
-- che ciascun nuovo utente completi il flusso `/login` -> magic link -> callback -> dashboard;
-- che il reference veda soltanto le funzioni e i dati consentiti.
+- quali modifiche contatto devono essere visibili nello storico operativo;
+- se lo storico deve essere solo consultabile o anche ripristinabile;
+- quali schermate devono mostrare audit e autore della modifica;
+- se il collaudo reference post-import va completato prima o insieme alla Milestone 8.
 
-Output atteso del prossimo blocco: collaudo operativo completato con utenti reali e avvio della Milestone 6 sui CRUD di contatti, gruppi e riferimenti.
+Output atteso del prossimo blocco: storico/audit leggibile per le modifiche principali e verifica operativa con almeno un utente reference reale.

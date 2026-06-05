@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import { createContactAction, deleteContactAction, updateContactAction } from "../archive-actions";
 import {
   ActionMessage,
@@ -11,20 +11,59 @@ import {
 
 export type ContactRecord = {
   id: number;
+  legacy_access_old_archive_id: number | null;
   honorific_title: string | null;
+  honorific_title_english: string | null;
+  honorific_title_invitation: string | null;
   first_name: string;
   last_name: string;
+  legacy_description: string | null;
   institutional_role: string | null;
+  institutional_role_english: string | null;
+  institutional_role_invitation: string | null;
   institution: string | null;
+  legacy_salutation: string | null;
   email: string | null;
+  email_2: string | null;
   phone: string | null;
+  phone_home: string | null;
+  phone_office_2: string | null;
   mobile_phone: string | null;
+  fax: string | null;
+  fax_home: string | null;
+  telex_office: string | null;
   address_line: string | null;
   postal_code: string | null;
   city: string | null;
   country: string | null;
+  home_address_line: string | null;
+  home_postal_code: string | null;
+  home_city: string | null;
+  home_province: string | null;
+  home_country: string | null;
+  office_name: string | null;
+  office_address_line: string | null;
+  office_postal_code: string | null;
+  office_city: string | null;
+  office_province: string | null;
+  office_country: string | null;
   spoken_language: string | null;
+  spoken_language_2: string | null;
+  invitation_language: string | null;
+  translation_language: string | null;
+  religion: string | null;
+  legacy_organization_id: number | null;
+  legacy_organization_name: string | null;
+  legacy_office_site: string | null;
+  mail_address_preference: number | null;
+  legacy_contacts_raw: string | null;
+  accompanist: string | null;
+  legacy_archive_type: string | null;
+  legacy_created_at: string | null;
+  legacy_updated_at: string | null;
+  legacy_invitation_group: string | null;
   website: string | null;
+  website_2: string | null;
   notes: string | null;
   missing_data_notes: string | null;
   status: "active" | "standby";
@@ -48,13 +87,16 @@ type ContactTableSortKey =
   | "status"
   | "priority"
   | "missing";
-const CONTACTS_PAGE_SIZE = 100;
-
 const FIELD_LABELS: Record<string, string> = {
   name: "nome",
   email: "email",
   institutional_role: "carica",
   institution: "istituzione",
+};
+
+const CONTACT_STATUS_LABELS: Record<ContactRecord["status"], string> = {
+  active: "Attivo",
+  standby: "Non attivo",
 };
 
 const COUNTRY_OPTIONS = [
@@ -446,6 +488,7 @@ function MultiGroupFilter({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
   const selected = new Set(selectedIds);
   const normalizedSearch = normalizeSearch(search);
   const selectedGroups = groups.filter((group) => selected.has(group.id));
@@ -463,8 +506,34 @@ function MultiGroupFilter({
     onChange([...selectedIds, id]);
   }
 
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -519,15 +588,26 @@ function MultiGroupFilter({
               </label>
             ))}
           </div>
-          {selectedIds.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            {selectedIds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-xs font-semibold text-[#d43c2f] hover:underline"
+              >
+                Rimuovi filtro gruppi
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               type="button"
-              onClick={() => onChange([])}
-              className="mt-3 text-xs font-semibold text-[#d43c2f] hover:underline"
+              onClick={() => setOpen(false)}
+              className="rounded-lg bg-[#1b3272] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#263f86]"
             >
-              Rimuovi filtro gruppi
+              OK
             </button>
-          ) : null}
+          </div>
         </div>
       ) : null}
     </div>
@@ -582,12 +662,20 @@ function ContactFields({
           <input name="email" type="email" defaultValue={contact?.email ?? ""} className={inputClass} />
         </label>
         <label className={labelClass()}>
+          Email 2
+          <input name="email2" type="email" defaultValue={contact?.email_2 ?? ""} className={inputClass} />
+        </label>
+        <label className={labelClass()}>
           Sito web
           <input name="website" type="url" defaultValue={contact?.website ?? ""} className={inputClass} />
         </label>
         <label className={labelClass()}>
           Telefono
           <input name="phone" type="tel" defaultValue={contact?.phone ?? ""} className={inputClass} />
+        </label>
+        <label className={labelClass()}>
+          Telefono casa
+          <input name="phoneHome" type="tel" defaultValue={contact?.phone_home ?? ""} className={inputClass} />
         </label>
         <label className={labelClass()}>
           Cellulare
@@ -625,7 +713,7 @@ function ContactFields({
           Stato
           <select name="status" defaultValue={contact?.status ?? "active"} className={inputClass}>
             <option value="active">Attivo</option>
-            <option value="standby">Stand-by</option>
+            <option value="standby">Non attivo</option>
           </select>
         </label>
         <label className={labelClass()}>
@@ -673,6 +761,75 @@ function ContactFields({
             className={inputClass}
           />
         </label>
+        <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[#1b3272]">Dati legacy aggiuntivi</summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <label className={labelClass()}>
+              Descrizione
+              <input name="legacyDescription" defaultValue={contact?.legacy_description ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Intestazione
+              <input name="legacySalutation" defaultValue={contact?.legacy_salutation ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Carica invito
+              <input name="institutionalRoleInvitation" defaultValue={contact?.institutional_role_invitation ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Carica inglese
+              <input name="institutionalRoleEnglish" defaultValue={contact?.institutional_role_english ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Nome ufficio
+              <input name="officeName" defaultValue={contact?.office_name ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Indirizzo ufficio
+              <input name="officeAddressLine" defaultValue={contact?.office_address_line ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Citta&apos; ufficio
+              <input name="officeCity" defaultValue={contact?.office_city ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Paese ufficio
+              <input name="officeCountry" defaultValue={contact?.office_country ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Indirizzo casa
+              <input name="homeAddressLine" defaultValue={contact?.home_address_line ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Citta&apos; casa
+              <input name="homeCity" defaultValue={contact?.home_city ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Lingua invito
+              <input name="invitationLanguage" defaultValue={contact?.invitation_language ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Lingua 2
+              <input name="spokenLanguage2" defaultValue={contact?.spoken_language_2 ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Fax ufficio
+              <input name="fax" defaultValue={contact?.fax ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Fax casa
+              <input name="faxHome" defaultValue={contact?.fax_home ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Accompagnatore
+              <input name="accompanist" defaultValue={contact?.accompanist ?? ""} className={inputClass} />
+            </label>
+            <label className={labelClass()}>
+              Gruppo inviti legacy
+              <input name="legacyInvitationGroup" defaultValue={contact?.legacy_invitation_group ?? ""} className={inputClass} />
+            </label>
+          </div>
+        </details>
       </div>
       <p className="text-xs text-slate-500">
         Inserisci almeno nome, cognome o istituzione. Gruppi e riferimenti selezionati sono evidenziati sopra le opzioni.
@@ -747,7 +904,7 @@ export function ContactEditor({
   const contactReferences = references.filter((reference) => contact.reference_ids.includes(reference.id));
 
   return (
-    <details open={open} className="group rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
+    <details open={open} className="group rounded-2xl border border-[#d9e1f2] bg-white shadow-sm open:md:col-span-2 open:xl:col-span-3">
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <h3 className="font-semibold text-[#1b3272]">{displayName}</h3>
@@ -767,7 +924,7 @@ export function ContactEditor({
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className={`rounded-full px-2.5 py-1 ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-            {contact.status === "active" ? "Attivo" : "Stand-by"}
+            {CONTACT_STATUS_LABELS[contact.status]}
           </span>
           {contact.missing_fields.length > 0 ? (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
@@ -862,6 +1019,7 @@ function ContactsTable({
   sortKey,
   sortDirection,
   onSort,
+  onOpenContact,
 }: {
   contacts: ContactRecord[];
   groups: Option[];
@@ -869,6 +1027,7 @@ function ContactsTable({
   sortKey: ContactTableSortKey;
   sortDirection: "asc" | "desc";
   onSort: (key: ContactTableSortKey) => void;
+  onOpenContact: (contact: ContactRecord) => void;
 }) {
   function sortLabel(key: ContactTableSortKey) {
     if (sortKey !== key) return "";
@@ -932,9 +1091,22 @@ function ContactsTable({
               const referencesText = optionNames(contact.reference_ids, references).join(", ");
 
               return (
-                <tr key={contact.id} className="align-top hover:bg-[#f8fafc]">
+                <tr
+                  key={contact.id}
+                  className="cursor-pointer align-top hover:bg-[#f8fafc]"
+                  onClick={() => onOpenContact(contact)}
+                >
                   <td className="px-4 py-3 font-semibold text-[#1b3272]">
-                    <div>{contactDisplayName(contact)}</div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenContact(contact);
+                      }}
+                      className="text-left hover:underline"
+                    >
+                      {contactDisplayName(contact)}
+                    </button>
                     {contact.email ? (
                       <div className="mt-1 text-xs font-normal text-slate-500">{contact.email}</div>
                     ) : null}
@@ -947,7 +1119,7 @@ function ContactsTable({
                   <td className="px-4 py-3 text-slate-700">{contact.spoken_language || "—"}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-                      {contact.status === "active" ? "Attivo" : "Stand-by"}
+                      {CONTACT_STATUS_LABELS[contact.status]}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -975,6 +1147,10 @@ export function ContactManagement({
   languages,
   isManager,
   viewPreferenceKey,
+  totalContacts,
+  page,
+  pageSize,
+  initialFilters,
 }: {
   contacts: ContactRecord[];
   groups: Option[];
@@ -982,16 +1158,27 @@ export function ContactManagement({
   languages: LanguageOption[];
   isManager: boolean;
   viewPreferenceKey: string;
+  totalContacts: number;
+  page: number;
+  pageSize: number;
+  initialFilters: {
+    search: string;
+    status: string;
+    priority: string;
+    groupIds: number[];
+    referenceId: string;
+    missing: string;
+  };
 }) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [priority, setPriority] = useState("all");
-  const [groupIds, setGroupIds] = useState<number[]>([]);
-  const [referenceId, setReferenceId] = useState("all");
-  const [missing, setMissing] = useState("all");
-  const [visibleCount, setVisibleCount] = useState(CONTACTS_PAGE_SIZE);
+  const [search, setSearch] = useState(initialFilters.search);
+  const [status, setStatus] = useState(initialFilters.status || "all");
+  const [priority, setPriority] = useState(initialFilters.priority || "all");
+  const [groupIds, setGroupIds] = useState<number[]>(initialFilters.groupIds);
+  const [referenceId, setReferenceId] = useState(initialFilters.referenceId || "all");
+  const [missing, setMissing] = useState(initialFilters.missing || "all");
   const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>("name");
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("asc");
+  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const deferredSearch = useDeferredValue(search);
   const viewMode = useSyncExternalStore(
     (onStoreChange) => {
@@ -1022,6 +1209,23 @@ export function ContactManagement({
 
     setTableSortKey(nextKey);
     setTableSortDirection("asc");
+  }
+
+  function contactsUrl(nextPage: number) {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (status !== "all") params.set("status", status);
+    if (priority !== "all") params.set("priority", priority);
+    if (groupIds.length > 0) params.set("groups", groupIds.join(","));
+    if (referenceId !== "all") params.set("referenceId", referenceId);
+    if (missing !== "all") params.set("missing", missing);
+    if (nextPage > 1) params.set("page", String(nextPage));
+    const query = params.toString();
+    return `/dashboard/contacts${query ? `?${query}` : ""}`;
+  }
+
+  function applyFilters() {
+    window.location.href = contactsUrl(1);
   }
 
   const filtered = useMemo(() => {
@@ -1075,7 +1279,7 @@ export function ContactManagement({
       return compareValues(aValue, bValue, tableSortDirection);
     });
   }, [filtered, groups, references, tableSortDirection, tableSortKey]);
-  const visibleContacts = (viewMode === "table" ? tableContacts : filtered).slice(0, visibleCount);
+  const visibleContacts = viewMode === "table" ? tableContacts : filtered;
 
   return (
     <div className="space-y-8">
@@ -1097,7 +1301,9 @@ export function ContactManagement({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold text-[#1b3272]">Archivio contatti</h2>
-            <p className="mt-1 text-sm text-slate-600">{filtered.length} di {contacts.length} contatti</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {contacts.length} mostrati di {totalContacts} contatti
+            </p>
           </div>
           <div className="flex rounded-xl border border-slate-300 bg-white p-1 text-sm font-semibold">
             <button
@@ -1128,7 +1334,7 @@ export function ContactManagement({
           <div className="grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cerca contatti" aria-label="Cerca contatti" className={inputClass} />
             <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filtra per stato" className={inputClass}>
-              <option value="all">Tutti gli stati</option><option value="active">Attivi</option><option value="standby">Stand-by</option>
+              <option value="active">Attivi</option><option value="standby">Non attivi</option><option value="all">Tutti gli stati</option>
             </select>
             <select value={priority} onChange={(event) => setPriority(event.target.value)} aria-label="Filtra per priorita" className={inputClass}>
               <option value="all">Tutte le priorita&apos;</option><option value="standard">Standard</option><option value="important">Importante</option><option value="critical">Critica</option>
@@ -1145,6 +1351,21 @@ export function ContactManagement({
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>
             </select>
           </div>
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={applyFilters}
+              className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86]"
+            >
+              Applica filtri
+            </button>
+            <a
+              href="/dashboard/contacts?status=active"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Rimuovi filtri
+            </a>
+          </div>
         </div>
       </section>
 
@@ -1159,31 +1380,79 @@ export function ContactManagement({
             sortKey={tableSortKey}
             sortDirection={tableSortDirection}
             onSort={toggleTableSort}
+            onOpenContact={setSelectedContact}
           />
         ) : (
-          visibleContacts.map((contact) => (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visibleContacts.map((contact) => (
+              <ContactEditor
+                key={contact.id}
+                contact={contact}
+                groups={groups}
+                references={references}
+                languages={languages}
+                isManager={isManager}
+              />
+            ))}
+          </div>
+        )}
+        {totalContacts > pageSize ? (
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {page > 1 ? (
+              <a
+                href={contactsUrl(page - 1)}
+                className="rounded-xl border border-[#d9e1f2] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] shadow-sm hover:border-[#d43c2f]"
+              >
+                Pagina precedente
+              </a>
+            ) : null}
+            <span className="text-sm text-slate-600">
+              Pagina {page} di {Math.max(1, Math.ceil(totalContacts / pageSize))}
+            </span>
+            {page * pageSize < totalContacts ? (
+              <a
+                href={contactsUrl(page + 1)}
+                className="rounded-xl border border-[#d9e1f2] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] shadow-sm hover:border-[#d43c2f]"
+              >
+                Pagina successiva
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+      {selectedContact ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Scheda contatto"
+          onClick={() => setSelectedContact(null)}
+        >
+          <div
+            className="w-full max-w-5xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedContact(null)}
+                className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+            </div>
             <ContactEditor
-              key={contact.id}
-              contact={contact}
+              key={selectedContact.id}
+              contact={selectedContact}
               groups={groups}
               references={references}
               languages={languages}
               isManager={isManager}
+              open
             />
-          ))
-        )}
-        {visibleContacts.length < filtered.length ? (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={() => setVisibleCount((current) => current + CONTACTS_PAGE_SIZE)}
-              className="rounded-xl border border-[#d9e1f2] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] shadow-sm hover:border-[#d43c2f]"
-            >
-              Mostra altri {Math.min(CONTACTS_PAGE_SIZE, filtered.length - visibleContacts.length)} contatti
-            </button>
           </div>
-        ) : null}
-      </section>
+        </div>
+      ) : null}
     </div>
   );
 }

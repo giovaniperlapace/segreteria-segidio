@@ -13,7 +13,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
 - La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`, contatti in `/dashboard/contacts`, gruppi in `/dashboard/groups`, riferimenti in `/dashboard/references` e impostazioni in `/dashboard/settings`.
 - I profili utente hanno `first_name` e `last_name` separati; `full_name` resta sincronizzato per compatibilita'.
-- L'archivio e' stato popolato dal vecchio Access con 3033 contatti legacy, 27 gruppi, 3033 relazioni contatto-gruppo, 260 riferimenti interni normalizzati attivi e 2447 relazioni contatto-riferimento.
+- L'archivio e' stato ripopolato dal database Access dati corretto `old_software/DbSegreteria2.mdb` con 12.956 contatti legacy, 57 gruppi, 15.087 relazioni contatto-gruppo, 297 riferimenti interni normalizzati e 13.439 relazioni contatto-riferimento.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -74,7 +74,7 @@ Include:
 - ruoli manager e riferimento interno;
 - schema database iniziale;
 - contatti con gruppi e riferimenti;
-- stato contatto attivo/stand-by;
+- stato contatto attivo/non attivo;
 - eventi semplici;
 - selezione invitati con filtri base;
 - lista invitati per evento;
@@ -104,7 +104,7 @@ La prossima sessione dovrebbe consolidare il post-import e poi passare alla Mile
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
-3. rivedere i paesi legacy non normalizzati rimasti (`OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`);
+3. rivedere i valori paese legacy non normalizzati rimasti (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`);
 4. verificare operativamente filtri per gruppo e riferimento con utente manager;
 5. creare/collaudare un utente reference reale e verificare che veda solo i contatti assegnati;
 6. avviare Milestone 8 su storicizzazione consultabile e audit visibile.
@@ -178,6 +178,7 @@ Migration MVP creata:
 - `supabase/migrations/20260605100000_split_profile_names.sql`
 - `supabase/migrations/20260605120000_contact_language_settings.sql`
 - `supabase/migrations/20260605130000_legacy_access_import_upsert.sql`
+- `supabase/migrations/20260606120000_real_access_import_fields.sql`
 
 Include:
 
@@ -194,21 +195,22 @@ La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5
 
 ## Import Access completato
 
-La Milestone 7 e' stata completata importando `old_software/Segreteria2.mdb` tramite:
+La Milestone 7 e' stata corretta il 2026-06-05: `old_software/Segreteria2.mdb` e' solo il database interfaccia e non va usato come fonte dati. Il primo import da `EXPO2000` e' stato eliminato dalle tabelle operative. La fonte corretta e' `old_software/DbSegreteria2.mdb`, tabella principale `Persone`, importata tramite:
 
 ```bash
-python3 scripts/export_legacy_access_contacts.py
+python3 scripts/export_legacy_access_contacts.py --mdb old_software/DbSegreteria2.mdb --out old_software/export
 python3 scripts/import_legacy_access_contacts.py --apply --allow-insecure-tls
 ```
 
 Risultato persistente sul database self-hosted:
 
-- 3033 contatti con `legacy_access_id` valorizzato e univoco;
-- 27 gruppi;
-- 3033 relazioni `contact_groups`;
-- 260 riferimenti interni normalizzati attivi derivati da `EXPO2000.Contatto`;
-- 2447 relazioni `contact_references`.
-- i riferimenti legacy composti con virgola sono stati splittati in referenti atomici, deduplicati e rimossi quando non piu' collegati.
+- 12.956 contatti con `legacy_access_id = Persone.IdPersona` valorizzato e univoco;
+- 4.104 contatti attivi e 8.852 contatti non attivi (`contacts.status = 'standby'`, etichetta UI "Non attivo");
+- 57 gruppi derivati da `Gruppi` e `Ruoli`;
+- 15.087 relazioni `contact_groups`;
+- 297 riferimenti interni normalizzati derivati da `Persone.Contatti`;
+- 13.439 relazioni `contact_references`.
+- i riferimenti legacy composti con virgola sono stati splittati in referenti atomici; i punti interrogativi nei nomi riferimento sono stati rimossi (`Vincenzo?` -> `Vincenzo`).
 
 I riferimenti interni hanno `first_name` e `last_name` separati, con `full_name` mantenuto sincronizzato. La pagina `/dashboard/references` mostra una tabella di consultazione; cliccando una riga si apre la scheda modificabile con i contatti associati. I riferimenti non collegati possono essere convertiti in utenti `reference` se hanno nome, cognome ed email valida.
 
@@ -216,9 +218,9 @@ Le pagine che leggono molti record usano fetch paginato per evitare il limite Po
 
 Contatti e riferimenti interni supportano eliminazione operativa tramite soft delete (`deleted_at`, `deleted_by_profile_id`): spariscono da liste e selettori, ma restano nel database per storico/audit. Non esiste una funzione UI di riattivazione.
 
-La tabella Access non contiene una colonna lingua; `contacts.spoken_language` resta quindi vuoto e coerente con l'opzione UI "Non indicata".
+`Persone.Attivo = S` viene importato come attivo; `N`/`n` viene importato come `standby` e mostrato nell'app come "Non attivo".
 
-`EXPO2000.Paese` e' stato normalizzato solo per alias certi verso l'elenco standard usato dall'autocomplete. Valori non-paese o ambigui conservati per revisione post-import: `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`.
+Lingue e paesi legacy sono stati normalizzati solo per alias certi verso le opzioni UI. Valori non-paese o ambigui conservati per revisione post-import: `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`.
 
 ## Autenticazione e provisioning utenti
 

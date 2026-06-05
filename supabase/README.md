@@ -28,6 +28,8 @@ Questa cartella contiene le migration SQL del progetto.
 - `20260605152000_dedupe_internal_references_by_name.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
 - `20260606100000_soft_delete_contacts_references.sql` aggiunge soft delete operativo per contatti e riferimenti interni, nascondendoli dalle viste senza perdere storico o relazioni.
 - `20260606100000_soft_delete_contacts_references.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
+- `20260606120000_real_access_import_fields.sql` aggiunge i campi legacy necessari per conservare i dati completi di `DbSegreteria2.mdb/Persone`.
+- `20260606120000_real_access_import_fields.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
 - Le migration necessarie e non distruttive possono essere applicate dopo review; chiedere conferma esplicita per migration distruttive o modifiche fuori scope.
 
 ## Utenti autorizzati
@@ -41,65 +43,64 @@ npm run user:provision -- email@example.org reference Nome Cognome
 
 ## Import Access
 
-Il vecchio file `old_software/Segreteria2.mdb` non va versionato. La tabella principale e' `EXPO2000`.
+Il vecchio file `old_software/Segreteria2.mdb` e' il database interfaccia: non contiene l'archivio completo e non va usato come fonte dati. La fonte corretta e' `old_software/DbSegreteria2.mdb`, con tabella principale `Persone`.
 
-Mappatura contatti prevista:
+Mappatura principale:
 
-- `EXPO2000.ID` -> `contacts.legacy_access_id`
-- `EXPO2000.Titolo` -> `contacts.honorific_title`
-- `EXPO2000.Nome` -> `contacts.first_name`
-- `EXPO2000.Cognome` -> `contacts.last_name`
-- `EXPO2000.Qualifica` -> `contacts.institutional_role`
-- `EXPO2000.Recapito` -> `contacts.mailing_name`
-- `EXPO2000.Via` -> `contacts.address_line`
-- `EXPO2000.Cap` -> `contacts.postal_code`
-- `EXPO2000.Citta'` -> `contacts.city`
-- `EXPO2000.Paese` -> `contacts.country`
-- `EXPO2000.Tel_Fisso` -> `contacts.phone`
-- `EXPO2000.Tel_Cellulare` -> `contacts.mobile_phone`
-- `EXPO2000.Fax` -> `contacts.fax`
-- `EXPO2000.E-Mail` -> `contacts.email`
-- `EXPO2000.Sito_Web` -> `contacts.website`
-- `EXPO2000.CampoNote` -> `contacts.notes`
+- `Persone.IdPersona` -> `contacts.legacy_access_id`
+- `Persone.IdOldArchivio` -> `contacts.legacy_access_old_archive_id`
+- `Persone.Attivo = S` -> `contacts.status = 'active'`
+- `Persone.Attivo = N/n` -> `contacts.status = 'standby'`, mostrato nell'app come "Non attivo"
+- `Persone.Nome`, `Cognome`, `Titolo`, `Carica`, `NomeUfficio`, recapiti, indirizzi casa/ufficio, lingue, note e date legacy -> campi `contacts` dedicati
+- `Gruppi` e `Ruoli` -> `groups`
+- `Persone.IdGruppo` e `PersoneGruppi.IdRuolo` -> `contact_groups`
+- `Persone.Contatti` -> `internal_references` e `contact_references`
 
-Mappatura referenti prevista:
+Mappatura referenti:
 
-- per ogni valore non vuoto distinto di `EXPO2000.Contatto`, creare un record in `internal_references`;
-- dividere i valori `Contatto` separati da virgola in riferimenti atomici;
-- popolare `internal_references.first_name` e `internal_references.last_name`, mantenendo `full_name` sincronizzato;
-- salvare il valore originale/normalizzato in `internal_references.legacy_access_contact_name`;
-- collegare ogni contatto al suo referente con `contact_references`, usando `contacts.legacy_access_id` per mantenere la relazione con la riga Access originale.
+- dividere `Persone.Contatti` sulle virgole;
+- rimuovere `?` dai nomi dei referenti (`Vincenzo?` = `Vincenzo`);
+- creare un record `internal_references` per ogni referente atomico distinto;
+- popolare `first_name`, `last_name`, `full_name` e `legacy_access_contact_name`;
+- collegare ogni contatto ai suoi referenti con `contact_references`.
 
 Lo script locale di export:
 
 ```bash
-python3 scripts/export_legacy_access_contacts.py
+python3 scripts/export_legacy_access_contacts.py --mdb old_software/DbSegreteria2.mdb --out old_software/export
 ```
 
-genera CSV di revisione in `old_software/export/`, cartella ignorata da Git. Alla prima verifica ha prodotto:
+genera CSV di revisione in `old_software/export/`, cartella ignorata da Git. L'export corretto produce:
 
-- 3033 contatti;
-- 27 gruppi usati dai contatti;
-- 3033 relazioni contatto-gruppo;
-- 260 referenti interni normalizzati da `EXPO2000.Contatto`;
-- 2447 relazioni contatto-referente.
+- 12.956 contatti;
+- 57 gruppi;
+- 15.087 relazioni contatto-gruppo;
+- 297 referenti interni normalizzati;
+- 13.439 relazioni contatto-referente.
+
+Prima del reimport corretto del 2026-06-05 e' stato eseguito il reset una tantum delle tabelle operative con:
+
+```bash
+ssh root@178.105.59.79 "docker exec -i supabase-db-c13y7vgiy5k5gbs9r9edpgeu psql -U postgres -d postgres" < scripts/reset_legacy_archive_data.sql
+```
 
 Lo script di import persistente:
 
 ```bash
-python3 scripts/import_legacy_access_contacts.py --apply --allow-insecure-tls
+python3 scripts/import_legacy_access_contacts.py --export-dir old_software/export --apply --allow-insecure-tls
 ```
 
-L'import e' stato eseguito sul database self-hosted il 2026-06-05 con questi conteggi verificati:
+L'import corretto e' stato eseguito sul database self-hosted il 2026-06-05 con questi conteggi verificati:
 
-- 3033 contatti, tutti con `legacy_access_id` valorizzato e univoco;
-- 27 gruppi;
-- 3033 relazioni `contact_groups`;
-- 260 riferimenti interni normalizzati attivi;
-- 2447 relazioni `contact_references`.
-- i riferimenti legacy composti con virgola sono stati splittati, deduplicati e rimossi quando non piu' collegati.
+- 12.956 contatti, tutti con `legacy_access_id` valorizzato e univoco;
+- 4.104 contatti attivi e 8.852 contatti non attivi;
+- 57 gruppi;
+- 15.087 relazioni `contact_groups`;
+- 297 riferimenti interni normalizzati;
+- 13.439 relazioni `contact_references`;
+- 0 riferimenti con punto interrogativo residuo.
 
-`EXPO2000` non contiene una colonna lingua; `contacts.spoken_language` resta vuoto. Il paese viene normalizzato solo per alias certi verso i nomi usati dall'autocomplete UI. Valori conservati per revisione post-import: `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`.
+Lingue e paesi vengono normalizzati solo per alias certi verso i nomi usati dall'UI. Valori conservati per revisione post-import: `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`.
 
 ## Verifica sicura
 

@@ -10,8 +10,6 @@ The import is intentionally idempotent on legacy identifiers and names:
 
 Countries are normalized only when the mapping is unambiguous. Unknown or
 organization-like values are preserved for the post-import normalization pass.
-The Access export does not include a language column, so spoken_language is
-left empty.
 """
 
 from __future__ import annotations
@@ -67,6 +65,18 @@ COUNTRY_ALIASES = {
     "u.s.a.": "Stati Uniti",
     "stati uniti d'america": "Stati Uniti",
     "zimbabwe": "Zimbabwe",
+    "birmania": "Myanmar",
+    "brasile": "Brasile",
+    "bosnia-erzegovina": "Bosnia ed Erzegovina",
+    "citta del vaticano": "Vaticano",
+    "kazakhstan": "Kazakistan",
+    "malaysia": "Malesia",
+    "azerbaijan": "Azerbaigian",
+    "rwanda": "Ruanda",
+    "bahrain": "Bahrein",
+    "guinea conakry": "Guinea",
+    "repubblica moldova": "Moldavia",
+    "congo (ex zaire)": "Repubblica Democratica del Congo",
 }
 
 PAGE_SIZE = 1000
@@ -91,6 +101,20 @@ def clean(value: object) -> str:
 def nullable(value: object) -> str | None:
     cleaned = clean(value)
     return cleaned or None
+
+
+def nullable_int(value: object) -> int | None:
+    cleaned = clean(value)
+    if not cleaned or cleaned == "0":
+        return None
+    return int(cleaned)
+
+
+def normalize_language(value: object) -> str | None:
+    cleaned = clean(value)
+    if not cleaned:
+        return None
+    return " ".join(part.capitalize() for part in cleaned.lower().split())
 
 
 def normalize_key(value: str) -> str:
@@ -212,6 +236,28 @@ def split_person_name(value: object) -> tuple[str, str]:
     if len(parts) == 1:
         return parts[0], ""
     return parts[0], " ".join(parts[1:])
+
+
+def parse_access_date(value: object) -> str | None:
+    cleaned = clean(value)
+    if not cleaned:
+        return None
+    # Access exports Italian dates as dd/mm/yy or dd/mm/yy HH:MM:SS.
+    date_part = cleaned.split()[0]
+    pieces = date_part.split("/")
+    if len(pieces) != 3:
+        return None
+    first, second, year = pieces
+    if len(year) == 2:
+        numeric_year = int(year)
+        year = str(2000 + numeric_year if numeric_year < 50 else 1900 + numeric_year)
+    first_number = int(first)
+    second_number = int(second)
+    if second_number > 12 and first_number <= 12:
+        month, day = first_number, second_number
+    else:
+        day, month = first_number, second_number
+    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
 
 
 def prepare_reference_rows(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -344,25 +390,66 @@ def import_legacy(
         if not first_name and not last_name:
             fallback_institution = mailing_name or institutional_role or nullable(row.get("city")) or f"Contatto legacy {legacy_id}"
 
+        office_name = nullable(row.get("office_name"))
+        institution = office_name or nullable(row.get("institution")) or fallback_institution
+
         contacts_payload.append(
             {
                 "legacy_access_id": legacy_id,
+                "legacy_access_old_archive_id": nullable_int(row.get("legacy_access_old_archive_id")),
                 "honorific_title": nullable(row.get("honorific_title")),
+                "honorific_title_english": nullable(row.get("honorific_title_english")),
+                "honorific_title_invitation": nullable(row.get("honorific_title_invitation")),
                 "first_name": first_name,
                 "last_name": last_name,
+                "legacy_description": nullable(row.get("legacy_description")),
                 "email": nullable(row.get("email", "").lower()),
+                "email_2": nullable(row.get("email_2", "").lower()),
                 "phone": nullable(row.get("phone")),
+                "phone_home": nullable(row.get("phone_home")),
+                "phone_office_2": nullable(row.get("phone_office_2")),
                 "mobile_phone": nullable(row.get("mobile_phone")),
                 "fax": nullable(row.get("fax")),
+                "fax_home": nullable(row.get("fax_home")),
+                "telex_office": nullable(row.get("telex_office")),
                 "website": nullable(row.get("website")),
+                "website_2": nullable(row.get("website_2")),
                 "mailing_name": mailing_name,
                 "address_line": nullable(row.get("address_line")),
                 "postal_code": nullable(row.get("postal_code")),
                 "city": nullable(row.get("city")),
                 "country": country,
-                "spoken_language": None,
-                "institution": fallback_institution,
+                "home_address_line": nullable(row.get("home_address_line")),
+                "home_postal_code": nullable(row.get("home_postal_code")),
+                "home_city": nullable(row.get("home_city")),
+                "home_province": nullable(row.get("home_province")),
+                "home_country": nullable(row.get("home_country")),
+                "office_name": office_name,
+                "office_address_line": nullable(row.get("office_address_line")),
+                "office_postal_code": nullable(row.get("office_postal_code")),
+                "office_city": nullable(row.get("office_city")),
+                "office_province": nullable(row.get("office_province")),
+                "office_country": nullable(row.get("office_country")),
+                "spoken_language": normalize_language(row.get("spoken_language")),
+                "spoken_language_2": normalize_language(row.get("spoken_language_2")),
+                "invitation_language": normalize_language(row.get("invitation_language")),
+                "translation_language": normalize_language(row.get("translation_language")),
+                "institution": institution,
                 "institutional_role": institutional_role,
+                "institutional_role_english": nullable(row.get("institutional_role_english")),
+                "institutional_role_invitation": nullable(row.get("institutional_role_invitation")),
+                "legacy_salutation": nullable(row.get("legacy_salutation")),
+                "religion": nullable(row.get("religion")),
+                "legacy_organization_id": nullable_int(row.get("legacy_organization_id")),
+                "legacy_organization_name": nullable(row.get("legacy_organization_name")),
+                "legacy_office_site": nullable(row.get("legacy_office_site")),
+                "mail_address_preference": nullable_int(row.get("mail_address_preference")),
+                "legacy_contacts_raw": nullable(row.get("legacy_contacts_raw")),
+                "accompanist": nullable(row.get("accompanist")),
+                "legacy_archive_type": nullable(row.get("legacy_archive_type")),
+                "legacy_created_at": parse_access_date(row.get("legacy_created_at")),
+                "legacy_updated_at": parse_access_date(row.get("legacy_updated_at")),
+                "legacy_invitation_group": nullable(row.get("legacy_invitation_group")),
                 "notes": nullable(row.get("notes")),
                 "status": row.get("status") or "active",
                 "priority": row.get("priority") or "standard",
@@ -385,6 +472,28 @@ def import_legacy(
         return
 
     client = SupabaseRest(url, service_key, allow_insecure_tls=allow_insecure_tls)
+
+    existing_languages = table_by_key(client.select_all("contact_languages", "id,name"), "name")
+    language_names = sorted(
+        {
+            value
+            for contact in contacts_payload
+            for value in (
+                contact.get("spoken_language"),
+                contact.get("spoken_language_2"),
+                contact.get("invitation_language"),
+                contact.get("translation_language"),
+            )
+            if isinstance(value, str) and value
+        },
+        key=str.lower,
+    )
+    new_languages = [
+        {"name": language, "active": True, "sort_order": 100}
+        for language in language_names
+        if normalize_key(language) not in existing_languages
+    ]
+    client.insert("contact_languages", new_languages)
 
     existing_groups = table_by_key(client.select_all("groups", "id,name"), "name")
     new_groups = [
@@ -481,6 +590,7 @@ def import_legacy(
     print(f"contacts written: {len(contacts_to_write)}")
     print(f"existing contacts skipped: {len(contacts_payload) - len(contacts_to_write)}")
     print(f"inserted missing groups: {len(new_groups)}")
+    print(f"inserted missing languages: {len(new_languages)}")
     print(f"inserted missing references: {len(new_refs)}")
     print(f"contact-group links written: {len(contact_groups_to_write)}")
     print(f"existing contact-group links skipped: {len(contact_groups_payload) - len(contact_groups_to_write)}")

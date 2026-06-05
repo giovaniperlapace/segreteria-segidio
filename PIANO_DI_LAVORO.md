@@ -50,7 +50,7 @@ Nel tempo l'app dovra' supportare email con link di risposta, workflow di confer
 - **Proposta di invito**: indicazione proveniente da un riferimento interno su chi invitare o non invitare.
 - **Risposta**: esito comunicato dall'invitato: partecipo, non partecipo, forse o altra opzione da definire.
 - **Partecipazione/check-in**: conferma dell'effettiva presenza all'evento o a un segmento.
-- **Stand-by**: stato di contatto non attivo, non mostrato normalmente tra i potenziali invitati ma recuperabile e riattivabile.
+- **Non attivo**: stato di contatto non operativo, non mostrato normalmente tra i potenziali invitati.
 - **Storico/versione**: registrazione delle modifiche nel tempo per sapere cosa e' cambiato, quando e da chi.
 
 ## 4. MVP proposto
@@ -63,10 +63,10 @@ Scope MVP consigliato:
 - ruoli applicativi iniziali: manager e riferimento interno;
 - interfaccia riservata ai manager per creare utenti autorizzati, assegnare il ruolo manager/riferimento e disattivare gli accessi;
 - schema database iniziale con contatti, gruppi, riferimenti, eventi, inviti e audit minimo;
-- gestione contatti con campi principali: nome, cognome, email, telefono, indirizzo, carica, istituzione, nazione, lingua, note, stato attivo/stand-by, priorita', dati mancanti;
+- gestione contatti con campi principali: nome, cognome, email, telefono, indirizzo, carica, istituzione, nazione, lingua, note, stato attivo/non attivo, priorita', dati mancanti;
 - associazione molti-a-molti tra contatti e gruppi;
 - associazione molti-a-molti tra contatti e riferimenti interni;
-- viste separate per contatti attivi, contatti in stand-by e contatti con dati mancanti;
+- viste separate per contatti attivi, contatti non attivi e contatti con dati mancanti;
 - CRUD gruppi/categorie, con rinomina e disattivazione logica;
 - CRUD riferimenti interni;
 - CRUD eventi semplici, senza segmenti obbligatori;
@@ -220,7 +220,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ### Milestone 6 - CRUD contatti, gruppi e riferimenti
 
 - **Obiettivo**: costruire l'archivio operativo.
-- **Scope**: contatti, gruppi, riferimenti, associazioni, attivo/stand-by, dati mancanti.
+- **Scope**: contatti, gruppi, riferimenti, associazioni, attivo/non attivo, dati mancanti.
 - **Output atteso**: archivio filtrabile e modificabile.
 - **Criteri di accettazione**: creazione/modifica contatto, associazione a piu' gruppi e riferimenti, filtri base.
 - **Verifiche tecniche**: validazione form, permessi, responsive UI.
@@ -231,11 +231,11 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 - **Obiettivo**: portare nel nuovo archivio i dati reali di contatti, gruppi e referenti interni senza perdere relazioni utili.
 - **Stato 2026-06-05**: completata sul database self-hosted.
-- **Scope**: esportazione da `old_software/Segreteria2.mdb`, revisione CSV, import di contatti/invitati, gruppi, relazioni contatto-gruppo, referenti interni derivati da `EXPO2000.Contatto` e relazioni contatto-referente.
+- **Scope**: esportazione dal database dati reale `old_software/DbSegreteria2.mdb`, revisione CSV, import di contatti/invitati da `Persone`, gruppi da `Gruppi`/`Ruoli`, relazioni contatto-gruppo, referenti interni derivati da `Persone.Contatti` e relazioni contatto-referente.
 - **Output atteso**: archivio popolato con i contatti legacy e relazioni verificabili nella nuova app.
 - **Criteri di accettazione**: `contacts.legacy_access_id` valorizzato e univoco, conteggi coerenti con l'export, nessun dato operativo/evento importato come campo contatto, referenti interni creati da valori distinti di `Contatto`, relazioni preservate in `contact_references`.
 - **Verifiche tecniche**: eseguire `scripts/export_legacy_access_contacts.py`, controllare CSV generati in `old_software/export/`, importare in transazione o con script idempotente, confrontare conteggi, testare filtri per gruppo e referente, verificare RLS manager/riferimento sui dati importati.
-- **Esito import**: 3033 contatti legacy, 27 gruppi, 3033 relazioni contatto-gruppo, 260 riferimenti interni normalizzati attivi, 2447 relazioni contatto-riferimento. I valori `EXPO2000.Contatto` con virgole sono stati splittati in referenti distinti, poi i record composti residui sono stati rimossi; `internal_references` ha ora `first_name` e `last_name` separati. Nessuna colonna lingua in Access; paese normalizzato solo per alias certi, con `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario` conservati per revisione.
+- **Esito import corretto**: il primo import da `Segreteria2.mdb`/`EXPO2000` era basato su una tabella evento non valida ed e' stato sostituito il 2026-06-05. Il database operativo e' stato ripopolato da `DbSegreteria2.mdb` con 12.956 contatti, 57 gruppi, 15.087 relazioni contatto-gruppo, 297 riferimenti interni e 13.439 relazioni contatto-riferimento. I valori `Persone.Contatti` con virgole sono stati splittati in referenti distinti; i punti interrogativi nei nomi riferimento sono stati rimossi; `Attivo = N/n` e' importato come stato interno `standby`, mostrato nell'app come "Non attivo". Lingue e paesi sono normalizzati solo per alias certi, con `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario` conservati per revisione.
 - **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
 - **Decisioni aperte**: trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access, revisione manuale dei valori paese non normalizzati.
 
@@ -282,7 +282,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ### Milestone 12 - Dashboard MVP
 
 - **Obiettivo**: dare visione operativa immediata.
-- **Scope**: eventi attivi/futuri, conteggi inviti/risposte, dati mancanti, stand-by.
+- **Scope**: eventi attivi/futuri, conteggi inviti/risposte, dati mancanti, non attivi.
 - **Output atteso**: dashboard manager e vista sintetica riferimento.
 - **Criteri di accettazione**: numeri coerenti con le liste.
 - **Verifiche tecniche**: test query e casi vuoti.

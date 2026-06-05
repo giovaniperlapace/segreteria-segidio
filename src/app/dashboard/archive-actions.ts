@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireManager, requireProfile } from "@/lib/auth/profile";
 import { findAuthUserByEmail } from "@/lib/auth/admin";
+import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
@@ -14,9 +15,15 @@ export type ArchiveActionState = {
 const CONTACT_STATUSES = ["active", "standby"] as const;
 const CONTACT_PRIORITIES = ["standard", "important", "critical"] as const;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONTACT_COLUMNS =
+  "id,legacy_access_old_archive_id,honorific_title,honorific_title_english,honorific_title_invitation,first_name,last_name,legacy_description,institutional_role,institutional_role_english,institutional_role_invitation,institution,legacy_salutation,email,email_2,phone,phone_home,phone_office_2,mobile_phone,fax,fax_home,telex_office,address_line,postal_code,city,country,home_address_line,home_postal_code,home_city,home_province,home_country,office_name,office_address_line,office_postal_code,office_city,office_province,office_country,spoken_language,spoken_language_2,invitation_language,translation_language,religion,legacy_organization_id,legacy_organization_name,legacy_office_site,mail_address_preference,legacy_contacts_raw,accompanist,legacy_archive_type,legacy_created_at,legacy_updated_at,legacy_invitation_group,website,website_2,notes,missing_data_notes,status,priority";
 type ArchiveSupabaseClient =
   | Awaited<ReturnType<typeof createSupabaseServerClient>>
   | ReturnType<typeof createSupabaseServiceClient>;
+
+export type ReferenceContactsActionState =
+  | { status: "success"; contacts: unknown[] }
+  | { status: "error"; message: string };
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -68,6 +75,100 @@ function friendlyError(error: unknown) {
 
   console.error("Archive operation failed", error);
   return "Operazione non riuscita. Controlla i dati e riprova.";
+}
+
+export async function loadReferenceContactsAction(
+  referenceId: number,
+): Promise<ReferenceContactsActionState> {
+  await requireManager();
+
+  if (!Number.isSafeInteger(referenceId) || referenceId <= 0) {
+    return { status: "error", message: "Referente non valido." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const referenceRelations = await fetchAllSupabaseRows(() =>
+      supabase
+        .from("contact_references")
+        .select("contact_id")
+        .eq("reference_id", referenceId),
+    );
+    const contactIds = [...new Set(referenceRelations.map((relation) => Number(relation.contact_id)))];
+
+    if (contactIds.length === 0) {
+      return { status: "success", contacts: [] };
+    }
+
+    const { data: contacts, error: contactsError } = await supabase
+      .from("contacts")
+      .select(CONTACT_COLUMNS)
+      .in("id", contactIds)
+      .is("deleted_at", null)
+      .order("last_name")
+      .order("first_name");
+
+    if (contactsError) throw contactsError;
+
+    const activeContactIds = (contacts ?? []).map((contact) => Number(contact.id));
+    const [contactGroups, contactReferences, missingRows] =
+      activeContactIds.length > 0
+        ? await Promise.all([
+            fetchAllSupabaseRows(() =>
+              supabase
+                .from("contact_groups")
+                .select("contact_id,group_id")
+                .in("contact_id", activeContactIds),
+            ),
+            fetchAllSupabaseRows(() =>
+              supabase
+                .from("contact_references")
+                .select("contact_id,reference_id")
+                .in("contact_id", activeContactIds),
+            ),
+            fetchAllSupabaseRows(() =>
+              supabase
+                .from("contacts_missing_required_data")
+                .select("id,missing_fields")
+                .in("id", activeContactIds),
+            ),
+          ])
+        : [[], [], []];
+
+    const groupIdsByContact = new Map<number, number[]>();
+    for (const relation of contactGroups) {
+      const contactId = Number(relation.contact_id);
+      groupIdsByContact.set(contactId, [
+        ...(groupIdsByContact.get(contactId) ?? []),
+        Number(relation.group_id),
+      ]);
+    }
+
+    const referenceIdsByContact = new Map<number, number[]>();
+    for (const relation of contactReferences) {
+      const contactId = Number(relation.contact_id);
+      referenceIdsByContact.set(contactId, [
+        ...(referenceIdsByContact.get(contactId) ?? []),
+        Number(relation.reference_id),
+      ]);
+    }
+
+    const missingByContact = new Map(
+      missingRows.map((row) => [Number(row.id), row.missing_fields ?? []]),
+    );
+
+    return {
+      status: "success",
+      contacts: (contacts ?? []).map((contact) => ({
+        ...contact,
+        group_ids: groupIdsByContact.get(Number(contact.id)) ?? [],
+        reference_ids: referenceIdsByContact.get(Number(contact.id)) ?? [],
+        missing_fields: missingByContact.get(Number(contact.id)) ?? [],
+      })),
+    };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
 }
 
 function splitReferenceName(fullName: string) {

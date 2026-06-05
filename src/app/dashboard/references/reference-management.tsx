@@ -5,6 +5,7 @@ import {
   convertReferenceToUserAction,
   createReferenceAction,
   deleteReferenceAction,
+  loadReferenceContactsAction,
   updateReferenceAction,
 } from "../archive-actions";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
@@ -26,10 +27,14 @@ type Reference = {
   active: boolean;
   linked_profile: boolean;
   contact_count: number;
-  contacts: AssociatedContact[];
 };
 
 type AssociatedContact = ContactRecord;
+type ContactLoadState =
+  | { status: "idle"; contacts: AssociatedContact[]; message?: string }
+  | { status: "loading"; contacts: AssociatedContact[]; message?: string }
+  | { status: "loaded"; contacts: AssociatedContact[]; message?: string }
+  | { status: "error"; contacts: AssociatedContact[]; message: string };
 
 type SortKey = "first_name" | "last_name" | "email" | "phone" | "contact_count" | "active" | "linked_profile";
 type SortDirection = "asc" | "desc";
@@ -73,18 +78,21 @@ function ReferenceRow({
   isOpen,
   onToggle,
   onOpenContact,
+  contactLoad,
 }: {
   reference: Reference;
   isOpen: boolean;
   onToggle: () => void;
   onOpenContact: (contact: ContactRecord) => void;
+  contactLoad: ContactLoadState;
 }) {
   const [state, action, pending] = useArchiveAction(updateReferenceAction);
   const [convertState, convertAction, convertPending] = useArchiveAction(convertReferenceToUserAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteReferenceAction);
   const [showAllContacts, setShowAllContacts] = useState(false);
   const formId = `reference-${reference.id}`;
-  const visibleContacts = showAllContacts ? reference.contacts : reference.contacts.slice(0, 50);
+  const loadedContacts = contactLoad.contacts;
+  const visibleContacts = showAllContacts ? loadedContacts : loadedContacts.slice(0, 50);
   const accountLabel = reference.linked_profile ? "Collegato" : "Non collegato";
 
   return (
@@ -268,17 +276,25 @@ function ReferenceRow({
               <div className="mt-6 border-t border-slate-200 pt-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h4 className="font-semibold text-[#1b3272]">Contatti associati</h4>
-                  {reference.contacts.length > 50 ? (
+                  {loadedContacts.length > 50 ? (
                     <button
                       type="button"
                       onClick={() => setShowAllContacts((current) => !current)}
                       className="text-sm font-semibold text-[#d43c2f] hover:underline"
                     >
-                      {showAllContacts ? "Mostra solo i primi 50" : `Vedi tutti (${reference.contacts.length})`}
+                      {showAllContacts ? "Mostra solo i primi 50" : `Vedi tutti (${loadedContacts.length})`}
                     </button>
                   ) : null}
                 </div>
-                {visibleContacts.length > 0 ? (
+                {contactLoad.status === "idle" || contactLoad.status === "loading" ? (
+                  <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+                    Caricamento contatti...
+                  </p>
+                ) : contactLoad.status === "error" ? (
+                  <p className="mt-3 rounded-xl border border-red-100 bg-red-50 px-4 py-6 text-center text-sm text-red-700">
+                    {contactLoad.message}
+                  </p>
+                ) : visibleContacts.length > 0 ? (
                   <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-full text-left text-sm">
                       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -349,6 +365,7 @@ export function ReferenceManagement({
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [openReferenceId, setOpenReferenceId] = useState<number | null>(null);
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
+  const [contactsByReference, setContactsByReference] = useState<Record<number, ContactLoadState>>({});
   const deferredSearch = useDeferredValue(search);
 
   const filteredReferences = useMemo(() => {
@@ -405,6 +422,39 @@ export function ReferenceManagement({
   function sortLabel(key: SortKey) {
     if (sortKey !== key) return "";
     return sortDirection === "asc" ? " ↑" : " ↓";
+  }
+
+  async function loadReferenceContacts(reference: Reference) {
+    if (
+      reference.contact_count === 0 ||
+      contactsByReference[reference.id]?.status === "loaded" ||
+      contactsByReference[reference.id]?.status === "loading"
+    ) {
+      return;
+    }
+
+    setContactsByReference((current) => ({
+      ...current,
+      [reference.id]: { status: "loading", contacts: current[reference.id]?.contacts ?? [] },
+    }));
+
+    const result = await loadReferenceContactsAction(reference.id);
+    setContactsByReference((current) => ({
+      ...current,
+      [reference.id]:
+        result.status === "success"
+          ? { status: "loaded", contacts: result.contacts as ContactRecord[] }
+          : { status: "error", contacts: [], message: result.message },
+    }));
+  }
+
+  function toggleReference(reference: Reference) {
+    const nextOpenReferenceId = openReferenceId === reference.id ? null : reference.id;
+    setOpenReferenceId(nextOpenReferenceId);
+
+    if (nextOpenReferenceId === reference.id) {
+      void loadReferenceContacts(reference);
+    }
   }
 
   return (
@@ -507,8 +557,14 @@ export function ReferenceManagement({
                   key={reference.id}
                   reference={reference}
                   isOpen={openReferenceId === reference.id}
-                  onToggle={() => setOpenReferenceId((current) => (current === reference.id ? null : reference.id))}
+                  onToggle={() => toggleReference(reference)}
                   onOpenContact={setSelectedContact}
+                  contactLoad={
+                    contactsByReference[reference.id] ?? {
+                      status: reference.contact_count > 0 ? "idle" : "loaded",
+                      contacts: [],
+                    }
+                  }
                 />
               ))}
               {filteredReferences.length === 0 ? (

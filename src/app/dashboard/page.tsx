@@ -4,8 +4,10 @@ import Link from "next/link";
 
 const managerCards = [
   ["Utenti e ruoli", "Crea manager e riferimenti, assegna ruoli e gestisci gli accessi.", "/dashboard/users"],
-  ["Contatti", "Gestione completa dell'archivio e dei dati mancanti.", null],
-  ["Riferimenti", "Profili interni e assegnazioni dei contatti.", null],
+  ["Contatti", "Gestione completa dell'archivio e dei dati mancanti.", "/dashboard/contacts"],
+  ["Gruppi", "Categorie flessibili per organizzare e filtrare i contatti.", "/dashboard/groups"],
+  ["Riferimenti", "Profili interni e assegnazioni dei contatti.", "/dashboard/references"],
+  ["Settings", "Lingue e impostazioni operative riutilizzabili.", "/dashboard/settings"],
   ["Eventi", "Creazione eventi, liste invitati e risposte.", null],
 ];
 
@@ -34,7 +36,7 @@ export default async function DashboardPage() {
         <section className="mt-10 grid gap-5 md:grid-cols-3">
           {(isManager
             ? managerCards
-            : [["I miei contatti", "Visualizza i contatti assegnati al tuo profilo."]]
+            : [["I miei contatti", "Visualizza e aggiorna i contatti assegnati al tuo profilo.", "/dashboard/contacts"]]
           ).map(([title, description, href]) => (
             <article
               key={title}

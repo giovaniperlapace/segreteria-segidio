@@ -52,8 +52,9 @@ Mappatura principale:
 - `Persone.Attivo = S` -> `contacts.status = 'active'`
 - `Persone.Attivo = N/n` -> `contacts.status = 'standby'`, mostrato nell'app come "Non attivo"
 - `Persone.Nome`, `Cognome`, `Titolo`, `Carica`, `NomeUfficio`, recapiti, indirizzi casa/ufficio, lingue, note e date legacy -> campi `contacts` dedicati
-- `Gruppi` e `Ruoli` -> `groups`
-- `Persone.IdGruppo` e `PersoneGruppi.IdRuolo` -> `contact_groups`
+- `Gruppi` -> `groups`
+- `Persone.IdGruppo` -> `contact_groups`
+- `PersoneGruppi.IdRuolo` non viene usato come gruppo operativo: contiene ruoli/associazioni legacy che generavano gruppi aggiuntivi impropri.
 - `Persone.Contatti` -> `internal_references` e `contact_references`
 
 Mappatura referenti:
@@ -73,8 +74,8 @@ python3 scripts/export_legacy_access_contacts.py --mdb old_software/DbSegreteria
 genera CSV di revisione in `old_software/export/`, cartella ignorata da Git. L'export corretto produce:
 
 - 12.956 contatti;
-- 57 gruppi;
-- 15.087 relazioni contatto-gruppo;
+- 54 gruppi;
+- 12.946 relazioni contatto-gruppo;
 - 297 referenti interni normalizzati;
 - 13.439 relazioni contatto-referente.
 
@@ -94,8 +95,8 @@ L'import corretto e' stato eseguito sul database self-hosted il 2026-06-05 con q
 
 - 12.956 contatti, tutti con `legacy_access_id` valorizzato e univoco;
 - 4.104 contatti attivi e 8.852 contatti non attivi;
-- 57 gruppi;
-- 15.087 relazioni `contact_groups`;
+- 54 gruppi;
+- 12.946 relazioni `contact_groups`;
 - 297 riferimenti interni normalizzati;
 - 13.439 relazioni `contact_references`;
 - 0 riferimenti con punto interrogativo residuo.

@@ -13,7 +13,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
 - La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`, contatti in `/dashboard/contacts`, gruppi in `/dashboard/groups`, riferimenti in `/dashboard/references` e impostazioni in `/dashboard/settings`.
 - I profili utente hanno `first_name` e `last_name` separati; `full_name` resta sincronizzato per compatibilita'.
-- L'archivio e' stato ripopolato dal database Access dati corretto `old_software/DbSegreteria2.mdb` con 12.956 contatti legacy, 57 gruppi, 15.087 relazioni contatto-gruppo, 297 riferimenti interni normalizzati e 13.439 relazioni contatto-riferimento.
+- L'archivio e' stato ripopolato dal database Access dati corretto `old_software/DbSegreteria2.mdb` con 12.956 contatti legacy, 54 gruppi, 12.946 relazioni contatto-gruppo, 297 riferimenti interni normalizzati e 13.439 relazioni contatto-riferimento.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -206,8 +206,8 @@ Risultato persistente sul database self-hosted:
 
 - 12.956 contatti con `legacy_access_id = Persone.IdPersona` valorizzato e univoco;
 - 4.104 contatti attivi e 8.852 contatti non attivi (`contacts.status = 'standby'`, etichetta UI "Non attivo");
-- 57 gruppi derivati da `Gruppi` e `Ruoli`;
-- 15.087 relazioni `contact_groups`;
+- 54 gruppi derivati da `Gruppi`;
+- 12.946 relazioni `contact_groups` derivate da `Persone.IdGruppo`;
 - 297 riferimenti interni normalizzati derivati da `Persone.Contatti`;
 - 13.439 relazioni `contact_references`.
 - i riferimenti legacy composti con virgola sono stati splittati in referenti atomici; i punti interrogativi nei nomi riferimento sono stati rimossi (`Vincenzo?` -> `Vincenzo`).
@@ -226,6 +226,7 @@ Lingue e paesi legacy sono stati normalizzati solo per alias certi verso le opzi
 
 - La pagina `/login` richiede soltanto l'email: il ruolo non viene scelto dall'utente.
 - Solo email presenti in `profiles` con `active = true` possono richiedere un magic link.
+- Quando si fanno prove operative del login/magic link, non inviare mail di prova a `segreteriagenerale@santegidio.org`: usare `steorlando@gmail.com`.
 - Supabase genera il token; l'API route server invia il link tramite Gmail SMTP.
 - `/auth/callback` verifica il token e crea la sessione.
 - `/dashboard` e' protetta lato proxy e lato server.

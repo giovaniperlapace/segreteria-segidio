@@ -1378,7 +1378,7 @@ export function ContactManagement({
   function contactsUrl(nextPage: number) {
     const params = new URLSearchParams();
     if (search.trim()) params.set("q", search.trim());
-    if (status !== "all") params.set("status", status);
+    params.set("status", status);
     if (priority !== "all") params.set("priority", priority);
     if (groupIds.length > 0) params.set("groups", groupIds.join(","));
     if (referenceId !== "all") params.set("referenceId", referenceId);

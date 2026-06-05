@@ -105,6 +105,7 @@ export async function loadReferenceContactsAction(
       .select(CONTACT_COLUMNS)
       .in("id", contactIds)
       .is("deleted_at", null)
+      .eq("status", "active")
       .order("last_name")
       .order("first_name");
 

@@ -19,7 +19,6 @@ import argparse
 import csv
 import re
 import subprocess
-from collections import defaultdict
 from pathlib import Path
 
 
@@ -174,17 +173,9 @@ def build_exports(mdb_path: Path) -> dict[str, list[dict[str, str]]]:
     states = lookup(export_table(mdb_path, "Stati"), "IdStato", "Stato")
     languages = lookup(export_table(mdb_path, "Lingue"), "IdLingua", "Lingua")
     groups_by_id = lookup(export_table(mdb_path, "Gruppi"), "IdGruppo", "Gruppo")
-    roles_by_id = lookup(export_table(mdb_path, "Ruoli"), "IdRuolo", "Ruolo")
     religions_by_id = lookup(export_table(mdb_path, "Religioni"), "IdReligione", "Religione")
     organizations_by_id = lookup(export_table(mdb_path, "Organizzazioni"), "IdOrganizzazione", "Organizzazione")
     archive_types_by_id = lookup(export_table(mdb_path, "TipoArchivio"), "IdTipoArchivio", "TipoArchivio")
-
-    extra_group_ids_by_person: dict[str, set[str]] = defaultdict(set)
-    for relation in export_table(mdb_path, "PersoneGruppi"):
-        person_id = clean(relation.get("IdPersona"))
-        role_id = clean(relation.get("IdRuolo"))
-        if person_id and role_id:
-            extra_group_ids_by_person[person_id].add(role_id)
 
     contacts: list[dict[str, str]] = []
     groups: dict[str, dict[str, str]] = {}
@@ -266,19 +257,11 @@ def build_exports(mdb_path: Path) -> dict[str, list[dict[str, str]]]:
             }
         )
 
-        group_names: set[str] = set()
         main_group = groups_by_id.get(get_value(row, "IdGruppo"), "")
         if main_group:
-            group_names.add(main_group)
-        for role_id in extra_group_ids_by_person.get(legacy_id, set()):
-            role_name = roles_by_id.get(role_id, "")
-            if role_name:
-                group_names.add(role_name)
-
-        for group_name in group_names:
-            key = normalize_group_key(group_name)
-            groups.setdefault(key, {"name": group_name, "active": "true"})
-            contact_groups.add((legacy_id, group_name))
+            key = normalize_group_key(main_group)
+            groups.setdefault(key, {"name": main_group, "active": "true"})
+            contact_groups.add((legacy_id, main_group))
 
         reference_names = split_reference_names(get_value(row, "Contatti"))
         for index, reference_name in enumerate(reference_names):

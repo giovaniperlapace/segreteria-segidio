@@ -25,7 +25,8 @@ export default async function ReferencesPage() {
       supabase
         .from("contact_references")
         .select("reference_id,contacts!inner(id)")
-        .is("contacts.deleted_at", null),
+        .is("contacts.deleted_at", null)
+        .eq("contacts.status", "active"),
     ),
     supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
     supabase

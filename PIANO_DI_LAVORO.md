@@ -42,7 +42,7 @@ Nel tempo l'app dovra' supportare email con link di risposta, workflow di confer
 - **Carica**: ruolo istituzionale o organizzativo, per esempio "Ministro dell'Istruzione"; puo' cambiare persona mantenendo parte dei dati dell'ufficio.
 - **Istituzione**: ente, ambasciata, ufficio, organizzazione o struttura collegata a una persona o carica.
 - **Gruppo/categoria**: classificazione flessibile dei contatti, per esempio ambasciatori, persone religiose, persone politiche, ambasciate.
-- **Riferimento interno**: persona dell'organizzazione che segue determinati contatti; puo' essere anche utente dell'app con permessi limitati.
+- **Referente interno**: persona dell'organizzazione che segue determinati contatti; puo' essere anche utente dell'app con permessi limitati.
 - **Manager**: utente amministrativo/operativo che vede tutto, crea eventi, gestisce contatti, liste, inviti, risposte, dashboard e storico.
 - **Evento**: iniziativa a cui invitare contatti, con titolo, data, luogo, stato e lista invitati.
 - **Segmento evento**: parte distinta di un evento, per esempio liturgia, ricevimento o liturgia + ricevimento.
@@ -231,11 +231,11 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 - **Obiettivo**: portare nel nuovo archivio i dati reali di contatti, gruppi e referenti interni senza perdere relazioni utili.
 - **Stato 2026-06-05**: completata sul database self-hosted.
-- **Scope**: esportazione dal database dati reale `old_software/DbSegreteria2.mdb`, revisione CSV, import di contatti/invitati da `Persone`, gruppi da `Gruppi`/`Ruoli`, relazioni contatto-gruppo, referenti interni derivati da `Persone.Contatti` e relazioni contatto-referente.
+- **Scope**: esportazione dal database dati reale `old_software/DbSegreteria2.mdb`, revisione CSV, import di contatti/invitati da `Persone`, gruppi da `Gruppi`, relazioni contatto-gruppo derivate da `Persone.IdGruppo`, referenti interni derivati da `Persone.Contatti` e relazioni contatto-referente.
 - **Output atteso**: archivio popolato con i contatti legacy e relazioni verificabili nella nuova app.
 - **Criteri di accettazione**: `contacts.legacy_access_id` valorizzato e univoco, conteggi coerenti con l'export, nessun dato operativo/evento importato come campo contatto, referenti interni creati da valori distinti di `Contatto`, relazioni preservate in `contact_references`.
 - **Verifiche tecniche**: eseguire `scripts/export_legacy_access_contacts.py`, controllare CSV generati in `old_software/export/`, importare in transazione o con script idempotente, confrontare conteggi, testare filtri per gruppo e referente, verificare RLS manager/riferimento sui dati importati.
-- **Esito import corretto**: il primo import da `Segreteria2.mdb`/`EXPO2000` era basato su una tabella evento non valida ed e' stato sostituito il 2026-06-05. Il database operativo e' stato ripopolato da `DbSegreteria2.mdb` con 12.956 contatti, 57 gruppi, 15.087 relazioni contatto-gruppo, 297 riferimenti interni e 13.439 relazioni contatto-riferimento. I valori `Persone.Contatti` con virgole sono stati splittati in referenti distinti; i punti interrogativi nei nomi riferimento sono stati rimossi; `Attivo = N/n` e' importato come stato interno `standby`, mostrato nell'app come "Non attivo". Lingue e paesi sono normalizzati solo per alias certi, con `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario` conservati per revisione.
+- **Esito import corretto**: il primo import da `Segreteria2.mdb`/`EXPO2000` era basato su una tabella evento non valida ed e' stato sostituito il 2026-06-05. Il database operativo e' stato ripopolato da `DbSegreteria2.mdb` con 12.956 contatti, 54 gruppi, 12.946 relazioni contatto-gruppo, 297 referenti interni e 13.439 relazioni contatto-referente. I valori `Persone.Contatti` con virgole sono stati splittati in referenti distinti; i punti interrogativi nei nomi referente sono stati rimossi; `Attivo = N/n` e' importato come stato interno `standby`, mostrato nell'app come "Non attivo". Lingue e paesi sono normalizzati solo per alias certi, con `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario` conservati per revisione.
 - **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
 - **Decisioni aperte**: trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access, revisione manuale dei valori paese non normalizzati.
 

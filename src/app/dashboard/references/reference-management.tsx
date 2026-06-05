@@ -243,7 +243,7 @@ function ReferenceRow({
                 <div>
                   <h3 className="text-lg font-semibold text-[#1b3272]">{reference.full_name}</h3>
                   <p className="mt-1 text-sm text-slate-600">
-                    {reference.contact_count} contatti associati · {accountLabel}
+                    {reference.contact_count} contatti attivi associati · {accountLabel}
                   </p>
                 </div>
                 <button
@@ -372,7 +372,7 @@ function ReferenceRow({
               <div className="mt-6 border-t border-slate-200 pt-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h4 className="font-semibold text-[#1b3272]">Contatti associati</h4>
+                    <h4 className="font-semibold text-[#1b3272]">Contatti attivi associati</h4>
                     {loadedContacts.length > 0 ? (
                       <p className="mt-1 text-xs text-slate-500">
                         {selectedCount} selezionati su {loadedContacts.length}
@@ -508,7 +508,7 @@ function ReferenceRow({
                                 type="checkbox"
                                 checked={allContactsSelected}
                                 onChange={toggleAllContacts}
-                                aria-label="Seleziona tutti i contatti associati"
+                                aria-label="Seleziona tutti i contatti attivi associati"
                                 className="h-4 w-4 accent-[#1b3272]"
                               />
                             </th>

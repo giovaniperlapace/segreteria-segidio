@@ -60,45 +60,6 @@ export default async function ContactsPage({
   const from = (page - 1) * CONTACT_PAGE_SIZE;
   const to = from + CONTACT_PAGE_SIZE - 1;
 
-  let relationFilterActive = false;
-  const contactIdsFromRelations = new Set<number>();
-
-  if (groupIds.length > 0) {
-    relationFilterActive = true;
-    const groupRelations = await fetchAllSupabaseRows(() =>
-      supabase
-        .from("contact_groups")
-        .select("contact_id")
-        .in("group_id", groupIds),
-    );
-    for (const relation of groupRelations) {
-      contactIdsFromRelations.add(Number(relation.contact_id));
-    }
-  }
-
-  if (Number.isSafeInteger(referenceId) && referenceId > 0) {
-    const referenceRelations = await fetchAllSupabaseRows(() =>
-      supabase
-        .from("contact_references")
-        .select("contact_id")
-        .eq("reference_id", referenceId),
-    );
-    const referenceContactIds = new Set(referenceRelations.map((relation) => Number(relation.contact_id)));
-
-    if (relationFilterActive) {
-      for (const contactId of [...contactIdsFromRelations]) {
-        if (!referenceContactIds.has(contactId)) {
-          contactIdsFromRelations.delete(contactId);
-        }
-      }
-    } else {
-      relationFilterActive = true;
-      for (const contactId of referenceContactIds) {
-        contactIdsFromRelations.add(contactId);
-      }
-    }
-  }
-
   let missingIds: Set<number> | null = null;
   if (missing === "yes" || missing === "no") {
     const missingRowsForFilter = await fetchAllSupabaseRows(() =>
@@ -107,9 +68,18 @@ export default async function ContactsPage({
     missingIds = new Set(missingRowsForFilter.map((row) => Number(row.id)));
   }
 
+  const hasReferenceFilter = Number.isSafeInteger(referenceId) && referenceId > 0;
+  const contactSelect = [
+    CONTACT_COLUMNS,
+    groupIds.length > 0 ? "contact_groups!inner(group_id)" : "",
+    hasReferenceFilter ? "contact_references!inner(reference_id)" : "",
+  ]
+    .filter(Boolean)
+    .join(",");
+
   let contactsQuery = supabase
     .from("contacts")
-    .select(CONTACT_COLUMNS, { count: "exact" })
+    .select(contactSelect, { count: "exact" })
     .is("deleted_at", null);
 
   if (search) {
@@ -133,11 +103,11 @@ export default async function ContactsPage({
   if (priority === "standard" || priority === "important" || priority === "critical") {
     contactsQuery = contactsQuery.eq("priority", priority);
   }
-  if (relationFilterActive) {
-    contactsQuery =
-      contactIdsFromRelations.size > 0
-        ? contactsQuery.in("id", [...contactIdsFromRelations])
-        : contactsQuery.in("id", [-1]);
+  if (groupIds.length > 0) {
+    contactsQuery = contactsQuery.in("contact_groups.group_id", groupIds);
+  }
+  if (hasReferenceFilter) {
+    contactsQuery = contactsQuery.eq("contact_references.reference_id", referenceId);
   }
   if (missingIds) {
     if (missing === "yes") {
@@ -171,7 +141,7 @@ export default async function ContactsPage({
     if (result.error) throw result.error;
   }
 
-  const contacts = contactsResult.data ?? [];
+  const contacts = (contactsResult.data ?? []) as unknown as ContactRecord[];
   const currentContactIds = contacts.map((contact) => Number(contact.id));
   const [contactGroups, contactReferences, missingRows] =
     currentContactIds.length > 0

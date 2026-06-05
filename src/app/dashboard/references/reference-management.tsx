@@ -2,13 +2,21 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import {
+  type ArchiveActionState,
   convertReferenceToUserAction,
   createReferenceAction,
   deleteReferenceAction,
   loadReferenceContactsAction,
+  moveReferenceContactsAction,
   updateReferenceAction,
 } from "../archive-actions";
-import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
+import {
+  ActionMessage,
+  inputClass,
+  PendingSpinner,
+  SubmitButton,
+  useArchiveAction,
+} from "../archive-ui";
 import {
   ContactEditor,
   type ContactRecord,
@@ -30,6 +38,7 @@ type Reference = {
 };
 
 type AssociatedContact = ContactRecord;
+type ContactMoveOperation = "copy" | "transfer";
 type ContactLoadState =
   | { status: "idle"; contacts: AssociatedContact[]; message?: string }
   | { status: "loading"; contacts: AssociatedContact[]; message?: string }
@@ -78,22 +87,100 @@ function ReferenceRow({
   isOpen,
   onToggle,
   onOpenContact,
+  onReferenceContactsChanged,
   contactLoad,
+  contactReferences,
 }: {
   reference: Reference;
   isOpen: boolean;
   onToggle: () => void;
   onOpenContact: (contact: ContactRecord) => void;
+  onReferenceContactsChanged: (
+    sourceReferenceId: number,
+    contactIds: number[],
+    targetReferenceId: number,
+    operation: ContactMoveOperation,
+  ) => void;
   contactLoad: ContactLoadState;
+  contactReferences: Option[];
 }) {
   const [state, action, pending] = useArchiveAction(updateReferenceAction);
   const [convertState, convertAction, convertPending] = useArchiveAction(convertReferenceToUserAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteReferenceAction);
   const [showAllContacts, setShowAllContacts] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set());
+  const [moveOperation, setMoveOperation] = useState<ContactMoveOperation | null>(null);
+  const [targetReferenceId, setTargetReferenceId] = useState("");
   const formId = `reference-${reference.id}`;
   const loadedContacts = contactLoad.contacts;
   const visibleContacts = showAllContacts ? loadedContacts : loadedContacts.slice(0, 50);
   const accountLabel = reference.linked_profile ? "Collegato" : "Non collegato";
+  const selectedCount = selectedContactIds.size;
+  const allContactsSelected =
+    loadedContacts.length > 0 && loadedContacts.every((contact) => selectedContactIds.has(contact.id));
+  const targetReferenceOptions = contactReferences.filter(
+    (option) => option.id !== reference.id && option.active,
+  );
+
+  async function moveContactsAndSync(
+    previousState: ArchiveActionState,
+    formData: FormData,
+  ): Promise<ArchiveActionState> {
+    const result = await moveReferenceContactsAction(previousState, formData);
+
+    if (result.status === "success") {
+      const submittedOperation = String(formData.get("operation"));
+      const submittedTargetReferenceId = Number(formData.get("targetReferenceId"));
+      const submittedContactIds = [
+        ...new Set(formData.getAll("contactIds").map(Number).filter(Number.isSafeInteger)),
+      ];
+
+      if (
+        (submittedOperation === "copy" || submittedOperation === "transfer") &&
+        Number.isSafeInteger(submittedTargetReferenceId) &&
+        submittedContactIds.length > 0
+      ) {
+        onReferenceContactsChanged(
+          reference.id,
+          submittedContactIds,
+          submittedTargetReferenceId,
+          submittedOperation,
+        );
+      }
+
+      setSelectedContactIds(new Set());
+      setMoveOperation(null);
+      setTargetReferenceId("");
+    }
+
+    return result;
+  }
+
+  const [moveState, moveAction, movePending] = useArchiveAction(moveContactsAndSync);
+
+  function toggleContactSelection(contactId: number) {
+    setSelectedContactIds((current) => {
+      const next = new Set(current);
+      if (next.has(contactId)) {
+        next.delete(contactId);
+      } else {
+        next.add(contactId);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllContacts() {
+    setSelectedContactIds((current) => {
+      if (allContactsSelected) return new Set();
+      return new Set([...current, ...loadedContacts.map((contact) => contact.id)]);
+    });
+  }
+
+  function startMove(operation: ContactMoveOperation) {
+    setMoveOperation(operation);
+    setTargetReferenceId("");
+  }
 
   return (
     <>
@@ -213,9 +300,17 @@ function ReferenceRow({
                       type="submit"
                       formAction={convertAction}
                       disabled={convertPending}
-                      className="rounded-xl border border-[#1b3272] px-3 py-2.5 text-sm font-semibold text-[#1b3272] transition hover:bg-[#1b3272]/10 disabled:cursor-wait disabled:opacity-60"
+                      aria-busy={convertPending}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#1b3272] px-3 py-2.5 text-sm font-semibold text-[#1b3272] transition hover:bg-[#1b3272]/10 disabled:cursor-wait disabled:opacity-60"
                     >
-                      {convertPending ? "Conversione..." : "Converti in utente"}
+                      {convertPending ? (
+                        <>
+                          <PendingSpinner />
+                          <span>Conversione...</span>
+                        </>
+                      ) : (
+                        "Converti in utente"
+                      )}
                     </button>
                   )}
                   <ActionMessage state={state} />
@@ -247,10 +342,11 @@ function ReferenceRow({
                   disabled={deletePending}
                   title={deletePending ? "Eliminazione in corso" : "Elimina referente"}
                   aria-label={deletePending ? "Eliminazione in corso" : "Elimina referente"}
+                  aria-busy={deletePending}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-700 text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
                 >
                   {deletePending ? (
-                    <span className="text-xs font-semibold">...</span>
+                    <PendingSpinner className="h-4 w-4" />
                   ) : (
                     <svg
                       aria-hidden="true"
@@ -274,17 +370,35 @@ function ReferenceRow({
               </form>
 
               <div className="mt-6 border-t border-slate-200 pt-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="font-semibold text-[#1b3272]">Contatti associati</h4>
-                  {loadedContacts.length > 50 ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllContacts((current) => !current)}
-                      className="text-sm font-semibold text-[#d43c2f] hover:underline"
-                    >
-                      {showAllContacts ? "Mostra solo i primi 50" : `Vedi tutti (${loadedContacts.length})`}
-                    </button>
-                  ) : null}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-[#1b3272]">Contatti associati</h4>
+                    {loadedContacts.length > 0 ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {selectedCount} selezionati su {loadedContacts.length}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {loadedContacts.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={toggleAllContacts}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        {allContactsSelected ? "Deseleziona tutti" : "Seleziona tutti"}
+                      </button>
+                    ) : null}
+                    {loadedContacts.length > 50 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllContacts((current) => !current)}
+                        className="text-sm font-semibold text-[#d43c2f] hover:underline"
+                      >
+                        {showAllContacts ? "Mostra solo i primi 50" : `Vedi tutti (${loadedContacts.length})`}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 {contactLoad.status === "idle" || contactLoad.status === "loading" ? (
                   <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
@@ -295,44 +409,153 @@ function ReferenceRow({
                     {contactLoad.message}
                   </p>
                 ) : visibleContacts.length > 0 ? (
-                  <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2">Nome</th>
-                          <th className="px-3 py-2">Cognome</th>
-                          <th className="px-3 py-2">Carica</th>
-                          <th className="px-3 py-2">Istituzione</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {visibleContacts.map((contact) => (
-                          <tr key={contact.id} className="hover:bg-[#f8fafc]">
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => onOpenContact(contact)}
-                                className="font-semibold text-[#1b3272] hover:underline"
-                              >
-                                {contact.first_name || "—"}
-                              </button>
-                            </td>
-                            <td className="px-3 py-2">
-                              <button
-                                type="button"
-                                onClick={() => onOpenContact(contact)}
-                                className="text-left font-semibold text-[#1b3272] hover:underline"
-                              >
-                                {contact.last_name || "—"}
-                              </button>
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">{contact.institutional_role || "—"}</td>
-                            <td className="px-3 py-2 text-slate-700">{contact.institution || "—"}</td>
-                          </tr>
+                  <>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => startMove("copy")}
+                        disabled={selectedCount === 0}
+                        className="rounded-lg border border-[#1b3272] bg-white px-3 py-2 text-sm font-semibold text-[#1b3272] transition hover:bg-[#1b3272]/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Copia su altro referente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startMove("transfer")}
+                        disabled={selectedCount === 0}
+                        className="rounded-lg bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Trasferisci ad altro referente
+                      </button>
+                      <ActionMessage state={moveState} />
+                    </div>
+
+                    {moveOperation ? (
+                      <form
+                        action={moveAction}
+                        className="mt-3 rounded-xl border border-[#d9e1f2] bg-white px-3 py-3"
+                      >
+                        <input type="hidden" name="sourceReferenceId" value={reference.id} />
+                        <input type="hidden" name="operation" value={moveOperation} />
+                        {[...selectedContactIds].map((contactId) => (
+                          <input key={contactId} type="hidden" name="contactIds" value={contactId} />
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                          <label className="text-sm font-medium text-slate-700">
+                            Referente di destinazione
+                            <select
+                              required
+                              name="targetReferenceId"
+                              value={targetReferenceId}
+                              onChange={(event) => setTargetReferenceId(event.target.value)}
+                              className={inputClass}
+                            >
+                              <option value="">Scegli referente...</option>
+                              {targetReferenceOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="submit"
+                            disabled={movePending || selectedCount === 0}
+                            aria-busy={movePending}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d43c2f] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#b93228] disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {movePending ? (
+                              <>
+                                <PendingSpinner />
+                                <span>Operazione...</span>
+                              </>
+                            ) : moveOperation === "copy" ? (
+                              "Conferma copia"
+                            ) : (
+                              "Conferma trasferimento"
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMoveOperation(null);
+                              setTargetReferenceId("");
+                            }}
+                            className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Annulla
+                          </button>
+                        </div>
+                        {movePending ? (
+                          <p
+                            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <PendingSpinner className="h-4 w-4" />
+                            Sto aggiornando i contatti selezionati. Attendi qualche secondo...
+                          </p>
+                        ) : null}
+                      </form>
+                    ) : null}
+
+                    <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="w-12 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={allContactsSelected}
+                                onChange={toggleAllContacts}
+                                aria-label="Seleziona tutti i contatti associati"
+                                className="h-4 w-4 accent-[#1b3272]"
+                              />
+                            </th>
+                            <th className="px-3 py-2">Nome</th>
+                            <th className="px-3 py-2">Cognome</th>
+                            <th className="px-3 py-2">Carica</th>
+                            <th className="px-3 py-2">Istituzione</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {visibleContacts.map((contact) => (
+                            <tr key={contact.id} className="hover:bg-[#f8fafc]">
+                              <td className="px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedContactIds.has(contact.id)}
+                                  onChange={() => toggleContactSelection(contact.id)}
+                                  aria-label={`Seleziona ${[contact.first_name, contact.last_name].filter(Boolean).join(" ") || "contatto"}`}
+                                  className="h-4 w-4 accent-[#1b3272]"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenContact(contact)}
+                                  className="font-semibold text-[#1b3272] hover:underline"
+                                >
+                                  {contact.first_name || "—"}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenContact(contact)}
+                                  className="text-left font-semibold text-[#1b3272] hover:underline"
+                                >
+                                  {contact.last_name || "—"}
+                                </button>
+                              </td>
+                              <td className="px-3 py-2 text-slate-700">{contact.institutional_role || "—"}</td>
+                              <td className="px-3 py-2 text-slate-700">{contact.institution || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 ) : (
                   <p className="mt-3 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
                     Nessun contatto associato a questo referente.
@@ -457,6 +680,71 @@ export function ReferenceManagement({
     }
   }
 
+  function updateReferenceContactLinks(
+    sourceReferenceId: number,
+    contactIds: number[],
+    targetReferenceId: number,
+    operation: ContactMoveOperation,
+  ) {
+    const movedContactIds = new Set(contactIds);
+    setContactsByReference((current) => {
+      const sourceState = current[sourceReferenceId];
+      const movedContacts =
+        sourceState?.contacts
+          .filter((contact) => movedContactIds.has(contact.id))
+          .map((contact) => ({
+            ...contact,
+            reference_ids:
+              operation === "transfer"
+                ? [...new Set(contact.reference_ids.filter((id) => id !== sourceReferenceId).concat(targetReferenceId))]
+                : [...new Set(contact.reference_ids.concat(targetReferenceId))],
+          })) ?? [];
+      const next = { ...current };
+
+      if (sourceState) {
+        next[sourceReferenceId] = {
+          ...sourceState,
+          contacts:
+            operation === "transfer"
+              ? sourceState.contacts.filter((contact) => !movedContactIds.has(contact.id))
+              : sourceState.contacts.map((contact) =>
+                  movedContactIds.has(contact.id)
+                    ? {
+                        ...contact,
+                        reference_ids: [...new Set(contact.reference_ids.concat(targetReferenceId))],
+                      }
+                    : contact,
+                ),
+        };
+      }
+
+      const targetState = current[targetReferenceId];
+      if (targetState?.status === "loaded") {
+        const existingTargetContactIds = new Set(targetState.contacts.map((contact) => contact.id));
+        next[targetReferenceId] = {
+          ...targetState,
+          contacts: [
+            ...targetState.contacts.map((contact) =>
+              movedContactIds.has(contact.id)
+                ? {
+                    ...contact,
+                    reference_ids: [...new Set(contact.reference_ids.concat(targetReferenceId))],
+                  }
+                : contact,
+            ),
+            ...movedContacts.filter((contact) => !existingTargetContactIds.has(contact.id)),
+          ].sort((a, b) => {
+            const aName = `${a.last_name ?? ""} ${a.first_name ?? ""}`.toLowerCase();
+            const bName = `${b.last_name ?? ""} ${b.first_name ?? ""}`.toLowerCase();
+            return aName.localeCompare(bName);
+          }),
+        };
+      }
+
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
@@ -559,12 +847,14 @@ export function ReferenceManagement({
                   isOpen={openReferenceId === reference.id}
                   onToggle={() => toggleReference(reference)}
                   onOpenContact={setSelectedContact}
+                  onReferenceContactsChanged={updateReferenceContactLinks}
                   contactLoad={
                     contactsByReference[reference.id] ?? {
                       status: reference.contact_count > 0 ? "idle" : "loaded",
                       contacts: [],
                     }
                   }
+                  contactReferences={contactReferences}
                 />
               ))}
               {filteredReferences.length === 0 ? (

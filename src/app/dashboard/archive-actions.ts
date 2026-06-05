@@ -461,6 +461,7 @@ export async function createGroupAction(
     });
     if (error) throw error;
     revalidatePath("/dashboard/groups");
+    revalidatePath("/dashboard/settings");
     revalidatePath("/dashboard/contacts");
     return { status: "success", message: "Gruppo creato correttamente." };
   } catch (error) {
@@ -491,6 +492,7 @@ export async function updateGroupAction(
       .eq("id", groupId);
     if (error) throw error;
     revalidatePath("/dashboard/groups");
+    revalidatePath("/dashboard/settings");
     revalidatePath("/dashboard/contacts");
     return { status: "success", message: "Gruppo aggiornato correttamente." };
   } catch (error) {
@@ -613,6 +615,140 @@ export async function deleteReferenceAction(
     revalidatePath("/dashboard/references");
     revalidatePath("/dashboard/users");
     return { status: "success", message: "Referente eliminato dall'archivio operativo." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
+export async function moveReferenceContactsAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const manager = await requireManager();
+  const sourceReferenceId = Number(text(formData, "sourceReferenceId"));
+  const targetReferenceId = Number(text(formData, "targetReferenceId"));
+  const operation = text(formData, "operation");
+  const contactIds = ids(formData, "contactIds");
+
+  if (
+    !Number.isSafeInteger(sourceReferenceId) ||
+    !Number.isSafeInteger(targetReferenceId) ||
+    sourceReferenceId <= 0 ||
+    targetReferenceId <= 0
+  ) {
+    return { status: "error", message: "Referente di origine o destinazione non valido." };
+  }
+  if (sourceReferenceId === targetReferenceId) {
+    return { status: "error", message: "Scegli un referente diverso da quello attuale." };
+  }
+  if (operation !== "copy" && operation !== "transfer") {
+    return { status: "error", message: "Operazione non valida." };
+  }
+  if (contactIds.length === 0) {
+    return { status: "error", message: "Seleziona almeno un contatto." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data: targetReference, error: targetReferenceError } = await supabase
+      .from("internal_references")
+      .select("id")
+      .eq("id", targetReferenceId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (targetReferenceError) throw targetReferenceError;
+    if (!targetReference) {
+      return { status: "error", message: "Il referente di destinazione non esiste piu'." };
+    }
+
+    const sourceRelations = await fetchAllSupabaseRows(() =>
+      supabase
+        .from("contact_references")
+        .select("contact_id,is_primary")
+        .eq("reference_id", sourceReferenceId)
+        .in("contact_id", contactIds),
+    );
+    const validContactIds = [...new Set(sourceRelations.map((row) => Number(row.contact_id)))];
+
+    if (validContactIds.length === 0) {
+      return {
+        status: "error",
+        message: "Nessuno dei contatti selezionati e' ancora collegato al referente attuale.",
+      };
+    }
+
+    const existingTargetRelations = await fetchAllSupabaseRows(() =>
+      supabase
+        .from("contact_references")
+        .select("contact_id")
+        .eq("reference_id", targetReferenceId)
+        .in("contact_id", validContactIds),
+    );
+    const existingTargetContactIds = new Set(
+      existingTargetRelations.map((row) => Number(row.contact_id)),
+    );
+    const contactIdsToInsert = validContactIds.filter(
+      (contactId) => !existingTargetContactIds.has(contactId),
+    );
+    const sourcePrimaryContactIds = new Set(
+      sourceRelations
+        .filter((row) => row.is_primary)
+        .map((row) => Number(row.contact_id)),
+    );
+
+    if (operation === "transfer") {
+      const { error: deleteError } = await supabase
+        .from("contact_references")
+        .delete()
+        .eq("reference_id", sourceReferenceId)
+        .in("contact_id", validContactIds);
+
+      if (deleteError) throw deleteError;
+    }
+
+    if (contactIdsToInsert.length > 0) {
+      const { error: insertError } = await supabase.from("contact_references").insert(
+        contactIdsToInsert.map((contactId) => ({
+          contact_id: contactId,
+          reference_id: targetReferenceId,
+          is_primary: operation === "transfer" && sourcePrimaryContactIds.has(contactId),
+          created_by_profile_id: manager.id,
+        })),
+      );
+
+      if (insertError) throw insertError;
+    }
+
+    if (operation === "transfer") {
+      const primaryContactIdsAlreadyLinkedToTarget = validContactIds.filter(
+        (contactId) =>
+          existingTargetContactIds.has(contactId) && sourcePrimaryContactIds.has(contactId),
+      );
+
+      if (primaryContactIdsAlreadyLinkedToTarget.length > 0) {
+        const { error: primaryError } = await supabase
+          .from("contact_references")
+          .update({ is_primary: true })
+          .eq("reference_id", targetReferenceId)
+          .in("contact_id", primaryContactIdsAlreadyLinkedToTarget);
+
+        if (primaryError) throw primaryError;
+      }
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/contacts");
+    revalidatePath("/dashboard/references");
+
+    const movedCount = validContactIds.length;
+    return {
+      status: "success",
+      message:
+        operation === "copy"
+          ? `${movedCount} contatti copiati sul referente selezionato.`
+          : `${movedCount} contatti trasferiti al referente selezionato.`,
+    };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }

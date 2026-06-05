@@ -5,6 +5,7 @@ import { createContactAction, deleteContactAction, updateContactAction } from ".
 import {
   ActionMessage,
   inputClass,
+  PendingSpinner,
   SubmitButton,
   useArchiveAction,
 } from "../archive-ui";
@@ -647,6 +648,124 @@ function MultiGroupFilter({
   );
 }
 
+function ReferenceFilter({
+  references,
+  selectedId,
+  onChange,
+}: {
+  references: Option[];
+  selectedId: string;
+  onChange: (nextId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const normalizedSearch = normalizeSearch(search);
+  const selectedReference =
+    selectedId === "all"
+      ? null
+      : references.find((reference) => String(reference.id) === selectedId) ?? null;
+  const visibleReferences = references.filter((reference) => {
+    if (!normalizedSearch) return true;
+    return normalizeSearch(reference.name).includes(normalizedSearch);
+  });
+
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function selectReference(nextId: string) {
+    onChange(nextId);
+    setSearch("");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`${inputClass} flex min-h-11 items-center justify-between text-left`}
+        aria-label="Filtra per referente"
+        aria-expanded={open}
+      >
+        <span className="truncate">
+          {selectedReference ? selectedReference.name : "Tutti i referenti"}
+        </span>
+        <span className="ml-2 text-xs text-slate-500">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute z-30 mt-1 w-full min-w-72 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Cerca referente"
+            autoComplete="off"
+            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
+          />
+          <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            <button
+              type="button"
+              onClick={() => selectReference("all")}
+              className={`block w-full rounded-lg px-2 py-1.5 text-left ${
+                selectedId === "all"
+                  ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
+                  : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Tutti i referenti
+            </button>
+            {visibleReferences.length > 0 ? (
+              visibleReferences.map((reference) => (
+                <button
+                  key={reference.id}
+                  type="button"
+                  onClick={() => selectReference(String(reference.id))}
+                  className={`block w-full rounded-lg px-2 py-1.5 text-left ${
+                    String(reference.id) === selectedId
+                      ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {reference.name}
+                  {reference.active ? "" : " (non attivo)"}
+                </button>
+              ))
+            ) : (
+              <p className="px-2 py-3 text-sm text-slate-500">
+                Nessun referente trovato.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ContactFields({
   contact,
   groups,
@@ -1025,10 +1144,11 @@ export function ContactEditor({
             disabled={deletePending}
             title={deletePending ? "Eliminazione in corso" : "Elimina contatto"}
             aria-label={deletePending ? "Eliminazione in corso" : "Elimina contatto"}
+            aria-busy={deletePending}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-700 text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
           >
             {deletePending ? (
-              <span className="text-xs font-semibold">...</span>
+              <PendingSpinner className="h-4 w-4" />
             ) : (
               <svg
                 aria-hidden="true"
@@ -1388,9 +1508,11 @@ export function ContactManagement({
               selectedIds={groupIds}
               onChange={setGroupIds}
             />
-            <select value={referenceId} onChange={(event) => setReferenceId(event.target.value)} aria-label="Filtra per referente" className={inputClass}>
-              <option value="all">Tutti i referenti</option>{references.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-            </select>
+            <ReferenceFilter
+              references={references}
+              selectedId={referenceId}
+              onChange={setReferenceId}
+            />
             <select value={missing} onChange={(event) => setMissing(event.target.value)} aria-label="Filtra per dati mancanti" className={inputClass}>
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>
             </select>

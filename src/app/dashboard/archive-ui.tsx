@@ -26,6 +26,15 @@ export function ActionMessage({ state }: { state: ArchiveActionState }) {
   );
 }
 
+export function PendingSpinner({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} inline-block animate-spin rounded-full border-2 border-current border-r-transparent`}
+    />
+  );
+}
+
 export function SubmitButton({
   pending,
   children,
@@ -37,9 +46,17 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
+      aria-busy={pending}
+      className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
     >
-      {pending ? "Salvataggio..." : children}
+      {pending ? (
+        <>
+          <PendingSpinner />
+          <span>Salvataggio...</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

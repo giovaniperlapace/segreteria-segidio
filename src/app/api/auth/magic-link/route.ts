@@ -14,6 +14,10 @@ type GenerateLinkResponse = {
 const lastRequestByEmail = new Map<string, number>();
 const REQUEST_INTERVAL_MS = 60_000;
 
+function isJsonRequest(request: Request) {
+  return request.headers.get("content-type")?.includes("application/json") ?? false;
+}
+
 function getBaseUrl(request: Request) {
   return (
     process.env.APP_URL?.trim().replace(/\/+$/, "") ||
@@ -21,12 +25,21 @@ function getBaseUrl(request: Request) {
   );
 }
 
+function loginRedirect(request: Request, search: string) {
+  return NextResponse.redirect(new URL(`/login?${search}`, request.url), 303);
+}
+
 export async function POST(request: Request) {
+  const wantsJson = isJsonRequest(request);
+
   try {
-    const body = (await request.json()) as { email?: unknown };
+    const body = wantsJson
+      ? ((await request.json()) as { email?: unknown })
+      : Object.fromEntries(await request.formData());
     const email = String(body.email ?? "").trim().toLowerCase();
 
     if (!email) {
+      if (!wantsJson) return loginRedirect(request, "error=email_required");
       return NextResponse.json({ ok: false, code: "EMAIL_REQUIRED" }, { status: 400 });
     }
 
@@ -43,11 +56,13 @@ export async function POST(request: Request) {
     }
 
     if (!profile) {
+      if (!wantsJson) return loginRedirect(request, "error=access_denied");
       return NextResponse.json({ ok: false, code: "ACCESS_DENIED" }, { status: 403 });
     }
 
     const now = Date.now();
     if (now - (lastRequestByEmail.get(email) ?? 0) < REQUEST_INTERVAL_MS) {
+      if (!wantsJson) return loginRedirect(request, "error=rate_limited");
       return NextResponse.json({ ok: false, code: "RATE_LIMITED" }, { status: 429 });
     }
     lastRequestByEmail.set(email, now);
@@ -90,9 +105,11 @@ export async function POST(request: Request) {
       magicLink: callbackUrl.toString(),
     });
 
+    if (!wantsJson) return loginRedirect(request, "status=sent");
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Magic link request failed", error);
+    if (!wantsJson) return loginRedirect(request, "error=magic_link_failed");
     return NextResponse.json(
       { ok: false, code: "MAGIC_LINK_FAILED" },
       { status: 500 },

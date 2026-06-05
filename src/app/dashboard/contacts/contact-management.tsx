@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
-import { createContactAction, updateContactAction } from "../archive-actions";
+import { createContactAction, deleteContactAction, updateContactAction } from "../archive-actions";
 import {
   ActionMessage,
   inputClass,
@@ -739,6 +739,7 @@ function ContactEditor({
   isManager: boolean;
 }) {
   const [state, action, pending] = useArchiveAction(updateContactAction);
+  const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteContactAction);
   const displayName = contactDisplayName(contact);
   const contactGroups = groups.filter((group) => contact.group_ids.includes(group.id));
   const contactReferences = references.filter((reference) => contact.reference_ids.includes(reference.id));
@@ -776,7 +777,8 @@ function ContactEditor({
           </span>
         </div>
       </summary>
-      <form action={action} className="space-y-4 border-t border-slate-200 px-5 py-5">
+      <div className="space-y-4 border-t border-slate-200 px-5 py-5">
+      <form action={action} className="space-y-4">
         <input type="hidden" name="contactId" value={contact.id} />
         {contact.missing_fields.length > 0 ? (
           <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -795,6 +797,41 @@ function ContactEditor({
           <ActionMessage state={state} />
         </div>
       </form>
+      {isManager ? (
+        <form
+          action={deleteAction}
+          onSubmit={(event) => {
+            if (!window.confirm(`Eliminare il contatto "${displayName}" dall'archivio operativo?`)) {
+              event.preventDefault();
+            }
+          }}
+          className="rounded-2xl border border-red-200 bg-red-50 p-4"
+        >
+          <input type="hidden" name="contactId" value={contact.id} />
+          <h4 className="text-sm font-semibold text-red-900">Elimina contatto</h4>
+          <p className="mt-1 text-sm text-red-800">
+            Il contatto sparira&apos; dall&apos;archivio operativo. Lo storico resta conservato nel database.
+          </p>
+          <label className="mt-3 block text-sm font-medium text-red-900">
+            Scrivi ELIMINA per confermare
+            <input
+              name="confirmation"
+              className="mt-1.5 w-full max-w-xs rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+            />
+          </label>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={deletePending}
+              className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
+            >
+              {deletePending ? "Eliminazione..." : "Elimina contatto"}
+            </button>
+            <ActionMessage state={deleteState} />
+          </div>
+        </form>
+      ) : null}
+      </div>
     </details>
   );
 }

@@ -14,11 +14,17 @@ export default async function ContactsPage() {
         supabase
           .from("contacts")
           .select("id,honorific_title,first_name,last_name,institutional_role,institution,email,phone,mobile_phone,address_line,postal_code,city,country,spoken_language,website,notes,missing_data_notes,status,priority")
+          .is("deleted_at", null)
           .order("last_name")
           .order("first_name"),
       ),
       supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
-      supabase.from("internal_references").select("id,full_name,active").order("active", { ascending: false }).order("full_name"),
+      supabase
+        .from("internal_references")
+        .select("id,full_name,active")
+        .is("deleted_at", null)
+        .order("active", { ascending: false })
+        .order("full_name"),
       supabase
         .from("contact_languages")
         .select("id,name,active,sort_order")

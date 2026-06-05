@@ -26,6 +26,8 @@ Questa cartella contiene le migration SQL del progetto.
 - `20260605151000_clean_trailing_comma_internal_references.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
 - `20260605152000_dedupe_internal_references_by_name.sql` deduplica riferimenti interni con lo stesso nome normalizzato, preservando relazioni contatto-riferimento.
 - `20260605152000_dedupe_internal_references_by_name.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
+- `20260606100000_soft_delete_contacts_references.sql` aggiunge soft delete operativo per contatti e riferimenti interni, nascondendoli dalle viste senza perdere storico o relazioni.
+- `20260606100000_soft_delete_contacts_references.sql` e' stata applicata in modo persistente al database self-hosted il 2026-06-05.
 - Le migration necessarie e non distruttive possono essere applicate dopo review; chiedere conferma esplicita per migration distruttive o modifiche fuori scope.
 
 ## Utenti autorizzati

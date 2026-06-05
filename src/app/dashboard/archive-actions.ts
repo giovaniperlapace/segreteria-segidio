@@ -234,6 +234,43 @@ export async function updateContactAction(
   }
 }
 
+export async function deleteContactAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const manager = await requireManager();
+  const contactId = Number(text(formData, "contactId"));
+
+  if (!Number.isSafeInteger(contactId)) {
+    return { status: "error", message: "Contatto non valido." };
+  }
+  if (text(formData, "confirmation") !== "ELIMINA") {
+    return { status: "error", message: "Scrivi ELIMINA per confermare la cancellazione." };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase
+      .from("contacts")
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_profile_id: manager.id,
+        updated_by_profile_id: manager.id,
+      })
+      .eq("id", contactId)
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/contacts");
+    revalidatePath("/dashboard/references");
+    return { status: "success", message: "Contatto eliminato dall'archivio operativo." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
 export async function createGroupAction(
   _previousState: ArchiveActionState,
   formData: FormData,
@@ -347,6 +384,44 @@ export async function updateReferenceAction(
     revalidatePath("/dashboard/references");
     revalidatePath("/dashboard/contacts");
     return { status: "success", message: "Riferimento aggiornato correttamente." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
+export async function deleteReferenceAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const manager = await requireManager();
+  const referenceId = Number(text(formData, "referenceId"));
+
+  if (!Number.isSafeInteger(referenceId)) {
+    return { status: "error", message: "Riferimento non valido." };
+  }
+  if (text(formData, "confirmation") !== "ELIMINA") {
+    return { status: "error", message: "Scrivi ELIMINA per confermare la cancellazione." };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase
+      .from("internal_references")
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_profile_id: manager.id,
+        active: false,
+      })
+      .eq("id", referenceId)
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/contacts");
+    revalidatePath("/dashboard/references");
+    revalidatePath("/dashboard/users");
+    return { status: "success", message: "Riferimento eliminato dall'archivio operativo." };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }

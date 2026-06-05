@@ -214,6 +214,8 @@ I riferimenti interni hanno `first_name` e `last_name` separati, con `full_name`
 
 Le pagine che leggono molti record usano fetch paginato per evitare il limite PostgREST di 1000 righe per query.
 
+Contatti e riferimenti interni supportano eliminazione operativa tramite soft delete (`deleted_at`, `deleted_by_profile_id`): spariscono da liste e selettori, ma restano nel database per storico/audit. Non esiste una funzione UI di riattivazione.
+
 La tabella Access non contiene una colonna lingua; `contacts.spoken_language` resta quindi vuoto e coerente con l'opzione UI "Non indicata".
 
 `EXPO2000.Paese` e' stato normalizzato solo per alias certi verso l'elenco standard usato dall'autocomplete. Valori non-paese o ambigui conservati per revisione post-import: `OLP`, `UE`, `ONU`, `Jugoslavia`, `Corea`, `SMOM`, `Polisario`.

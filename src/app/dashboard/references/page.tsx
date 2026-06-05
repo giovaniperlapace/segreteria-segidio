@@ -11,6 +11,7 @@ export default async function ReferencesPage() {
     supabase
       .from("internal_references")
       .select("id,first_name,last_name,full_name,email,phone,notes,active,profile_id")
+      .is("deleted_at", null)
       .order("active", { ascending: false })
       .order("last_name")
       .order("first_name"),
@@ -19,6 +20,7 @@ export default async function ReferencesPage() {
       supabase
         .from("contacts")
         .select("id,first_name,last_name,institutional_role,institution")
+        .is("deleted_at", null)
         .order("last_name")
         .order("first_name"),
     ),
@@ -29,9 +31,9 @@ export default async function ReferencesPage() {
   const contactsByReference = new Map<number, typeof contacts>();
   const counts = new Map<number, number>();
   for (const relation of relations) {
-    counts.set(relation.reference_id, (counts.get(relation.reference_id) ?? 0) + 1);
     const contact = contactsById.get(relation.contact_id);
     if (!contact) continue;
+    counts.set(relation.reference_id, (counts.get(relation.reference_id) ?? 0) + 1);
     contactsByReference.set(relation.reference_id, [
       ...(contactsByReference.get(relation.reference_id) ?? []),
       contact,

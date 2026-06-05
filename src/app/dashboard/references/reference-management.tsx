@@ -4,6 +4,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import {
   convertReferenceToUserAction,
   createReferenceAction,
+  deleteReferenceAction,
   updateReferenceAction,
 } from "../archive-actions";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
@@ -78,6 +79,7 @@ function ReferenceRow({
 }) {
   const [state, action, pending] = useArchiveAction(updateReferenceAction);
   const [convertState, convertAction, convertPending] = useArchiveAction(convertReferenceToUserAction);
+  const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteReferenceAction);
   const [showAllContacts, setShowAllContacts] = useState(false);
   const formId = `reference-${reference.id}`;
   const visibleContacts = showAllContacts ? reference.contacts : reference.contacts.slice(0, 50);
@@ -207,6 +209,39 @@ function ReferenceRow({
                   )}
                   <ActionMessage state={state} />
                   <ActionMessage state={convertState} />
+                </div>
+              </form>
+
+              <form
+                action={deleteAction}
+                onSubmit={(event) => {
+                  if (!window.confirm(`Eliminare il riferimento "${reference.full_name}" dalle liste operative?`)) {
+                    event.preventDefault();
+                  }
+                }}
+                className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4"
+              >
+                <input type="hidden" name="referenceId" value={reference.id} />
+                <h4 className="text-sm font-semibold text-red-900">Elimina riferimento</h4>
+                <p className="mt-1 text-sm text-red-800">
+                  Il riferimento sparira&apos; dalle liste operative. I collegamenti storici restano conservati.
+                </p>
+                <label className="mt-3 block text-sm font-medium text-red-900">
+                  Scrivi ELIMINA per confermare
+                  <input
+                    name="confirmation"
+                    className="mt-1.5 w-full max-w-xs rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                  />
+                </label>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={deletePending}
+                    className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {deletePending ? "Eliminazione..." : "Elimina riferimento"}
+                  </button>
+                  <ActionMessage state={deleteState} />
                 </div>
               </form>
 

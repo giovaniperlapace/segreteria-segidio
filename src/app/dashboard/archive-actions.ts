@@ -14,6 +14,9 @@ export type ArchiveActionState = {
 const CONTACT_STATUSES = ["active", "standby"] as const;
 const CONTACT_PRIORITIES = ["standard", "important", "critical"] as const;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type ArchiveSupabaseClient =
+  | Awaited<ReturnType<typeof createSupabaseServerClient>>
+  | ReturnType<typeof createSupabaseServiceClient>;
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -25,6 +28,12 @@ function optionalText(formData: FormData, key: string) {
 
 function ids(formData: FormData, key: string) {
   return [...new Set(formData.getAll(key).map(Number).filter(Number.isSafeInteger))];
+}
+
+async function archiveClientForProfile(profile: { role: string }) {
+  return profile.role === "manager"
+    ? createSupabaseServiceClient()
+    : await createSupabaseServerClient();
 }
 
 function friendlyError(error: unknown) {
@@ -51,10 +60,10 @@ function friendlyError(error: unknown) {
     return "Esiste gia' un utente autorizzato con questa email.";
   }
   if (message.includes("REFERENCE_ALREADY_LINKED")) {
-    return "Questo riferimento e' gia' collegato a un altro utente.";
+    return "Questo referente e' gia' collegato a un altro utente.";
   }
   if (message.includes("REFERENCE_NOT_FOUND")) {
-    return "Il riferimento selezionato non esiste piu'.";
+    return "Il referente selezionato non esiste piu'.";
   }
 
   console.error("Archive operation failed", error);
@@ -125,45 +134,104 @@ function contactInput(formData: FormData) {
 }
 
 async function replaceAssociations(
+  supabase: ArchiveSupabaseClient,
   contactId: number,
   groupIds: number[],
   referenceIds: number[],
   actorProfileId: string,
 ) {
-  const supabase = await createSupabaseServerClient();
-  const { error: groupDeleteError } = await supabase
-    .from("contact_groups")
-    .delete()
-    .eq("contact_id", contactId);
-  if (groupDeleteError) throw groupDeleteError;
+  const [{ data: currentGroups, error: groupsReadError }, { data: currentReferences, error: referencesReadError }] =
+    await Promise.all([
+      supabase.from("contact_groups").select("group_id").eq("contact_id", contactId),
+      supabase.from("contact_references").select("reference_id,is_primary").eq("contact_id", contactId),
+    ]);
 
-  if (groupIds.length > 0) {
-    const { error } = await supabase.from("contact_groups").insert(
-      groupIds.map((groupId) => ({
-        contact_id: contactId,
-        group_id: groupId,
-        created_by_profile_id: actorProfileId,
-      })),
+  if (groupsReadError) throw groupsReadError;
+  if (referencesReadError) throw referencesReadError;
+
+  const currentGroupIds = new Set((currentGroups ?? []).map((row) => Number(row.group_id)));
+  const currentReferenceIds = new Set((currentReferences ?? []).map((row) => Number(row.reference_id)));
+  const nextGroupIds = new Set(groupIds);
+  const nextReferenceIds = new Set(referenceIds);
+  const groupIdsToDelete = [...currentGroupIds].filter((groupId) => !nextGroupIds.has(groupId));
+  const groupIdsToInsert = groupIds.filter((groupId) => !currentGroupIds.has(groupId));
+  const referenceIdsToDelete = [...currentReferenceIds].filter(
+    (referenceId) => !nextReferenceIds.has(referenceId),
+  );
+  const referenceIdsToInsert = referenceIds.filter((referenceId) => !currentReferenceIds.has(referenceId));
+  const desiredPrimaryReferenceId = referenceIds[0] ?? null;
+  const currentPrimaryReferenceId =
+    currentReferences?.find((row) => row.is_primary)?.reference_id ?? null;
+
+  const writes: PromiseLike<{ error: unknown }>[] = [];
+
+  if (groupIdsToDelete.length > 0) {
+    writes.push(
+      supabase
+        .from("contact_groups")
+        .delete()
+        .eq("contact_id", contactId)
+        .in("group_id", groupIdsToDelete),
     );
-    if (error) throw error;
   }
 
-  const { error: referenceDeleteError } = await supabase
-    .from("contact_references")
-    .delete()
-    .eq("contact_id", contactId);
-  if (referenceDeleteError) throw referenceDeleteError;
-
-  if (referenceIds.length > 0) {
-    const { error } = await supabase.from("contact_references").insert(
-      referenceIds.map((referenceId, index) => ({
-        contact_id: contactId,
-        reference_id: referenceId,
-        is_primary: index === 0,
-        created_by_profile_id: actorProfileId,
-      })),
+  if (groupIdsToInsert.length > 0) {
+    writes.push(
+      supabase.from("contact_groups").insert(
+        groupIdsToInsert.map((groupId) => ({
+          contact_id: contactId,
+          group_id: groupId,
+          created_by_profile_id: actorProfileId,
+        })),
+      ),
     );
-    if (error) throw error;
+  }
+
+  if (referenceIdsToDelete.length > 0) {
+    writes.push(
+      supabase
+        .from("contact_references")
+        .delete()
+        .eq("contact_id", contactId)
+        .in("reference_id", referenceIdsToDelete),
+    );
+  }
+
+  if (referenceIdsToInsert.length > 0) {
+    writes.push(
+      supabase.from("contact_references").insert(
+        referenceIdsToInsert.map((referenceId) => ({
+          contact_id: contactId,
+          reference_id: referenceId,
+          is_primary: referenceId === desiredPrimaryReferenceId,
+          created_by_profile_id: actorProfileId,
+        })),
+      ),
+    );
+  }
+
+  if (
+    currentReferenceIds.size > 0 &&
+    desiredPrimaryReferenceId &&
+    currentPrimaryReferenceId !== desiredPrimaryReferenceId
+  ) {
+    writes.push(
+      supabase
+        .from("contact_references")
+        .update({ is_primary: false })
+        .eq("contact_id", contactId)
+        .neq("reference_id", desiredPrimaryReferenceId),
+      supabase
+        .from("contact_references")
+        .update({ is_primary: true })
+        .eq("contact_id", contactId)
+        .eq("reference_id", desiredPrimaryReferenceId),
+    );
+  }
+
+  const results = await Promise.all(writes);
+  for (const result of results) {
+    if (result.error) throw result.error;
   }
 }
 
@@ -174,7 +242,7 @@ export async function createContactAction(
   const profile = await requireManager();
 
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await archiveClientForProfile(profile);
     const { data: contact, error } = await supabase
       .from("contacts")
       .insert({
@@ -187,6 +255,7 @@ export async function createContactAction(
     if (error) throw error;
 
     await replaceAssociations(
+      supabase,
       contact.id,
       ids(formData, "groupIds"),
       ids(formData, "referenceIds"),
@@ -213,7 +282,7 @@ export async function updateContactAction(
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await archiveClientForProfile(profile);
     const { error } = await supabase
       .from("contacts")
       .update({ ...contactInput(formData), updated_by_profile_id: profile.id })
@@ -222,6 +291,7 @@ export async function updateContactAction(
 
     if (profile.role === "manager") {
       await replaceAssociations(
+        supabase,
         contactId,
         ids(formData, "groupIds"),
         ids(formData, "referenceIds"),
@@ -334,11 +404,11 @@ export async function createReferenceAction(
   const manager = await requireManager();
   const { firstName, lastName, fullName } = referenceNameInput(formData);
   if (!firstName) {
-    return { status: "error", message: "Il nome del riferimento e' obbligatorio." };
+    return { status: "error", message: "Il nome del referente e' obbligatorio." };
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseServiceClient();
     const { error } = await supabase.from("internal_references").insert({
       first_name: firstName,
       last_name: lastName || null,
@@ -351,7 +421,7 @@ export async function createReferenceAction(
     if (error) throw error;
     revalidatePath("/dashboard/references");
     revalidatePath("/dashboard/contacts");
-    return { status: "success", message: "Riferimento creato correttamente." };
+    return { status: "success", message: "Referente creato correttamente." };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }
@@ -365,11 +435,19 @@ export async function updateReferenceAction(
   const referenceId = Number(text(formData, "referenceId"));
   const { firstName, lastName, fullName } = referenceNameInput(formData);
   if (!Number.isSafeInteger(referenceId) || !firstName) {
-    return { status: "error", message: "Nome o riferimento non valido." };
+    return { status: "error", message: "Nome o referente non valido." };
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseServiceClient();
+    const { data: currentReference, error: currentReferenceError } = await supabase
+      .from("internal_references")
+      .select("first_name,last_name,full_name,active")
+      .eq("id", referenceId)
+      .maybeSingle();
+
+    if (currentReferenceError) throw currentReferenceError;
+
     const { error } = await supabase
       .from("internal_references")
       .update({
@@ -383,9 +461,19 @@ export async function updateReferenceAction(
       })
       .eq("id", referenceId);
     if (error) throw error;
+
+    const affectsContactOptions =
+      !currentReference ||
+      currentReference.first_name !== firstName ||
+      (currentReference.last_name ?? "") !== (lastName || "") ||
+      currentReference.full_name !== fullName ||
+      currentReference.active !== (formData.get("active") === "on");
+
     revalidatePath("/dashboard/references");
-    revalidatePath("/dashboard/contacts");
-    return { status: "success", message: "Riferimento aggiornato correttamente." };
+    if (affectsContactOptions) {
+      revalidatePath("/dashboard/contacts");
+    }
+    return { status: "success", message: "Referente aggiornato correttamente." };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }
@@ -399,14 +487,14 @@ export async function deleteReferenceAction(
   const referenceId = Number(text(formData, "referenceId"));
 
   if (!Number.isSafeInteger(referenceId)) {
-    return { status: "error", message: "Riferimento non valido." };
+    return { status: "error", message: "Referente non valido." };
   }
   if (text(formData, "confirmation") !== "ELIMINA") {
     return { status: "error", message: "Scrivi ELIMINA per confermare la cancellazione." };
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseServiceClient();
     const { error } = await supabase
       .from("internal_references")
       .update({
@@ -423,7 +511,7 @@ export async function deleteReferenceAction(
     revalidatePath("/dashboard/contacts");
     revalidatePath("/dashboard/references");
     revalidatePath("/dashboard/users");
-    return { status: "success", message: "Riferimento eliminato dall'archivio operativo." };
+    return { status: "success", message: "Referente eliminato dall'archivio operativo." };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }
@@ -444,13 +532,13 @@ export async function convertReferenceToUserAction(
   ].filter(Boolean);
 
   if (!Number.isSafeInteger(referenceId)) {
-    return { status: "error", message: "Riferimento non valido." };
+    return { status: "error", message: "Referente non valido." };
   }
 
   if (missingFields.length > 0) {
     return {
       status: "error",
-      message: `Per convertire il riferimento in utente mancano: ${missingFields.join(", ")}.`,
+      message: `Per convertire il referente in utente mancano: ${missingFields.join(", ")}.`,
     };
   }
 
@@ -464,10 +552,10 @@ export async function convertReferenceToUserAction(
 
     if (referenceError) throw referenceError;
     if (!reference) {
-      return { status: "error", message: "Il riferimento selezionato non esiste piu'." };
+      return { status: "error", message: "Il referente selezionato non esiste piu'." };
     }
     if (reference.profile_id) {
-      return { status: "error", message: "Questo riferimento e' gia' collegato a un utente." };
+      return { status: "error", message: "Questo referente e' gia' collegato a un utente." };
     }
 
     const { data: existingProfile, error: profileError } = await service
@@ -480,7 +568,7 @@ export async function convertReferenceToUserAction(
     if (existingProfile && existingProfile.role !== "reference") {
       return {
         status: "error",
-        message: "Esiste gia' un utente con questa email, ma non e' un riferimento.",
+        message: "Esiste gia' un utente con questa email, ma non e' un referente.",
       };
     }
 
@@ -519,8 +607,8 @@ export async function convertReferenceToUserAction(
     return {
       status: "success",
       message: existingProfile
-        ? `${fullName} e' stato collegato all'utente riferimento esistente.`
-        : `${fullName} e' ora un utente riferimento e puo' accedere ai contatti assegnati.`,
+        ? `${fullName} e' stato collegato all'utente referente esistente.`
+        : `${fullName} e' ora un utente referente e puo' accedere ai contatti assegnati.`,
     };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };

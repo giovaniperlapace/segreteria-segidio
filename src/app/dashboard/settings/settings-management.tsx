@@ -113,7 +113,7 @@ export function SettingsManagement({ languages }: { languages: Language[] }) {
             href="/dashboard/references"
             className="rounded-xl border border-[#d9e1f2] px-4 py-3 text-sm font-semibold text-[#1b3272] hover:border-[#d43c2f]"
           >
-            Gestisci riferimenti interni
+            Gestisci referenti interni
           </Link>
         </div>
       </section>

@@ -36,10 +36,10 @@ function friendlyError(error: unknown) {
     return "Esiste gia' un utente autorizzato con questa email.";
   }
   if (message.includes("REFERENCE_ALREADY_LINKED")) {
-    return "Il riferimento selezionato e' gia' collegato a un altro utente.";
+    return "Il referente selezionato e' gia' collegato a un altro utente.";
   }
   if (message.includes("REFERENCE_NOT_FOUND")) {
-    return "Il riferimento selezionato non esiste piu'.";
+    return "Il referente selezionato non esiste piu'.";
   }
 
   console.error("User administration failed", error);
@@ -130,7 +130,7 @@ export async function createUserAction(
     return {
       status: "success",
       message: `${[firstName, lastName].filter(Boolean).join(" ")} e' ora autorizzato come ${
-        role === "manager" ? "manager" : "riferimento"
+        role === "manager" ? "manager" : "referente"
       }.`,
     };
   } catch (error) {

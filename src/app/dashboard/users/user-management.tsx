@@ -128,7 +128,7 @@ function CreateUserForm() {
             onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5"
           >
-            <option value="reference">Persona di riferimento</option>
+            <option value="reference">Referente</option>
             <option value="manager">Manager</option>
           </select>
         </label>
@@ -191,7 +191,7 @@ function UserEditor({
             aria-label={`Ruolo di ${user.first_name} ${user.last_name}`}
             className="min-w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           >
-            <option value="reference">Persona di riferimento</option>
+            <option value="reference">Referente</option>
             <option value="manager">Manager</option>
           </select>
         </td>
@@ -323,7 +323,7 @@ export function UserManagement({
             >
               <option value="all">Tutti i ruoli</option>
               <option value="manager">Manager</option>
-              <option value="reference">Persone di riferimento</option>
+              <option value="reference">Referenti</option>
             </select>
             <select
               value={statusFilter}

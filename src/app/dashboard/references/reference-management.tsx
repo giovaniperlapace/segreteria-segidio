@@ -61,7 +61,7 @@ function CreateReferenceForm() {
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <SubmitButton pending={pending}>Crea riferimento</SubmitButton>
+        <SubmitButton pending={pending}>Crea referente</SubmitButton>
         <ActionMessage state={state} />
       </div>
     </form>
@@ -95,7 +95,7 @@ function ReferenceRow({
         }`}
         onClick={onToggle}
       >
-        <td className="px-4 py-3 font-semibold text-[#1b3272]">
+        <td className="px-3 py-3 font-semibold text-[#1b3272]">
           <button
             type="button"
             className="text-left hover:underline"
@@ -107,14 +107,15 @@ function ReferenceRow({
             {reference.first_name}
           </button>
         </td>
-        <td className="px-4 py-3 text-slate-700">{reference.last_name || "—"}</td>
-        <td className="px-4 py-3 text-slate-700">{reference.email || "—"}</td>
-        <td className="px-4 py-3 text-slate-700">{reference.phone || "—"}</td>
-        <td className="max-w-sm px-4 py-3 text-slate-700">
+        <td className="px-3 py-3 text-slate-700">{reference.last_name || "—"}</td>
+        <td className="max-w-0 truncate px-3 py-3 text-slate-700" title={reference.email ?? undefined}>
+          {reference.email || "—"}
+        </td>
+        <td className="px-3 py-3 text-slate-700">
           <span className="line-clamp-2">{reference.notes || "—"}</span>
         </td>
-        <td className="px-4 py-3 text-sm text-slate-700">{reference.contact_count}</td>
-        <td className="px-4 py-3">
+        <td className="px-3 py-3 text-sm text-slate-700">{reference.contact_count}</td>
+        <td className="px-3 py-3">
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
               reference.linked_profile
@@ -125,23 +126,23 @@ function ReferenceRow({
             {accountLabel}
           </span>
         </td>
-        <td className="px-4 py-3 text-slate-700">{reference.active ? "Attivo" : "Disattivato"}</td>
-        <td className="px-4 py-3">
+        <td className="px-3 py-3 text-slate-700">{reference.active ? "Attivo" : "Disattivato"}</td>
+        <td className="px-3 py-3 text-right">
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
               onToggle();
             }}
-            className="text-sm font-semibold text-[#d43c2f] hover:underline"
+            className="whitespace-nowrap text-sm font-semibold text-[#d43c2f] hover:underline"
           >
-            {isOpen ? "Chiudi" : "Apri scheda"}
+            {isOpen ? "Chiudi" : "Apri"}
           </button>
         </td>
       </tr>
       {isOpen ? (
         <tr className="border-t border-slate-100 bg-[#fbfcff]">
-          <td colSpan={9} className="px-4 py-5">
+          <td colSpan={8} className="px-4 py-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -217,7 +218,7 @@ function ReferenceRow({
               <form
                 action={deleteAction}
                 onSubmit={(event) => {
-                  if (!window.confirm(`Eliminare il riferimento "${reference.full_name}" dalle liste operative?`)) {
+                  if (!window.confirm(`Eliminare il referente "${reference.full_name}" dalle liste operative?`)) {
                     event.preventDefault();
                   }
                 }}
@@ -236,8 +237,8 @@ function ReferenceRow({
                 <button
                   type="submit"
                   disabled={deletePending}
-                  title={deletePending ? "Eliminazione in corso" : "Elimina riferimento"}
-                  aria-label={deletePending ? "Eliminazione in corso" : "Elimina riferimento"}
+                  title={deletePending ? "Eliminazione in corso" : "Elimina referente"}
+                  aria-label={deletePending ? "Eliminazione in corso" : "Elimina referente"}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-700 text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
                 >
                   {deletePending ? (
@@ -318,7 +319,7 @@ function ReferenceRow({
                   </div>
                 ) : (
                   <p className="mt-3 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
-                    Nessun contatto associato a questo riferimento.
+                    Nessun contatto associato a questo referente.
                   </p>
                 )}
               </div>
@@ -409,16 +410,16 @@ export function ReferenceManagement({
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-[#1b3272]">Nuovo riferimento</h2>
+        <h2 className="mb-4 text-lg font-semibold text-[#1b3272]">Nuovo referente</h2>
         <CreateReferenceForm />
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div>
-            <h2 className="text-xl font-semibold text-[#1b3272]">Riferimenti</h2>
+            <h2 className="text-xl font-semibold text-[#1b3272]">Referenti</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {filteredReferences.length} di {references.length} riferimenti
+              {filteredReferences.length} di {references.length} referenti
             </p>
           </div>
           <div className="grid w-full gap-2 sm:grid-cols-3 lg:max-w-3xl">
@@ -427,7 +428,7 @@ export function ReferenceManagement({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Cerca nome, email, telefono o note"
-              aria-label="Cerca riferimenti"
+              aria-label="Cerca referenti"
               className={inputClass}
             />
             <select
@@ -452,47 +453,52 @@ export function ReferenceManagement({
             </select>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse text-left">
+        <div className="w-full overflow-hidden">
+          <table className="w-full table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[18%]" />
+              <col className="w-[19%]" />
+              <col className="w-[8%]" />
+              <col className="w-[12%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+            </colgroup>
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("first_name")}>
                     Nome{sortLabel("first_name")}
                   </button>
                 </th>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("last_name")}>
                     Cognome{sortLabel("last_name")}
                   </button>
                 </th>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("email")}>
                     Email{sortLabel("email")}
                   </button>
                 </th>
-                <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort("phone")}>
-                    Telefono{sortLabel("phone")}
-                  </button>
-                </th>
-                <th className="px-4 py-3">Note</th>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">Note</th>
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("contact_count")}>
                     Contatti{sortLabel("contact_count")}
                   </button>
                 </th>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("linked_profile")}>
                     Account{sortLabel("linked_profile")}
                   </button>
                 </th>
-                <th className="px-4 py-3">
+                <th className="px-3 py-3">
                   <button type="button" onClick={() => toggleSort("active")}>
                     Stato{sortLabel("active")}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-right">Azioni</th>
+                <th className="px-3 py-3 text-right">Azioni</th>
               </tr>
             </thead>
             <tbody>
@@ -507,8 +513,8 @@ export function ReferenceManagement({
               ))}
               {filteredReferences.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500">
-                    Nessun riferimento trovato con i filtri selezionati.
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
+                    Nessun referente trovato con i filtri selezionati.
                   </td>
                 </tr>
               ) : null}

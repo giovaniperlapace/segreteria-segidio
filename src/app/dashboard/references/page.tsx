@@ -103,8 +103,8 @@ export default async function ReferencesPage() {
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
           <Link href="/dashboard" className="text-sm font-semibold text-[#d43c2f] hover:underline">← Dashboard</Link>
-          <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Riferimenti interni</h1>
-          <p className="mt-2 text-sm text-slate-600">Gestisci le persone interne a cui assegnare i contatti. Gli account reference vengono collegati automaticamente dalla gestione utenti.</p>
+          <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Referenti interni</h1>
+          <p className="mt-2 text-sm text-slate-600">Gestisci i referenti interni a cui assegnare i contatti. Gli account dei referenti vengono collegati automaticamente dalla gestione utenti.</p>
         </header>
         <ReferenceManagement
           references={(referencesResult.data ?? []).map((reference) => ({

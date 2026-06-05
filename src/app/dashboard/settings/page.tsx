@@ -34,7 +34,7 @@ export default async function SettingsPage() {
           </Link>
           <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Settings</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Impostazioni riutilizzabili dell&apos;archivio: lingue, gruppi, riferimenti e altre
+            Impostazioni riutilizzabili dell&apos;archivio: lingue, gruppi, referenti e altre
             liste operative che aggiungeremo in futuro.
           </p>
         </header>

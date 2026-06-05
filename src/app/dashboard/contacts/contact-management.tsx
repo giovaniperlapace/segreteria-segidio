@@ -770,13 +770,13 @@ function ContactFields({
               />
             </label>
             <label className={labelClass()}>
-              Riferimenti
+              Referenti
               <AssociationPicker
                 name="referenceIds"
                 options={references}
                 selectedIds={contact?.reference_ids ?? []}
-                emptyLabel="Nessun riferimento selezionato."
-                searchLabel="Cerca riferimento"
+                emptyLabel="Nessun referente selezionato."
+                searchLabel="Cerca referente"
               />
             </label>
           </>
@@ -797,7 +797,7 @@ function ContactFields({
         <LegacyImportInfo contact={contact} />
       </div>
       <p className="text-xs text-slate-500">
-        Inserisci almeno nome, cognome o istituzione. Gruppi e riferimenti selezionati sono evidenziati sopra le opzioni.
+        Inserisci almeno nome, cognome o istituzione. Gruppi e referenti selezionati sono evidenziati sopra le opzioni.
       </p>
     </>
   );
@@ -961,7 +961,7 @@ export function ContactEditor({
                 <SummaryAssociations label="Gruppi" items={contactGroups} />
               ) : null}
               {contactReferences.length > 0 ? (
-                <SummaryAssociations label="Riferimenti" items={contactReferences} />
+                <SummaryAssociations label="Referenti" items={contactReferences} />
               ) : null}
             </div>
           ) : null}
@@ -1110,7 +1110,7 @@ function ContactsTable({
                 {renderHeaderButton("groups", "Gruppi")}
               </th>
               <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("references", "Riferimenti")}
+                {renderHeaderButton("references", "Referenti")}
               </th>
               <th className="px-4 py-3 normal-case tracking-normal">
                 {renderHeaderButton("country", "Paese")}
@@ -1388,8 +1388,8 @@ export function ContactManagement({
               selectedIds={groupIds}
               onChange={setGroupIds}
             />
-            <select value={referenceId} onChange={(event) => setReferenceId(event.target.value)} aria-label="Filtra per riferimento" className={inputClass}>
-              <option value="all">Tutti i riferimenti</option>{references.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+            <select value={referenceId} onChange={(event) => setReferenceId(event.target.value)} aria-label="Filtra per referente" className={inputClass}>
+              <option value="all">Tutti i referenti</option>{references.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
             </select>
             <select value={missing} onChange={(event) => setMissing(event.target.value)} aria-label="Filtra per dati mancanti" className={inputClass}>
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>

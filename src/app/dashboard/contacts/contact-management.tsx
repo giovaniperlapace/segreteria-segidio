@@ -394,12 +394,14 @@ function AssociationPicker({
 }) {
   const [selected, setSelected] = useState(() => new Set(selectedIds));
   const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const normalizedSearch = normalizeSearch(search);
   const selectedOptions = options.filter((option) => selected.has(option.id));
   const visibleOptions = options
     .filter((option) => {
-      if (selected.has(option.id)) return true;
-      if (!normalizedSearch) return options.length <= 40;
+      if (selected.has(option.id)) return false;
+      if (!normalizedSearch) return true;
       return normalizeSearch(option.name).includes(normalizedSearch);
     })
     .slice(0, normalizedSearch ? 40 : options.length);
@@ -416,63 +418,94 @@ function AssociationPicker({
     });
   }
 
+  function addOption(id: number) {
+    setSelected((current) => new Set(current).add(id));
+    setSearch("");
+    setOpen(false);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="mt-1.5 rounded-xl border border-slate-300 bg-white p-3">
+    <div ref={containerRef} className="relative mt-1.5 rounded-xl border border-slate-300 bg-white p-3">
       {[...selected].map((id) => (
         <input key={id} type="hidden" name={name} value={id} />
       ))}
       {selectedOptions.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {selectedOptions.map((option) => (
-            <span
+            <button
               key={option.id}
-              className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]"
+              type="button"
+              onClick={() => toggle(option.id)}
+              className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272] hover:bg-[#1b3272]/20"
+              title={`Rimuovi ${option.name}`}
             >
               {option.name}
-            </span>
+              <span className="ml-1 text-[#d43c2f]">×</span>
+            </button>
           ))}
         </div>
       ) : (
         <p className="mb-3 text-xs text-slate-500">{emptyLabel}</p>
       )}
-      {options.length > 12 ? (
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={searchLabel}
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
-        />
-      ) : null}
-      <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
-        {visibleOptions.length > 0 ? (
-          visibleOptions.map((option) => (
-            <label
-              key={option.id}
-              className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                selected.has(option.id)
-                  ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(option.id)}
-                onChange={() => toggle(option.id)}
-                className="h-4 w-4 accent-[#1b3272]"
-              />
-              <span>
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder={searchLabel}
+        autoComplete="off"
+        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
+      />
+      {open ? (
+        <div className="absolute left-3 right-3 z-30 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
+          {visibleOptions.length > 0 ? (
+            visibleOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => addOption(option.id)}
+                className="block w-full px-3 py-2 text-left text-slate-800 hover:bg-[#f5f7fb]"
+              >
                 {option.name}
                 {option.active ? "" : " (non attivo)"}
-              </span>
-            </label>
-          ))
-        ) : (
-          <p className="px-2 py-3 text-sm text-slate-500">
-            Nessuna opzione trovata.
-          </p>
-        )}
-      </div>
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-3 text-sm text-slate-500">
+              Nessuna opzione trovata.
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -761,75 +794,7 @@ function ContactFields({
             className={inputClass}
           />
         </label>
-        <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-4">
-          <summary className="cursor-pointer text-sm font-semibold text-[#1b3272]">Dati legacy aggiuntivi</summary>
-          <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <label className={labelClass()}>
-              Descrizione
-              <input name="legacyDescription" defaultValue={contact?.legacy_description ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Intestazione
-              <input name="legacySalutation" defaultValue={contact?.legacy_salutation ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Carica invito
-              <input name="institutionalRoleInvitation" defaultValue={contact?.institutional_role_invitation ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Carica inglese
-              <input name="institutionalRoleEnglish" defaultValue={contact?.institutional_role_english ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Nome ufficio
-              <input name="officeName" defaultValue={contact?.office_name ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Indirizzo ufficio
-              <input name="officeAddressLine" defaultValue={contact?.office_address_line ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Citta&apos; ufficio
-              <input name="officeCity" defaultValue={contact?.office_city ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Paese ufficio
-              <input name="officeCountry" defaultValue={contact?.office_country ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Indirizzo casa
-              <input name="homeAddressLine" defaultValue={contact?.home_address_line ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Citta&apos; casa
-              <input name="homeCity" defaultValue={contact?.home_city ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Lingua invito
-              <input name="invitationLanguage" defaultValue={contact?.invitation_language ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Lingua 2
-              <input name="spokenLanguage2" defaultValue={contact?.spoken_language_2 ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Fax ufficio
-              <input name="fax" defaultValue={contact?.fax ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Fax casa
-              <input name="faxHome" defaultValue={contact?.fax_home ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Accompagnatore
-              <input name="accompanist" defaultValue={contact?.accompanist ?? ""} className={inputClass} />
-            </label>
-            <label className={labelClass()}>
-              Gruppo inviti legacy
-              <input name="legacyInvitationGroup" defaultValue={contact?.legacy_invitation_group ?? ""} className={inputClass} />
-            </label>
-          </div>
-        </details>
+        <LegacyImportInfo contact={contact} />
       </div>
       <p className="text-xs text-slate-500">
         Inserisci almeno nome, cognome o istituzione. Gruppi e riferimenti selezionati sono evidenziati sopra le opzioni.
@@ -863,6 +828,85 @@ function CreateContactForm({
         <ActionMessage state={state} />
       </div>
     </form>
+  );
+}
+
+function normalizedEqual(a: string | null, b: string | null) {
+  return normalizeSearch((a ?? "").trim()) === normalizeSearch((b ?? "").trim());
+}
+
+function legacyInfoRows(contact?: ContactRecord) {
+  if (!contact) return [];
+
+  const rows = [
+    ["Descrizione Access", contact.legacy_description],
+    ["Intestazione", contact.legacy_salutation],
+    ["Carica invito", contact.institutional_role_invitation],
+    ["Carica inglese", contact.institutional_role_english],
+    [
+      "Nome ufficio",
+      normalizedEqual(contact.office_name, contact.institution) ? null : contact.office_name,
+    ],
+    [
+      "Indirizzo ufficio",
+      normalizedEqual(contact.office_address_line, contact.address_line) ? null : contact.office_address_line,
+    ],
+    [
+      "Citta' ufficio",
+      normalizedEqual(contact.office_city, contact.city) ? null : contact.office_city,
+    ],
+    [
+      "Paese ufficio",
+      normalizedEqual(contact.office_country, contact.country) ? null : contact.office_country,
+    ],
+    [
+      "Indirizzo casa",
+      normalizedEqual(contact.home_address_line, contact.address_line) ? null : contact.home_address_line,
+    ],
+    [
+      "Citta' casa",
+      normalizedEqual(contact.home_city, contact.city) ? null : contact.home_city,
+    ],
+    ["Lingua invito", contact.invitation_language],
+    [
+      "Lingua 2",
+      normalizedEqual(contact.spoken_language_2, contact.spoken_language) ? null : contact.spoken_language_2,
+    ],
+    ["Fax ufficio", contact.fax],
+    ["Fax casa", contact.fax_home],
+    ["Accompagnatore", contact.accompanist],
+    ["Gruppo inviti legacy", contact.legacy_invitation_group],
+  ];
+
+  return rows.filter((row): row is [string, string] => Boolean(row[1]?.trim()));
+}
+
+function LegacyImportInfo({ contact }: { contact?: ContactRecord }) {
+  const rows = legacyInfoRows(contact);
+  if (rows.length === 0) return null;
+
+  return (
+    <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 sm:col-span-4">
+      <summary className="cursor-pointer text-sm font-semibold text-[#1b3272]">
+        Info import Access
+        <span className="ml-2 text-xs font-normal text-slate-500">
+          {rows.length} {rows.length === 1 ? "campo conservato" : "campi conservati"}
+        </span>
+      </summary>
+      <div className="mt-3 rounded-lg border border-slate-200 bg-white">
+        <dl className="grid divide-y divide-slate-100 text-sm md:grid-cols-2 md:divide-x md:divide-y-0">
+          {rows.map(([label, value]) => (
+            <div key={label} className="px-3 py-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+              <dd className="mt-1 whitespace-pre-wrap text-slate-800">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        Valori conservati dall&apos;archivio Access. Sono in sola lettura finche&apos; non decidiamo quali promuovere nella scheda principale.
+      </p>
+    </details>
   );
 }
 

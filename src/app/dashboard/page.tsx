@@ -1,5 +1,6 @@
 import { LogoutButton } from "./logout-button";
 import { requireProfile } from "@/lib/auth/profile";
+import { BrandLogo } from "@/app/brand-logo";
 import Link from "next/link";
 
 const managerCards = [
@@ -16,19 +17,24 @@ export default async function DashboardPage() {
   const isManager = profile.role === "manager";
 
   return (
-    <main className="min-h-screen bg-[#f4f1e8] px-6 py-8">
+    <main className="min-h-screen bg-[#f5f7fb] px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#b56b32]">
-              Segreteria Segidio
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-[#173f5f]">
-              Bentornato, {profile.first_name}
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Ruolo: {isManager ? "Manager" : "Persona di riferimento"}
-            </p>
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="shrink-0">
+              <BrandLogo />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#d43c2f]">
+                Segreteria Segidio
+              </p>
+              <h1 className="mt-1 text-3xl font-semibold text-[#1b3272]">
+                Bentornato, {profile.first_name}
+              </h1>
+              <p className="mt-1 text-sm text-slate-600">
+                Ruolo: {isManager ? "Manager" : "Persona di riferimento"}
+              </p>
+            </div>
           </div>
           <LogoutButton />
         </header>
@@ -40,19 +46,19 @@ export default async function DashboardPage() {
           ).map(([title, description, href]) => (
             <article
               key={title}
-              className="rounded-2xl border border-[#d8d1bd] bg-white p-6 shadow-sm"
+              className="rounded-2xl border border-[#d9e1f2] bg-white p-6 shadow-sm"
             >
-              <h2 className="text-lg font-semibold text-[#173f5f]">{title}</h2>
+              <h2 className="text-lg font-semibold text-[#1b3272]">{title}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
               {href ? (
                 <Link
                   href={href}
-                  className="mt-5 inline-block text-sm font-semibold text-[#b56b32] hover:underline"
+                  className="mt-5 inline-block text-sm font-semibold text-[#d43c2f] hover:underline"
                 >
                   Apri gestione →
                 </Link>
               ) : (
-                <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-[#b56b32]">
+                <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-[#d43c2f]">
                   Disponibile nelle prossime milestone
                 </p>
               )}

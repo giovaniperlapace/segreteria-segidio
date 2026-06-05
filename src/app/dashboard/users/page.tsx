@@ -17,17 +17,17 @@ export default async function UsersPage() {
   if (profilesError) throw profilesError;
 
   return (
-    <main className="min-h-screen bg-[#f4f1e8] px-6 py-8">
+    <main className="min-h-screen bg-[#f5f7fb] px-6 py-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <Link
               href="/dashboard"
-              className="text-sm font-semibold text-[#b56b32] hover:underline"
+              className="text-sm font-semibold text-[#d43c2f] hover:underline"
             >
               ← Dashboard
             </Link>
-            <h1 className="mt-3 text-3xl font-semibold text-[#173f5f]">
+            <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">
               Utenti e ruoli
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">

@@ -69,11 +69,11 @@ export default async function ContactsPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[#f4f1e8] px-4 py-8 sm:px-6">
+    <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-7xl">
         <header className="mb-8">
-          <Link href="/dashboard" className="text-sm font-semibold text-[#b56b32] hover:underline">← Dashboard</Link>
-          <h1 className="mt-3 text-3xl font-semibold text-[#173f5f]">Contatti</h1>
+          <Link href="/dashboard" className="text-sm font-semibold text-[#d43c2f] hover:underline">← Dashboard</Link>
+          <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Contatti</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
             {profile.role === "manager"
               ? "Gestisci l'archivio, le associazioni e i dati mancanti."

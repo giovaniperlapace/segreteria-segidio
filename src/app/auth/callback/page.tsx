@@ -49,9 +49,9 @@ function CallbackContent() {
 
 export default function AuthCallbackPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f4f1e8] px-6">
+    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6">
       <section className="rounded-2xl bg-white p-8 shadow-lg">
-        <h1 className="text-xl font-semibold text-[#173f5f]">Accesso sicuro</h1>
+        <h1 className="text-xl font-semibold text-[#1b3272]">Accesso sicuro</h1>
         <Suspense fallback={<p className="mt-3 text-sm">Caricamento...</p>}>
           <CallbackContent />
         </Suspense>

@@ -34,8 +34,8 @@ export type ContactRecord = {
   missing_fields: string[];
 };
 
-type Option = { id: number; name: string; active: boolean };
-type LanguageOption = { id: number; name: string; active: boolean };
+export type Option = { id: number; name: string; active: boolean };
+export type LanguageOption = { id: number; name: string; active: boolean };
 type ContactViewMode = "cards" | "table";
 type ContactTableSortKey =
   | "name"
@@ -326,7 +326,7 @@ function CountryInput({ defaultValue }: { defaultValue: string }) {
                 setValue(country);
                 setOpen(false);
               }}
-              className="block w-full px-3 py-2 text-left text-slate-800 hover:bg-[#f4f1e8]"
+              className="block w-full px-3 py-2 text-left text-slate-800 hover:bg-[#f5f7fb]"
             >
               {country}
             </button>
@@ -384,7 +384,7 @@ function AssociationPicker({
           {selectedOptions.map((option) => (
             <span
               key={option.id}
-              className="rounded-full bg-[#173f5f]/10 px-2.5 py-1 text-xs font-semibold text-[#173f5f]"
+              className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]"
             >
               {option.name}
             </span>
@@ -399,7 +399,7 @@ function AssociationPicker({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={searchLabel}
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
         />
       ) : null}
       <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
@@ -409,7 +409,7 @@ function AssociationPicker({
               key={option.id}
               className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
                 selected.has(option.id)
-                  ? "bg-[#173f5f]/10 font-semibold text-[#173f5f]"
+                  ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
                   : "text-slate-700 hover:bg-slate-50"
               }`}
             >
@@ -417,7 +417,7 @@ function AssociationPicker({
                 type="checkbox"
                 checked={selected.has(option.id)}
                 onChange={() => toggle(option.id)}
-                className="h-4 w-4 accent-[#173f5f]"
+                className="h-4 w-4 accent-[#1b3272]"
               />
               <span>
                 {option.name}
@@ -485,7 +485,7 @@ function MultiGroupFilter({
               {selectedGroups.map((group) => (
                 <span
                   key={group.id}
-                  className="rounded-full bg-[#173f5f]/10 px-2.5 py-1 text-xs font-semibold text-[#173f5f]"
+                  className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]"
                 >
                   {group.name}
                 </span>
@@ -497,7 +497,7 @@ function MultiGroupFilter({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Cerca gruppo"
-            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
           <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
             {visibleGroups.map((group) => (
@@ -505,7 +505,7 @@ function MultiGroupFilter({
                 key={group.id}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
                   selected.has(group.id)
-                    ? "bg-[#173f5f]/10 font-semibold text-[#173f5f]"
+                    ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
@@ -513,7 +513,7 @@ function MultiGroupFilter({
                   type="checkbox"
                   checked={selected.has(group.id)}
                   onChange={() => toggle(group.id)}
-                  className="h-4 w-4 accent-[#173f5f]"
+                  className="h-4 w-4 accent-[#1b3272]"
                 />
                 <span>{group.name}</span>
               </label>
@@ -523,7 +523,7 @@ function MultiGroupFilter({
             <button
               type="button"
               onClick={() => onChange([])}
-              className="mt-3 text-xs font-semibold text-[#b56b32] hover:underline"
+              className="mt-3 text-xs font-semibold text-[#d43c2f] hover:underline"
             >
               Rimuovi filtro gruppi
             </button>
@@ -725,18 +725,20 @@ function SummaryAssociations({ label, items }: { label: string; items: Option[] 
   );
 }
 
-function ContactEditor({
+export function ContactEditor({
   contact,
   groups,
   references,
   languages,
   isManager,
+  open,
 }: {
   contact: ContactRecord;
   groups: Option[];
   references: Option[];
   languages: LanguageOption[];
   isManager: boolean;
+  open?: boolean;
 }) {
   const [state, action, pending] = useArchiveAction(updateContactAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteContactAction);
@@ -745,10 +747,10 @@ function ContactEditor({
   const contactReferences = references.filter((reference) => contact.reference_ids.includes(reference.id));
 
   return (
-    <details className="group rounded-2xl border border-[#d8d1bd] bg-white shadow-sm">
+    <details open={open} className="group rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
-          <h3 className="font-semibold text-[#173f5f]">{displayName}</h3>
+          <h3 className="font-semibold text-[#1b3272]">{displayName}</h3>
           <p className="mt-1 text-sm text-slate-600">
             {[contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · ") || "Nessun dettaglio aggiuntivo"}
           </p>
@@ -772,7 +774,7 @@ function ContactEditor({
               {contact.missing_fields.length} dati mancanti
             </span>
           ) : null}
-          <span className="rounded-full bg-[#173f5f]/10 px-2.5 py-1 text-[#173f5f]">
+          <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-[#1b3272]">
             {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
           </span>
         </div>
@@ -805,30 +807,47 @@ function ContactEditor({
               event.preventDefault();
             }
           }}
-          className="rounded-2xl border border-red-200 bg-red-50 p-4"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2"
         >
           <input type="hidden" name="contactId" value={contact.id} />
-          <h4 className="text-sm font-semibold text-red-900">Elimina contatto</h4>
-          <p className="mt-1 text-sm text-red-800">
-            Il contatto sparira&apos; dall&apos;archivio operativo. Lo storico resta conservato nel database.
-          </p>
-          <label className="mt-3 block text-sm font-medium text-red-900">
-            Scrivi ELIMINA per confermare
+          <label className="flex items-center gap-2 text-xs font-medium text-red-900">
+            Conferma
             <input
               name="confirmation"
-              className="mt-1.5 w-full max-w-xs rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+              placeholder="ELIMINA"
+              aria-label="Scrivi ELIMINA per confermare"
+              className="h-9 w-28 rounded-lg border border-red-200 bg-white px-2 text-sm text-slate-900 placeholder:text-red-300 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
             />
           </label>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={deletePending}
-              className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
-            >
-              {deletePending ? "Eliminazione..." : "Elimina contatto"}
-            </button>
-            <ActionMessage state={deleteState} />
-          </div>
+          <button
+            type="submit"
+            disabled={deletePending}
+            title={deletePending ? "Eliminazione in corso" : "Elimina contatto"}
+            aria-label={deletePending ? "Eliminazione in corso" : "Elimina contatto"}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-700 text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
+          >
+            {deletePending ? (
+              <span className="text-xs font-semibold">...</span>
+            ) : (
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              >
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 16H6L5 6" />
+                <path d="M10 11v6" />
+                <path d="M14 11v6" />
+              </svg>
+            )}
+          </button>
+          <ActionMessage state={deleteState} />
         </form>
       ) : null}
       </div>
@@ -861,7 +880,7 @@ function ContactsTable({
       <button
         type="button"
         onClick={() => onSort(keyName)}
-        className="font-semibold text-[#173f5f] hover:text-[#b56b32]"
+        className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
       >
         {label}
         {sortLabel(keyName)}
@@ -870,10 +889,10 @@ function ContactsTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#d8d1bd] bg-white shadow-sm">
+    <div className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-[#f8f6ef] text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="bg-[#f8fafc] text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 normal-case tracking-normal">
                 {renderHeaderButton("name", "Nome")}
@@ -913,8 +932,8 @@ function ContactsTable({
               const referencesText = optionNames(contact.reference_ids, references).join(", ");
 
               return (
-                <tr key={contact.id} className="align-top hover:bg-[#f8f6ef]">
-                  <td className="px-4 py-3 font-semibold text-[#173f5f]">
+                <tr key={contact.id} className="align-top hover:bg-[#f8fafc]">
+                  <td className="px-4 py-3 font-semibold text-[#1b3272]">
                     <div>{contactDisplayName(contact)}</div>
                     {contact.email ? (
                       <div className="mt-1 text-xs font-normal text-slate-500">{contact.email}</div>
@@ -932,7 +951,7 @@ function ContactsTable({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="rounded-full bg-[#173f5f]/10 px-2.5 py-1 text-xs font-semibold text-[#173f5f]">
+                    <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]">
                       {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
                     </span>
                   </td>
@@ -1061,8 +1080,8 @@ export function ContactManagement({
   return (
     <div className="space-y-8">
       {isManager ? (
-        <details className="rounded-2xl border border-[#d8d1bd] bg-white px-5 py-4 shadow-sm">
-          <summary className="cursor-pointer text-lg font-semibold text-[#173f5f]">Nuovo contatto</summary>
+        <details className="rounded-2xl border border-[#d9e1f2] bg-white px-5 py-4 shadow-sm">
+          <summary className="cursor-pointer text-lg font-semibold text-[#1b3272]">Nuovo contatto</summary>
           <div className="mt-5 border-t border-slate-200 pt-5">
             <CreateContactForm
               groups={groups}
@@ -1074,10 +1093,10 @@ export function ContactManagement({
         </details>
       ) : null}
 
-      <section className="rounded-2xl border border-[#d8d1bd] bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-[#173f5f]">Archivio contatti</h2>
+            <h2 className="text-xl font-semibold text-[#1b3272]">Archivio contatti</h2>
             <p className="mt-1 text-sm text-slate-600">{filtered.length} di {contacts.length} contatti</p>
           </div>
           <div className="flex rounded-xl border border-slate-300 bg-white p-1 text-sm font-semibold">
@@ -1086,8 +1105,8 @@ export function ContactManagement({
               onClick={() => changeViewMode("cards")}
               className={`rounded-lg px-3 py-2 ${
                 viewMode === "cards"
-                  ? "bg-[#173f5f] text-white"
-                  : "text-[#173f5f] hover:bg-[#173f5f]/10"
+                  ? "bg-[#1b3272] text-white"
+                  : "text-[#1b3272] hover:bg-[#1b3272]/10"
               }`}
               aria-pressed={viewMode === "cards"}
             >
@@ -1098,8 +1117,8 @@ export function ContactManagement({
               onClick={() => changeViewMode("table")}
               className={`rounded-lg px-3 py-2 ${
                 viewMode === "table"
-                  ? "bg-[#173f5f] text-white"
-                  : "text-[#173f5f] hover:bg-[#173f5f]/10"
+                  ? "bg-[#1b3272] text-white"
+                  : "text-[#1b3272] hover:bg-[#1b3272]/10"
               }`}
               aria-pressed={viewMode === "table"}
             >
@@ -1158,7 +1177,7 @@ export function ContactManagement({
             <button
               type="button"
               onClick={() => setVisibleCount((current) => current + CONTACTS_PAGE_SIZE)}
-              className="rounded-xl border border-[#d8d1bd] bg-white px-4 py-2.5 text-sm font-semibold text-[#173f5f] shadow-sm hover:border-[#b56b32]"
+              className="rounded-xl border border-[#d9e1f2] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] shadow-sm hover:border-[#d43c2f]"
             >
               Mostra altri {Math.min(CONTACTS_PAGE_SIZE, filtered.length - visibleContacts.length)} contatti
             </button>

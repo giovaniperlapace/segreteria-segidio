@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@/app/brand-logo";
 import { useState } from "react";
 
 export default function LoginPage() {
@@ -35,12 +36,15 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f4f1e8] px-6 py-12">
-      <section className="w-full max-w-md rounded-3xl border border-[#d8d1bd] bg-white p-8 shadow-xl shadow-[#173f5f]/10">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#b56b32]">
+    <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] px-6 py-12">
+      <section className="w-full max-w-md rounded-3xl border border-[#d9e1f2] bg-white p-8 shadow-xl shadow-[#1b3272]/10">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo size="login" />
+        </div>
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d43c2f]">
           Comunità di Sant&apos;Egidio
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#173f5f]">
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[#1b3272]">
           Accedi alla Segreteria
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -58,13 +62,13 @@ export default function LoginPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="nome@santegidio.org"
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-[#b56b32] focus:ring-2 focus:ring-[#b56b32]/20"
+              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-[#d43c2f] focus:ring-2 focus:ring-[#d43c2f]/20"
             />
           </label>
           <button
             type="submit"
             disabled={status === "loading"}
-            className="w-full rounded-xl bg-[#173f5f] px-4 py-3 font-semibold text-white transition hover:bg-[#22587f] disabled:cursor-wait disabled:opacity-60"
+            className="w-full rounded-xl bg-[#1b3272] px-4 py-3 font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
             {status === "loading" ? "Invio in corso..." : "Invia magic link"}
           </button>

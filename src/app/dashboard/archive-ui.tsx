@@ -9,7 +9,7 @@ export const INITIAL_ARCHIVE_STATE: ArchiveActionState = {
 };
 
 export const inputClass =
-  "mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20";
+  "mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20";
 
 export function ActionMessage({ state }: { state: ArchiveActionState }) {
   if (state.status === "idle") return null;
@@ -37,7 +37,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="rounded-xl bg-[#173f5f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#22587f] disabled:cursor-wait disabled:opacity-60"
+      className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
     >
       {pending ? "Salvataggio..." : children}
     </button>

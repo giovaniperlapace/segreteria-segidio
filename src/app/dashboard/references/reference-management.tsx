@@ -8,6 +8,12 @@ import {
   updateReferenceAction,
 } from "../archive-actions";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
+import {
+  ContactEditor,
+  type ContactRecord,
+  type LanguageOption,
+  type Option,
+} from "../contacts/contact-management";
 
 type Reference = {
   id: number;
@@ -23,13 +29,7 @@ type Reference = {
   contacts: AssociatedContact[];
 };
 
-type AssociatedContact = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  institutional_role: string | null;
-  institution: string | null;
-};
+type AssociatedContact = ContactRecord;
 
 type SortKey = "first_name" | "last_name" | "email" | "phone" | "contact_count" | "active" | "linked_profile";
 type SortDirection = "asc" | "desc";
@@ -72,10 +72,12 @@ function ReferenceRow({
   reference,
   isOpen,
   onToggle,
+  onOpenContact,
 }: {
   reference: Reference;
   isOpen: boolean;
   onToggle: () => void;
+  onOpenContact: (contact: ContactRecord) => void;
 }) {
   const [state, action, pending] = useArchiveAction(updateReferenceAction);
   const [convertState, convertAction, convertPending] = useArchiveAction(convertReferenceToUserAction);
@@ -88,12 +90,12 @@ function ReferenceRow({
   return (
     <>
       <tr
-        className={`cursor-pointer border-t border-slate-200 align-top hover:bg-[#f8f6ef] ${
-          isOpen ? "bg-[#f8f6ef]" : ""
+        className={`cursor-pointer border-t border-slate-200 align-top hover:bg-[#f8fafc] ${
+          isOpen ? "bg-[#f8fafc]" : ""
         }`}
         onClick={onToggle}
       >
-        <td className="px-4 py-3 font-semibold text-[#173f5f]">
+        <td className="px-4 py-3 font-semibold text-[#1b3272]">
           <button
             type="button"
             className="text-left hover:underline"
@@ -131,19 +133,19 @@ function ReferenceRow({
               event.stopPropagation();
               onToggle();
             }}
-            className="text-sm font-semibold text-[#b56b32] hover:underline"
+            className="text-sm font-semibold text-[#d43c2f] hover:underline"
           >
             {isOpen ? "Chiudi" : "Apri scheda"}
           </button>
         </td>
       </tr>
       {isOpen ? (
-        <tr className="border-t border-slate-100 bg-[#fbfaf6]">
+        <tr className="border-t border-slate-100 bg-[#fbfcff]">
           <td colSpan={9} className="px-4 py-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-[#173f5f]">{reference.full_name}</h3>
+                  <h3 className="text-lg font-semibold text-[#1b3272]">{reference.full_name}</h3>
                   <p className="mt-1 text-sm text-slate-600">
                     {reference.contact_count} contatti associati · {accountLabel}
                   </p>
@@ -186,7 +188,7 @@ function ReferenceRow({
                       name="active"
                       type="checkbox"
                       defaultChecked={reference.active}
-                      className="h-4 w-4 accent-[#173f5f]"
+                      className="h-4 w-4 accent-[#1b3272]"
                     />
                     <span>Attivo</span>
                   </label>
@@ -202,7 +204,7 @@ function ReferenceRow({
                       type="submit"
                       formAction={convertAction}
                       disabled={convertPending}
-                      className="rounded-xl border border-[#173f5f] px-3 py-2.5 text-sm font-semibold text-[#173f5f] transition hover:bg-[#173f5f]/10 disabled:cursor-wait disabled:opacity-60"
+                      className="rounded-xl border border-[#1b3272] px-3 py-2.5 text-sm font-semibold text-[#1b3272] transition hover:bg-[#1b3272]/10 disabled:cursor-wait disabled:opacity-60"
                     >
                       {convertPending ? "Conversione..." : "Converti in utente"}
                     </button>
@@ -219,40 +221,57 @@ function ReferenceRow({
                     event.preventDefault();
                   }
                 }}
-                className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4"
+                className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2"
               >
                 <input type="hidden" name="referenceId" value={reference.id} />
-                <h4 className="text-sm font-semibold text-red-900">Elimina riferimento</h4>
-                <p className="mt-1 text-sm text-red-800">
-                  Il riferimento sparira&apos; dalle liste operative. I collegamenti storici restano conservati.
-                </p>
-                <label className="mt-3 block text-sm font-medium text-red-900">
-                  Scrivi ELIMINA per confermare
+                <label className="flex items-center gap-2 text-xs font-medium text-red-900">
+                  Conferma
                   <input
                     name="confirmation"
-                    className="mt-1.5 w-full max-w-xs rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                    placeholder="ELIMINA"
+                    aria-label="Scrivi ELIMINA per confermare"
+                    className="h-9 w-28 rounded-lg border border-red-200 bg-white px-2 text-sm text-slate-900 placeholder:text-red-300 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-400/20"
                   />
                 </label>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={deletePending}
-                    className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {deletePending ? "Eliminazione..." : "Elimina riferimento"}
-                  </button>
-                  <ActionMessage state={deleteState} />
-                </div>
+                <button
+                  type="submit"
+                  disabled={deletePending}
+                  title={deletePending ? "Eliminazione in corso" : "Elimina riferimento"}
+                  aria-label={deletePending ? "Eliminazione in corso" : "Elimina riferimento"}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-700 text-white transition hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {deletePending ? (
+                    <span className="text-xs font-semibold">...</span>
+                  ) : (
+                    <svg
+                      aria-hidden="true"
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    >
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 16H6L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                    </svg>
+                  )}
+                </button>
+                <ActionMessage state={deleteState} />
               </form>
 
               <div className="mt-6 border-t border-slate-200 pt-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="font-semibold text-[#173f5f]">Contatti associati</h4>
+                  <h4 className="font-semibold text-[#1b3272]">Contatti associati</h4>
                   {reference.contacts.length > 50 ? (
                     <button
                       type="button"
                       onClick={() => setShowAllContacts((current) => !current)}
-                      className="text-sm font-semibold text-[#b56b32] hover:underline"
+                      className="text-sm font-semibold text-[#d43c2f] hover:underline"
                     >
                       {showAllContacts ? "Mostra solo i primi 50" : `Vedi tutti (${reference.contacts.length})`}
                     </button>
@@ -271,9 +290,25 @@ function ReferenceRow({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {visibleContacts.map((contact) => (
-                          <tr key={contact.id}>
-                            <td className="px-3 py-2 text-slate-700">{contact.first_name || "—"}</td>
-                            <td className="px-3 py-2 text-slate-700">{contact.last_name || "—"}</td>
+                          <tr key={contact.id} className="hover:bg-[#f8fafc]">
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => onOpenContact(contact)}
+                                className="font-semibold text-[#1b3272] hover:underline"
+                              >
+                                {contact.first_name || "—"}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                onClick={() => onOpenContact(contact)}
+                                className="text-left font-semibold text-[#1b3272] hover:underline"
+                              >
+                                {contact.last_name || "—"}
+                              </button>
+                            </td>
                             <td className="px-3 py-2 text-slate-700">{contact.institutional_role || "—"}</td>
                             <td className="px-3 py-2 text-slate-700">{contact.institution || "—"}</td>
                           </tr>
@@ -295,13 +330,24 @@ function ReferenceRow({
   );
 }
 
-export function ReferenceManagement({ references }: { references: Reference[] }) {
+export function ReferenceManagement({
+  references,
+  groups,
+  contactReferences,
+  languages,
+}: {
+  references: Reference[];
+  groups: Option[];
+  contactReferences: Option[];
+  languages: LanguageOption[];
+}) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("last_name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [openReferenceId, setOpenReferenceId] = useState<number | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   const filteredReferences = useMemo(() => {
@@ -362,15 +408,15 @@ export function ReferenceManagement({ references }: { references: Reference[] })
 
   return (
     <div className="space-y-8">
-      <section className="rounded-2xl border border-[#d8d1bd] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-[#173f5f]">Nuovo riferimento</h2>
+      <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold text-[#1b3272]">Nuovo riferimento</h2>
         <CreateReferenceForm />
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-[#d8d1bd] bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div>
-            <h2 className="text-xl font-semibold text-[#173f5f]">Riferimenti</h2>
+            <h2 className="text-xl font-semibold text-[#1b3272]">Riferimenti</h2>
             <p className="mt-1 text-sm text-slate-600">
               {filteredReferences.length} di {references.length} riferimenti
             </p>
@@ -456,6 +502,7 @@ export function ReferenceManagement({ references }: { references: Reference[] })
                   reference={reference}
                   isOpen={openReferenceId === reference.id}
                   onToggle={() => setOpenReferenceId((current) => (current === reference.id ? null : reference.id))}
+                  onOpenContact={setSelectedContact}
                 />
               ))}
               {filteredReferences.length === 0 ? (
@@ -469,6 +516,39 @@ export function ReferenceManagement({ references }: { references: Reference[] })
           </table>
         </div>
       </section>
+      {selectedContact ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Scheda contatto"
+          onClick={() => setSelectedContact(null)}
+        >
+          <div
+            className="w-full max-w-5xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedContact(null)}
+                className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+            </div>
+            <ContactEditor
+              key={selectedContact.id}
+              contact={selectedContact}
+              groups={groups}
+              references={contactReferences}
+              languages={languages}
+              isManager
+              open
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

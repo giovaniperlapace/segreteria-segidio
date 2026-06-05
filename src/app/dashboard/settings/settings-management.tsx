@@ -50,7 +50,7 @@ function LanguageEditor({ language }: { language: Language }) {
             name="name"
             defaultValue={language.name}
             aria-label={`Nome lingua ${language.name}`}
-            className="w-full min-w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="w-full min-w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
         </td>
         <td className="px-4 py-3">
@@ -60,7 +60,7 @@ function LanguageEditor({ language }: { language: Language }) {
             type="number"
             defaultValue={language.sort_order}
             aria-label={`Ordine lingua ${language.name}`}
-            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
         </td>
         <td className="px-4 py-3 text-sm text-slate-600">
@@ -73,7 +73,7 @@ function LanguageEditor({ language }: { language: Language }) {
               name="active"
               type="checkbox"
               defaultChecked={language.active}
-              className="h-4 w-4 accent-[#173f5f]"
+              className="h-4 w-4 accent-[#1b3272]"
             />
             <span>Attiva</span>
           </label>
@@ -96,8 +96,8 @@ function LanguageEditor({ language }: { language: Language }) {
 export function SettingsManagement({ languages }: { languages: Language[] }) {
   return (
     <div className="space-y-8">
-      <section className="rounded-2xl border border-[#d8d1bd] bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-[#173f5f]">Impostazioni archivio</h2>
+      <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-[#1b3272]">Impostazioni archivio</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Le lingue alimentano il selettore dei contatti. Il campo resta testuale per non bloccare
           l&apos;importazione dei dati Access se compaiono valori non ancora normalizzati.
@@ -105,27 +105,27 @@ export function SettingsManagement({ languages }: { languages: Language[] }) {
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           <Link
             href="/dashboard/groups"
-            className="rounded-xl border border-[#d8d1bd] px-4 py-3 text-sm font-semibold text-[#173f5f] hover:border-[#b56b32]"
+            className="rounded-xl border border-[#d9e1f2] px-4 py-3 text-sm font-semibold text-[#1b3272] hover:border-[#d43c2f]"
           >
             Gestisci gruppi
           </Link>
           <Link
             href="/dashboard/references"
-            className="rounded-xl border border-[#d8d1bd] px-4 py-3 text-sm font-semibold text-[#173f5f] hover:border-[#b56b32]"
+            className="rounded-xl border border-[#d9e1f2] px-4 py-3 text-sm font-semibold text-[#1b3272] hover:border-[#d43c2f]"
           >
             Gestisci riferimenti interni
           </Link>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-[#d8d1bd] bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-[#173f5f]">Nuova lingua</h2>
+      <section className="rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-lg font-semibold text-[#1b3272]">Nuova lingua</h2>
         <CreateLanguageForm />
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-[#d8d1bd] bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-semibold text-[#173f5f]">Lingue disponibili</h2>
+          <h2 className="text-lg font-semibold text-[#1b3272]">Lingue disponibili</h2>
           <p className="mt-1 text-sm text-slate-600">
             {languages.length} {languages.length === 1 ? "lingua configurata" : "lingue configurate"}
           </p>

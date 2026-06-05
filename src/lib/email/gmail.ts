@@ -38,7 +38,7 @@ export async function sendMagicLinkEmail(input: {
         <h1 style="font-size: 22px; margin-bottom: 16px;">Segreteria Segidio</h1>
         <p>Usa questo link personale per accedere all'applicazione:</p>
         <p style="margin: 24px 0;">
-          <a href="${input.magicLink}" style="background: #173f5f; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; display: inline-block;">
+          <a href="${input.magicLink}" style="background: #1b3272; color: white; padding: 12px 18px; border-radius: 8px; text-decoration: none; display: inline-block;">
             Accedi alla Segreteria
           </a>
         </p>

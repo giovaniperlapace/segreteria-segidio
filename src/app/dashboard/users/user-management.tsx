@@ -56,7 +56,7 @@ function SubmitButton({
         disabled={pending}
         aria-label={pending ? "Salvataggio in corso" : "Salva modifiche"}
         title={pending ? "Salvataggio in corso" : "Salva modifiche"}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#173f5f] text-white transition hover:bg-[#22587f] disabled:cursor-wait disabled:opacity-60"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#1b3272] text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
       >
         <svg
           aria-hidden="true"
@@ -78,7 +78,7 @@ function SubmitButton({
       type="submit"
       form={formId}
       disabled={pending}
-      className="rounded-xl bg-[#173f5f] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#22587f] disabled:cursor-wait disabled:opacity-60"
+      className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
     >
       {pending ? "Salvataggio..." : children}
     </button>
@@ -165,10 +165,10 @@ function UserEditor({
             name="firstName"
             defaultValue={user.first_name}
             aria-label={`Nome di ${user.first_name} ${user.last_name}`}
-            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
           {isCurrentUser ? (
-            <span className="ml-2 text-xs font-semibold text-[#b56b32]">Tu</span>
+            <span className="ml-2 text-xs font-semibold text-[#d43c2f]">Tu</span>
           ) : null}
         </td>
         <td className="px-4 py-3">
@@ -178,7 +178,7 @@ function UserEditor({
             name="lastName"
             defaultValue={user.last_name}
             aria-label={`Cognome di ${user.first_name} ${user.last_name}`}
-            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="min-w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
         </td>
         <td className="px-4 py-3 text-slate-600">{user.email}</td>
@@ -189,7 +189,7 @@ function UserEditor({
             value={role}
             onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
             aria-label={`Ruolo di ${user.first_name} ${user.last_name}`}
-            className="min-w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+            className="min-w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           >
             <option value="reference">Persona di riferimento</option>
             <option value="manager">Manager</option>
@@ -202,7 +202,7 @@ function UserEditor({
               name="active"
               type="checkbox"
               defaultChecked={user.active}
-              className="h-4 w-4 accent-[#173f5f]"
+              className="h-4 w-4 accent-[#1b3272]"
             />
             <span className="sr-only">Utente attivo</span>
           </label>
@@ -290,17 +290,17 @@ export function UserManagement({
 
   return (
     <div className="space-y-8">
-      <section className="rounded-2xl border border-[#d8d1bd] bg-white px-5 py-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-[#173f5f]">Nuovo utente</h2>
+      <section className="rounded-2xl border border-[#d9e1f2] bg-white px-5 py-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-[#1b3272]">Nuovo utente</h2>
         <div className="mt-3">
           <CreateUserForm />
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-[#d8d1bd] bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div>
-            <h2 className="text-xl font-semibold text-[#173f5f]">Utenti autorizzati</h2>
+            <h2 className="text-xl font-semibold text-[#1b3272]">Utenti autorizzati</h2>
             <p className="mt-1 text-sm text-slate-600">
               {filteredUsers.length} di {users.length}{" "}
               {users.length === 1 ? "profilo" : "profili"}
@@ -313,13 +313,13 @@ export function UserManagement({
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Cerca nome, email o ruolo"
               aria-label="Cerca utenti"
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20 sm:col-span-1"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20 sm:col-span-1"
             />
             <select
               value={roleFilter}
               onChange={(event) => setRoleFilter(event.target.value)}
               aria-label="Filtra per ruolo"
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
             >
               <option value="all">Tutti i ruoli</option>
               <option value="manager">Manager</option>
@@ -329,7 +329,7 @@ export function UserManagement({
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
               aria-label="Filtra per stato"
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-[#b56b32] focus:outline-none focus:ring-2 focus:ring-[#b56b32]/20"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
             >
               <option value="all">Tutti gli stati</option>
               <option value="active">Attivi</option>

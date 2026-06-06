@@ -4,13 +4,11 @@ import { BrandLogo } from "@/app/brand-logo";
 import Link from "next/link";
 
 const managerCards = [
-  ["Utenti e ruoli", "Crea manager e referenti, assegna ruoli e gestisci gli accessi.", "/dashboard/users"],
   ["Contatti", "Gestione completa dell'archivio e dei dati mancanti.", "/dashboard/contacts"],
-  ["Gruppi", "Categorie flessibili per organizzare e filtrare i contatti.", "/dashboard/groups"],
   ["Referenti", "Profili interni e assegnazioni dei contatti.", "/dashboard/references"],
-  ["Settings", "Lingue e impostazioni operative riutilizzabili.", "/dashboard/settings"],
+  ["Eventi", "Creazione eventi, liste invitati e risposte.", "/dashboard/events"],
   ["Storico", "Audit modifiche e versioni contatto consultabili.", "/dashboard/audit"],
-  ["Eventi", "Creazione eventi, liste invitati e risposte.", null],
+  ["Settings", "Lingue, gruppi e impostazioni operative riutilizzabili.", "/dashboard/settings"],
 ];
 
 export default async function DashboardPage() {

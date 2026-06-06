@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-Le Milestone 1-7 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 8 su storicizzazione minima e audit consultabile.
+Le Milestone 1-9 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 10 sulla costruzione avanzata delle liste invitati.
 
 ## 2. Sintesi della visione dell'app
 
@@ -47,6 +47,7 @@ Nel tempo l'app dovra' supportare email con link di risposta, workflow di confer
 - **Evento**: iniziativa a cui invitare contatti, con titolo, data, luogo, stato e lista invitati.
 - **Segmento evento**: parte distinta di un evento, per esempio liturgia, ricevimento o liturgia + ricevimento.
 - **Invito**: associazione tra evento e contatto, con stato di selezione, invio, risposta e partecipazione.
+- **Flag invito**: attenzione operativa relativa a uno specifico contatto dentro uno specifico evento; non e' una proprieta' permanente del contatto.
 - **Proposta di invito**: indicazione proveniente da un riferimento interno su chi invitare o non invitare.
 - **Risposta**: esito comunicato dall'invitato: partecipo, non partecipo, forse o altra opzione da definire.
 - **Partecipazione/check-in**: conferma dell'effettiva presenza all'evento o a un segmento.
@@ -71,8 +72,9 @@ Scope MVP consigliato:
 - CRUD riferimenti interni;
 - CRUD eventi semplici, senza segmenti obbligatori;
 - creazione lista invitati per evento con filtri base: gruppo, riferimento, stato contatto, priorita', dati mancanti;
-- filtro per evento passato e stato risposta passato come estensione MVP se tecnicamente semplice, altrimenti milestone immediatamente successiva;
+- filtro per evento passato, stato risposta passato e partecipazione passata;
 - gestione manuale stato invito/risposta: da invitare, invitato, partecipera', non partecipera', forse, nessuna risposta;
+- storico importato degli inviti e delle presenze Access, cosi' ogni contatto mostri a quali eventi passati e' stato invitato e a quali ha partecipato;
 - registrazione manuale del proponente/riferimento che ha suggerito l'invito;
 - dashboard base per eventi futuri/attivi e conteggi risposte;
 - export/stampa semplice di liste contatti e liste evento;
@@ -124,9 +126,9 @@ Questa e' una bozza concettuale. Non contiene migration SQL e andra' raffinata p
 | `contact_groups` | Associazione contatti-gruppi | `contact_id`, `group_id`, date, note | molti-a-molti | MVP | storico assegnazioni da confermare |
 | `internal_references` | Riferimenti interni organizzativi | `profile_id`, nome, email, attivo | contatti, proposte | MVP | possibile unificarla con `profiles` |
 | `contact_references` | Associazione contatti-riferimenti | `contact_id`, `reference_id`, ruolo, note | molti-a-molti | MVP | gestire riferimento principale? |
-| `events` | Eventi | titolo, descrizione, date, orari, luogo, stato, note | inviti, segmenti | MVP | definire stati definitivi |
+| `events` | Eventi | titolo, descrizione, date, orari, luogo, stato, note, id evento legacy | inviti, segmenti | MVP | definire stati definitivi |
 | `event_segments` | Segmenti di evento | `event_id`, nome, data/ora, luogo | inviti/risposte/check-in | Post-MVP | forse introdurla presto per Festa della Comunita' |
-| `event_invitations` | Lista invitati per evento | `event_id`, `contact_id`, stato invito, stato risposta, proponente, note | evento, contatto, risposta | MVP | separare invito da risposta in MVP? |
+| `event_invitations` | Lista invitati per evento e storico partecipazioni | `event_id`, `contact_id`, stato invito, stato risposta, presenza, flag operativo, proponente, note, campi essenziali per import storico Access | evento, contatto, risposta | MVP | il flag e' relativo all'invito/evento, non al contatto; lo storico Access da importare serve solo per eventi, invitati e partecipazioni |
 | `invitation_proposals` | Proposte dei riferimenti | evento, contatto, riferimento, decisione, note | evento, riferimento | Post-MVP | workflow e stati da definire |
 | `invitation_responses` | Storico risposte | invito, risposta, canale, data, token, note | invito | Post-MVP, manuale in MVP se semplice | stati risposta definitivi |
 | `email_templates` | Template inviti/comunicazioni | nome, oggetto, corpo, variabili, attivo | email log/eventi | Post-MVP | provider e editor da scegliere |
@@ -237,7 +239,8 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Verifiche tecniche**: eseguire `scripts/export_legacy_access_contacts.py`, controllare CSV generati in `old_software/export/`, importare in transazione o con script idempotente, confrontare conteggi, testare filtri per gruppo e referente, verificare RLS manager/riferimento sui dati importati.
 - **Esito import corretto**: il primo import da `Segreteria2.mdb`/`EXPO2000` era basato su una tabella evento non valida ed e' stato sostituito il 2026-06-05. Il database operativo e' stato ripopolato da `DbSegreteria2.mdb` con 12.956 contatti, 54 gruppi, 12.946 relazioni contatto-gruppo, 297 referenti interni e 13.439 relazioni contatto-referente. I valori `Persone.Contatti` con virgole sono stati splittati in referenti distinti; i punti interrogativi nei nomi referente sono stati rimossi; `Attivo = N/n` e' importato come stato interno `standby`, mostrato nell'app come "Non attivo". Lingue e paesi sono normalizzati solo per alias certi, con `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario` conservati per revisione.
 - **Rischi**: duplicati storici, valori sporchi nei referenti, campi obbligatori mancanti, email/telefoni non normalizzati, import ripetuto accidentalmente.
-- **Decisioni aperte**: trattamento contatti senza nome/cognome ma con recapito o istituzione, eventuale import separato dello storico inviti Access, revisione manuale dei valori paese non normalizzati.
+- **Decisioni aperte**: trattamento contatti senza nome/cognome ma con recapito o istituzione, revisione manuale dei valori paese non normalizzati.
+- **Evoluzione decisa per Milestone 9**: lo storico eventi/inviti Access va importato nel nuovo database almeno per sapere, su ogni contatto, a quali eventi passati e' stato invitato e a quali ha partecipato. I dati orfani o sporchi vanno scartati o parcheggiati nel modo piu' semplice purche' non compromettano il funzionamento dell'app.
 
 ### Milestone 8 - Storicizzazione minima e audit
 
@@ -251,15 +254,28 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: audit troppo pesante o incompleto.
 - **Decisioni aperte**: possibilita' di ripristino versione precedente gia' in MVP o post-MVP.
 
-### Milestone 9 - CRUD eventi
+### Milestone 9 - Eventi, storico inviti e import Access
 
-- **Obiettivo**: creare e gestire eventi semplici.
-- **Scope**: titolo, descrizione, date, orari, luogo, note, stato.
-- **Output atteso**: lista eventi futuri/attivi/conclusi.
-- **Criteri di accettazione**: evento creabile, modificabile, archiviabile.
-- **Verifiche tecniche**: validazione date e stati.
-- **Rischi**: segmenti evento anticipati troppo presto.
-- **Decisioni aperte**: stati definitivi evento.
+- **Stato 2026-06-06**: completata e verificata.
+- **Obiettivo**: creare e gestire eventi semplici e rendere il database pronto a conservare lo storico Access di inviti e partecipazioni. Al termine della milestone ogni contatto deve poter mostrare a quali eventi passati e' stato invitato e a quali ha partecipato.
+- **Sequenza di lavoro**:
+  1. aggiornare lo schema database con migration non distruttiva per compatibilita' storico Access;
+  2. sviluppare la UI manager per CRUD eventi e consultazione lista inviti/presenze;
+  3. preparare e collaudare script di export/import storico da `old_software/DbSegreteria2.mdb`;
+  4. importare eventi storici e relazioni invito/presenza nel database operativo dopo verifica dei conteggi.
+- **Scope database**: aggiungere a `events` almeno `legacy_access_id` univoco, e se utile `legacy_event_type_id`/`legacy_event_type_name`; aggiungere a `event_invitations` un flag operativo relativo solo a quell'invito/evento, per esempio `attention_flag` boolean e `attention_note` testuale opzionale, pensato per l'uso futuro dell'app e non per importare i vecchi flag Access. Per l'import storico conservare solo i dati necessari a ricostruire elenco eventi passati, contatti invitati e partecipazione: id legacy evento/persona, stati normalizzati `invitation_status`, `response_status`, `attendance_status` ed eventuali raw essenziali di risposta/presenza (`legacy_invited_raw`, `legacy_viene_raw`, `legacy_presence_raw`) se servono a verificare o rifare il mapping.
+- **Scope UI**: CRUD eventi con titolo, descrizione, data/ora, luogo, note e stato; lista eventi futuri/attivi/conclusi; scheda evento con conteggi invitati/risposte/presenze; scheda contatto con storico eventi a cui e' stato invitato e indicazione della partecipazione; controllo semplice per flaggare/sflaggare un invitato dentro un evento, con eventuale breve nota, e resa visiva discreta nelle liste/schede per gli invitati flaggati.
+- **Scope import storico**: importare `Eventi` come eventi legacy; importare da `PersoneInviti` solo l'associazione evento-contatto e le informazioni utili a capire invito, risposta e partecipazione. Non importare i vecchi valori `Flag` Access. Importare righe solo quando `IdInvito` corrisponde a un evento importato e `IdPersona` corrisponde a un contatto gia' importato tramite `contacts.legacy_access_id`; scartare senza bloccare le righe senza evento/persona o con riferimenti orfani, producendo un report conteggiato. `PersoneEventi` non e' rilevante salvo nuova evidenza. Non importare lo storico `SpedizioniEmail` come log email evento.
+- **Recupero email da Access**: prima o durante l'import storico, analizzare `SpedizioniEmail` solo come possibile fonte di indirizzi mancanti sui contatti. Non importare log o cronologia invii. Se un contatto non ha email e i log mostrano un destinatario ragionevolmente associabile a `IdPersona`, aggiornare `contacts.email` o `contacts.email_2` con regole conservative e report degli aggiornamenti; lasciare invariati i casi ambigui. Analisi preliminare: circa 94 contatti senza `eMail1/eMail2` in `Persone` sembrano avere almeno un indirizzo recuperabile da `SpedizioniEmail`.
+- **Output atteso**: eventi CRUD funzionanti, storico Access importato, vista contatto utile per leggere inviti e presenze passate, report import con righe importate/scartate e motivazioni aggregate.
+- **Criteri di accettazione**: evento creabile, modificabile e archiviabile; import idempotente basato su id legacy; nessun duplicato evento-contatto; un contatto mostra correttamente eventi passati invitati/partecipati; un invitato puo' essere flaggato solo nello specifico evento e appare evidenziato in modo leggero nelle liste pertinenti; le righe sporche non interrompono l'import e non creano record inutilizzabili.
+- **Verifiche tecniche**: review migration; test mapping stati da valori Access (`Invitato`, `Viene`, `Presenza`, ed eventualmente `Liturgia`/`Ricevimento` solo se utili a dedurre partecipazione); confronto conteggi con export legacy; test query su contatto con molti eventi; test UI desktop/mobile; TypeScript, lint e build.
+- **Rischi**: valori legacy sporchi in `Viene` e `Presenza`, perdita di sfumature operative non essenziali, import di indirizzi email non personali da log invii, query pesanti su 180k+ inviti storici.
+- **Decisioni adottate**: importare solo l'informazione storica necessaria: eventi passati, contatti invitati e partecipazione/risposta; non importare i vecchi flag Access; trattare il flag come attenzione operativa futura sull'invito specifico, non come priorita' permanente del contatto; scartare dati orfani/sporchi con report invece di creare contatti/eventi fittizi; non importare lo storico email come log.
+- **Esito database/import**: applicata la migration `20260606170000_events_legacy_history.sql`; importati 484 eventi e 181.588 inviti storici validi. Distribuzione risposte: 156.191 senza risposta, 15.786 partecipazioni dichiarate, 9.492 rifiuti, 119 forse. Distribuzione presenze: 435 presenti, 25 assenti, 181.128 non verificate. Recuperate 88 email mancanti con associazione conservativa da `SpedizioniEmail`.
+- **Esito dati sporchi**: scartate e conteggiate senza bloccare l'import 904 righe riferite a contatti non importati, 427 riferite a eventi non importati, 318 senza evento e 60 senza persona. Non sono stati creati contatti o eventi fittizi.
+- **Esito UI**: aggiunte viste eventi a schede e tabella con ricerca, ordinamento, filtri di stato e popup modificabile; aggiunta scheda evento con lista invitati a schede compatte o tabella, filtri per risposta/presenza/flag, ordinamento, popup invito e popup contatto completo; aggiunto storico eventi nel popup contatto; uniformati popup modificabili per contatti e referenti.
+- **Verifica conclusiva**: import idempotente verificato, conteggi database controllati, lint, TypeScript e build superati; flussi principali verificati nel browser interno su desktop.
 
 ### Milestone 10 - Lista invitati con filtri base
 
@@ -423,13 +439,13 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Primo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe avviare la **Milestone 8: Storicizzazione minima e audit**.
+Il prossimo blocco operativo dovrebbe avviare la **Milestone 10: Lista invitati con filtri base**.
 
 Prima di iniziare conviene confermare:
 
-- quali modifiche contatto devono essere visibili nello storico operativo;
-- se lo storico deve essere solo consultabile o anche ripristinabile;
-- quali schermate devono mostrare audit e autore della modifica;
-- se il collaudo reference post-import va completato prima o insieme alla Milestone 8.
+- quali filtri archivio devono essere disponibili nella selezione massiva;
+- se il filtro per evento passato, risposta e partecipazione deve entrare subito;
+- se l'aggiunta massiva deve prevedere una schermata di anteprima/conferma;
+- quanti contatti devono poter essere selezionati in una singola operazione.
 
-Output atteso del prossimo blocco: storico/audit leggibile per le modifiche principali e verifica operativa con almeno un utente reference reale.
+Output atteso del prossimo blocco: costruzione rapida della lista invitati tramite filtri combinati, selezione multipla e aggiunta idempotente all'evento.

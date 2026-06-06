@@ -85,6 +85,7 @@ function CreateReferenceForm() {
 function ReferenceRow({
   reference,
   isOpen,
+  showSummaryRow = true,
   onToggle,
   onOpenContact,
   onReferenceContactsChanged,
@@ -93,6 +94,7 @@ function ReferenceRow({
 }: {
   reference: Reference;
   isOpen: boolean;
+  showSummaryRow?: boolean;
   onToggle: () => void;
   onOpenContact: (contact: ContactRecord) => void;
   onReferenceContactsChanged: (
@@ -184,57 +186,59 @@ function ReferenceRow({
 
   return (
     <>
-      <tr
-        className={`cursor-pointer border-t border-slate-200 align-top hover:bg-[#f8fafc] ${
-          isOpen ? "bg-[#f8fafc]" : ""
-        }`}
-        onClick={onToggle}
-      >
-        <td className="px-3 py-3 font-semibold text-[#1b3272]">
-          <button
-            type="button"
-            className="text-left hover:underline"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle();
-            }}
-          >
-            {reference.first_name}
-          </button>
-        </td>
-        <td className="px-3 py-3 text-slate-700">{reference.last_name || "—"}</td>
-        <td className="max-w-0 truncate px-3 py-3 text-slate-700" title={reference.email ?? undefined}>
-          {reference.email || "—"}
-        </td>
-        <td className="px-3 py-3 text-slate-700">
-          <span className="line-clamp-2">{reference.notes || "—"}</span>
-        </td>
-        <td className="px-3 py-3 text-sm text-slate-700">{reference.contact_count}</td>
-        <td className="px-3 py-3">
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-              reference.linked_profile
-                ? "bg-emerald-100 text-emerald-800"
-                : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            {accountLabel}
-          </span>
-        </td>
-        <td className="px-3 py-3 text-slate-700">{reference.active ? "Attivo" : "Disattivato"}</td>
-        <td className="px-3 py-3 text-right">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle();
-            }}
-            className="whitespace-nowrap text-sm font-semibold text-[#d43c2f] hover:underline"
-          >
-            {isOpen ? "Chiudi" : "Apri"}
-          </button>
-        </td>
-      </tr>
+      {showSummaryRow ? (
+        <tr
+          className={`cursor-pointer border-t border-slate-200 align-top hover:bg-[#f8fafc] ${
+            isOpen ? "bg-[#f8fafc]" : ""
+          }`}
+          onClick={onToggle}
+        >
+          <td className="px-3 py-3 font-semibold text-[#1b3272]">
+            <button
+              type="button"
+              className="text-left hover:underline"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle();
+              }}
+            >
+              {reference.first_name}
+            </button>
+          </td>
+          <td className="px-3 py-3 text-slate-700">{reference.last_name || "—"}</td>
+          <td className="max-w-0 truncate px-3 py-3 text-slate-700" title={reference.email ?? undefined}>
+            {reference.email || "—"}
+          </td>
+          <td className="px-3 py-3 text-slate-700">
+            <span className="line-clamp-2">{reference.notes || "—"}</span>
+          </td>
+          <td className="px-3 py-3 text-sm text-slate-700">{reference.contact_count}</td>
+          <td className="px-3 py-3">
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                reference.linked_profile
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {accountLabel}
+            </span>
+          </td>
+          <td className="px-3 py-3 text-slate-700">{reference.active ? "Attivo" : "Disattivato"}</td>
+          <td className="px-3 py-3 text-right">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggle();
+              }}
+              className="whitespace-nowrap text-sm font-semibold text-[#d43c2f] hover:underline"
+            >
+              {isOpen ? "Chiudi" : "Apri"}
+            </button>
+          </td>
+        </tr>
+      ) : null}
       {isOpen ? (
         <tr className="border-t border-slate-100 bg-[#fbfcff]">
           <td colSpan={8} className="px-4 py-5">
@@ -632,6 +636,9 @@ export function ReferenceManagement({
         return 0;
       });
   }, [accountFilter, deferredSearch, references, sortDirection, sortKey, statusFilter]);
+  const selectedReference = openReferenceId
+    ? references.find((reference) => reference.id === openReferenceId) ?? null
+    : null;
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -844,7 +851,7 @@ export function ReferenceManagement({
                 <ReferenceRow
                   key={reference.id}
                   reference={reference}
-                  isOpen={openReferenceId === reference.id}
+                  isOpen={false}
                   onToggle={() => toggleReference(reference)}
                   onOpenContact={setSelectedContact}
                   onReferenceContactsChanged={updateReferenceContactLinks}
@@ -868,6 +875,58 @@ export function ReferenceManagement({
           </table>
         </div>
       </section>
+      {selectedReference ? (
+        <div
+          className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Scheda referente"
+          onClick={() => setOpenReferenceId(null)}
+        >
+          <div
+            className="w-full max-w-6xl overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#1b3272]">{selectedReference.full_name}</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selectedReference.contact_count} contatti attivi associati
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenReferenceId(null)}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+            </div>
+            <div className="px-5 py-5">
+              <table className="w-full table-fixed border-collapse text-left">
+                <tbody>
+                  <ReferenceRow
+                    key={selectedReference.id}
+                    reference={selectedReference}
+                    isOpen
+                    showSummaryRow={false}
+                    onToggle={() => setOpenReferenceId(null)}
+                    onOpenContact={setSelectedContact}
+                    onReferenceContactsChanged={updateReferenceContactLinks}
+                    contactLoad={
+                      contactsByReference[selectedReference.id] ?? {
+                        status: selectedReference.contact_count > 0 ? "idle" : "loaded",
+                        contacts: [],
+                      }
+                    }
+                    contactReferences={contactReferences}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {selectedContact ? (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
@@ -877,27 +936,39 @@ export function ReferenceManagement({
           onClick={() => setSelectedContact(null)}
         >
           <div
-            className="w-full max-w-5xl"
+            className="w-full max-w-5xl overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-3 flex justify-end">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#1b3272]">
+                  {[selectedContact.first_name, selectedContact.last_name].filter(Boolean).join(" ") ||
+                    "Contatto senza nome"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {[selectedContact.institutional_role, selectedContact.institution, selectedContact.email]
+                    .filter(Boolean)
+                    .join(" · ") || "Scheda contatto"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedContact(null)}
-                className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Chiudi
               </button>
             </div>
-            <ContactEditor
-              key={selectedContact.id}
-              contact={selectedContact}
-              groups={groups}
-              references={contactReferences}
-              languages={languages}
-              isManager
-              open
-            />
+            <div className="px-5 py-5">
+              <ContactEditor
+                key={selectedContact.id}
+                contact={selectedContact}
+                groups={groups}
+                references={contactReferences}
+                languages={languages}
+                isManager
+              />
+            </div>
           </div>
         </div>
       ) : null}

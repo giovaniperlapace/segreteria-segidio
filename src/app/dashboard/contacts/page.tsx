@@ -4,12 +4,11 @@ import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { ContactManagement, type ContactRecord } from "./contact-management";
+import { CONTACT_COLUMNS } from "./contact-data";
 
 export const dynamic = "force-dynamic";
 
 const CONTACT_PAGE_SIZE = 100;
-const CONTACT_COLUMNS =
-  "id,legacy_access_old_archive_id,honorific_title,honorific_title_english,honorific_title_invitation,first_name,last_name,legacy_description,institutional_role,institutional_role_english,institutional_role_invitation,institution,legacy_salutation,email,email_2,phone,phone_home,phone_office_2,mobile_phone,fax,fax_home,telex_office,address_line,postal_code,city,country,home_address_line,home_postal_code,home_city,home_province,home_country,office_name,office_address_line,office_postal_code,office_city,office_province,office_country,spoken_language,spoken_language_2,invitation_language,translation_language,religion,legacy_organization_id,legacy_organization_name,legacy_office_site,mail_address_preference,legacy_contacts_raw,accompanist,legacy_archive_type,legacy_created_at,legacy_updated_at,legacy_invitation_group,website,website_2,notes,missing_data_notes,status,priority";
 
 type ContactsSearchParams = Record<string, string | string[] | undefined>;
 
@@ -143,7 +142,7 @@ export default async function ContactsPage({
 
   const contacts = (contactsResult.data ?? []) as unknown as ContactRecord[];
   const currentContactIds = contacts.map((contact) => Number(contact.id));
-  const [contactGroups, contactReferences, missingRows] =
+  const [contactGroups, contactReferences, missingRows, eventInvitationRows] =
     currentContactIds.length > 0
       ? await Promise.all([
           fetchAllSupabaseRows(() =>
@@ -164,8 +163,14 @@ export default async function ContactsPage({
               .select("id,missing_fields")
               .in("id", currentContactIds),
           ),
+          fetchAllSupabaseRows(() =>
+            supabase
+              .from("event_invitations")
+              .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
+              .in("contact_id", currentContactIds),
+          ),
         ])
-      : [[], [], []];
+      : [[], [], [], []];
 
   const groupIdsByContact = new Map<number, number[]>();
   for (const relation of contactGroups) {
@@ -183,12 +188,37 @@ export default async function ContactsPage({
   }
   const selectedReferenceIds = new Set(contactReferences.map((relation) => Number(relation.reference_id)));
   const missingByContact = new Map(missingRows.map((row) => [Number(row.id), row.missing_fields ?? []]));
+  const eventHistoryByContact = new Map<number, ContactRecord["event_history"]>();
+  for (const row of eventInvitationRows) {
+    const contactId = Number(row.contact_id);
+    const event = Array.isArray(row.events) ? row.events[0] : row.events;
+    if (!event) continue;
+    eventHistoryByContact.set(contactId, [
+      ...(eventHistoryByContact.get(contactId) ?? []),
+      {
+        event_id: Number(event.id),
+        title: String(event.title),
+        starts_at: String(event.starts_at),
+        response_status: row.response_status,
+        attendance_status: row.attendance_status,
+      },
+    ]);
+  }
+  for (const [contactId, items] of eventHistoryByContact) {
+    eventHistoryByContact.set(
+      contactId,
+      items
+        .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+        .slice(0, 12),
+    );
+  }
 
   const contactRecords = contacts.map((contact) => ({
     ...contact,
     group_ids: groupIdsByContact.get(Number(contact.id)) ?? [],
     reference_ids: referenceIdsByContact.get(Number(contact.id)) ?? [],
     missing_fields: missingByContact.get(Number(contact.id)) ?? [],
+    event_history: eventHistoryByContact.get(Number(contact.id)) ?? [],
   })) as ContactRecord[];
 
   return (

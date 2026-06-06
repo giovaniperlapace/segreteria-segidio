@@ -6,14 +6,16 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato le Milestone 1-7: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio e import contatti Access.
-- La prossima milestone operativa e' la Milestone 9: CRUD eventi.
+- Il progetto ha completato le Milestone 1-9: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit e gestione eventi con storico inviti Access.
+- La prossima milestone operativa e' la Milestone 10: costruzione avanzata delle liste invitati con filtri e aggiunta massiva.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
-- La dashboard manager espone la gestione utenti e ruoli in `/dashboard/users`, contatti in `/dashboard/contacts`, gruppi in `/dashboard/groups`, riferimenti in `/dashboard/references` e impostazioni in `/dashboard/settings`.
+- La dashboard manager espone nell'ordine contatti, riferimenti, eventi, storico e impostazioni. Utenti/ruoli e gruppi sono raggiungibili dalla sezione Settings.
 - I profili utente hanno `first_name` e `last_name` separati; `full_name` resta sincronizzato per compatibilita'.
 - L'archivio e' stato ripopolato dal database Access dati corretto `old_software/DbSegreteria2.mdb` con 12.956 contatti legacy, 54 gruppi, 12.946 relazioni contatto-gruppo, 297 riferimenti interni normalizzati e 13.439 relazioni contatto-riferimento.
+- La Milestone 9 ha importato 484 eventi legacy e 181.588 relazioni evento-contatto valide da `PersoneInviti`; 88 email mancanti sono state recuperate in modo conservativo da `SpedizioniEmail`. I vecchi flag Access non sono stati importati.
+- Le pagine eventi, contatti e riferimenti usano il pattern standard tabella/schede dove pertinente e popup modificabile per i dettagli. Le liste invitati evento supportano ricerca, filtri, ordinamento, flag per-evento e apertura della scheda completa del contatto.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -100,16 +102,16 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe consolidare il post-import e poi passare alla Milestone 9:
+La prossima sessione dovrebbe avviare la Milestone 10:
 
-1. verificare `git status`;
-2. rivedere `PIANO_DI_LAVORO.md`;
-3. rivedere i valori paese legacy non normalizzati rimasti (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`);
-4. verificare operativamente filtri per gruppo e riferimento con utente manager;
-5. creare/collaudare un utente reference reale e verificare che veda solo i contatti assegnati;
-6. avviare Milestone 9 su eventi semplici.
+1. verificare `git status` e rivedere `PIANO_DI_LAVORO.md`;
+2. progettare la selezione massiva dei contatti per un evento;
+3. riusare i filtri archivio per gruppo, riferimento, stato, priorita' e dati mancanti;
+4. impedire duplicati nella stessa lista evento;
+5. valutare il filtro per inviti/partecipazioni a eventi passati;
+6. completare il collaudo operativo con un utente `reference` reale.
 
-Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
+Restano inoltre da rivedere i valori paese legacy non normalizzati (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`).
 
 ## Regole operative importanti
 
@@ -180,6 +182,7 @@ Migration MVP creata:
 - `supabase/migrations/20260605130000_legacy_access_import_upsert.sql`
 - `supabase/migrations/20260606120000_real_access_import_fields.sql`
 - `supabase/migrations/20260606150000_contact_history_audit_actor.sql`
+- `supabase/migrations/20260606170000_events_legacy_history.sql`
 
 Include:
 
@@ -192,6 +195,7 @@ Include:
 - tabella impostazioni `contact_languages` per alimentare il selettore lingua;
 - indice unico pieno su `contacts.legacy_access_id` per import idempotenti via PostgREST.
 - funzioni trigger aggiornate per attribuire autore a versioni contatto e audit anche nelle scritture server-side con service role.
+- campi legacy eventi e storico inviti, flag operativo per-evento e indici per import idempotente.
 
 La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
 
@@ -223,6 +227,26 @@ Contatti e riferimenti interni supportano eliminazione operativa tramite soft de
 `Persone.Attivo = S` viene importato come attivo; `N`/`n` viene importato come `standby` e mostrato nell'app come "Non attivo".
 
 Lingue e paesi legacy sono stati normalizzati solo per alias certi verso le opzioni UI. Valori non-paese o ambigui conservati per revisione post-import: `UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`.
+
+## Import eventi Access completato
+
+La Milestone 9 e' stata completata il 2026-06-06 usando `old_software/DbSegreteria2.mdb`:
+
+```bash
+python3 scripts/import_legacy_access_events.py --apply --allow-insecure-tls --recover-missing-emails
+```
+
+Risultato persistente sul database self-hosted:
+
+- 484 eventi importati da `Eventi`;
+- 181.588 inviti storici validi importati da `PersoneInviti`;
+- risposte normalizzate: 156.191 senza risposta, 15.786 partecipazioni dichiarate, 9.492 rifiuti e 119 risposte forse;
+- presenze normalizzate: 435 presenti, 25 assenti e 181.128 non verificate;
+- 88 indirizzi email mancanti recuperati in modo conservativo da `SpedizioniEmail`;
+- righe orfane o incomplete scartate senza creare record fittizi;
+- nessun vecchio valore `Flag` Access importato.
+
+Il nuovo flag `event_invitations.attention_flag`, con nota opzionale, e' relativo esclusivamente al contatto dentro lo specifico evento. Gli eventi e gli inviti possono essere consultati e modificati da `/dashboard/events`; ogni contatto mostra lo storico recente degli eventi nel proprio popup.
 
 ## Autenticazione e provisioning utenti
 

@@ -78,10 +78,18 @@ export type ContactRecord = {
   group_ids: number[];
   reference_ids: number[];
   missing_fields: string[];
+  event_history: ContactEventHistoryItem[];
 };
 
 export type Option = { id: number; name: string; active: boolean };
 export type LanguageOption = { id: number; name: string; active: boolean };
+export type ContactEventHistoryItem = {
+  event_id: number;
+  title: string;
+  starts_at: string;
+  response_status: "no_response" | "attending" | "declined" | "maybe";
+  attendance_status: "unknown" | "attended" | "absent";
+};
 type ContactViewMode = "cards" | "table";
 type ContactTableSortKey =
   | "name"
@@ -104,6 +112,19 @@ const FIELD_LABELS: Record<string, string> = {
 const CONTACT_STATUS_LABELS: Record<ContactRecord["status"], string> = {
   active: "Attivo",
   standby: "Non attivo",
+};
+
+const RESPONSE_LABELS: Record<ContactEventHistoryItem["response_status"], string> = {
+  no_response: "Nessuna risposta",
+  attending: "Partecipa",
+  declined: "Non partecipa",
+  maybe: "Forse",
+};
+
+const ATTENDANCE_LABELS: Record<ContactEventHistoryItem["attendance_status"], string> = {
+  unknown: "Presenza non verificata",
+  attended: "Presente",
+  absent: "Assente",
 };
 
 const COUNTRY_OPTIONS = [
@@ -1046,6 +1067,50 @@ function historyDate(value: string) {
   }).format(new Date(value));
 }
 
+function EventHistoryBox({ items = [] }: { items?: ContactEventHistoryItem[] }) {
+  return (
+    <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+      <summary className="cursor-pointer text-sm font-semibold text-[#1b3272]">
+        Storico eventi
+        <span className="ml-2 text-xs font-normal text-slate-500">
+          {items.length} {items.length === 1 ? "evento" : "eventi"} recenti
+        </span>
+      </summary>
+      <div className="mt-3">
+        {items.length === 0 ? (
+          <p className="text-sm text-slate-500">Nessun invito storico registrato.</p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 normal-case tracking-normal">Evento</th>
+                  <th className="px-3 py-2 normal-case tracking-normal">Risposta</th>
+                  <th className="px-3 py-2 normal-case tracking-normal">Presenza</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map((item) => (
+                  <tr key={`${item.event_id}-${item.starts_at}`} className="align-top">
+                    <td className="px-3 py-2">
+                      <a href={`/dashboard/events/${item.event_id}`} className="font-semibold text-[#1b3272] hover:underline">
+                        {item.title}
+                      </a>
+                      <div className="mt-1 text-xs text-slate-500">{historyDate(item.starts_at)}</div>
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{RESPONSE_LABELS[item.response_status]}</td>
+                    <td className="px-3 py-2 text-slate-700">{ATTENDANCE_LABELS[item.attendance_status]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function ContactHistoryBox({ contactId }: { contactId: number }) {
   const [items, setItems] = useState<ContactHistoryItem[] | null>(null);
   const [error, setError] = useState("");
@@ -1157,7 +1222,6 @@ export function ContactEditor({
   references,
   languages,
   isManager,
-  open,
 }: {
   contact: ContactRecord;
   groups: Option[];
@@ -1169,52 +1233,9 @@ export function ContactEditor({
   const [state, action, pending] = useArchiveAction(updateContactAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteContactAction);
   const displayName = contactDisplayName(contact);
-  const contactGroups = groups.filter((group) => contact.group_ids.includes(group.id));
-  const contactReferences = references.filter((reference) => contact.reference_ids.includes(reference.id));
 
   return (
-    <details open={open} className="group rounded-2xl border border-[#d9e1f2] bg-white shadow-sm open:md:col-span-2 open:xl:col-span-3">
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4">
-        <div>
-          <h3 className="font-semibold text-[#1b3272]">{displayName}</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            {[contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · ") || "Nessun dettaglio aggiuntivo"}
-          </p>
-          {contactGroups.length > 0 || contactReferences.length > 0 ? (
-            <div className="mt-2 space-y-1 text-xs text-slate-600">
-              {contactGroups.length > 0 ? (
-                <SummaryAssociations label="Gruppi" items={contactGroups} />
-              ) : null}
-              {contactReferences.length > 0 ? (
-                <SummaryAssociations label="Referenti" items={contactReferences} />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          {isManager ? (
-            <a
-              href={`/dashboard/audit?contactId=${contact.id}`}
-              onClick={(event) => event.stopPropagation()}
-              className="rounded-full border border-[#d9e1f2] bg-white px-2.5 py-1 text-[#1b3272] hover:border-[#d43c2f]"
-            >
-              Storico
-            </a>
-          ) : null}
-          <span className={`rounded-full px-2.5 py-1 ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-            {CONTACT_STATUS_LABELS[contact.status]}
-          </span>
-          {contact.missing_fields.length > 0 ? (
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
-              {contact.missing_fields.length} dati mancanti
-            </span>
-          ) : null}
-          <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-[#1b3272]">
-            {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
-          </span>
-        </div>
-      </summary>
-      <div className="space-y-4 border-t border-slate-200 px-5 py-5">
+    <div className="space-y-4">
       <form action={action} className="space-y-4">
         <input type="hidden" name="contactId" value={contact.id} />
         {contact.missing_fields.length > 0 ? (
@@ -1229,6 +1250,7 @@ export function ContactEditor({
           languages={languages}
           isManager={isManager}
         />
+        <EventHistoryBox items={contact.event_history} />
         {isManager ? <ContactHistoryBox contactId={contact.id} /> : null}
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton pending={pending}>Salva modifiche</SubmitButton>
@@ -1287,8 +1309,79 @@ export function ContactEditor({
           <ActionMessage state={deleteState} />
         </form>
       ) : null}
+    </div>
+  );
+}
+
+function ContactCard({
+  contact,
+  groups,
+  references,
+  isManager,
+  onOpenContact,
+}: {
+  contact: ContactRecord;
+  groups: Option[];
+  references: Option[];
+  isManager: boolean;
+  onOpenContact: (contact: ContactRecord) => void;
+}) {
+  const displayName = contactDisplayName(contact);
+  const contactGroups = groups.filter((group) => contact.group_ids.includes(group.id));
+  const contactReferences = references.filter((reference) => contact.reference_ids.includes(reference.id));
+
+  return (
+    <article className="flex min-h-[220px] flex-col justify-between rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm">
+      <div>
+        <h3 className="font-semibold text-[#1b3272]">{displayName}</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          {[contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · ") ||
+            "Nessun dettaglio aggiuntivo"}
+        </p>
+        {contactGroups.length > 0 || contactReferences.length > 0 ? (
+          <div className="mt-3 space-y-1 text-xs text-slate-600">
+            {contactGroups.length > 0 ? (
+              <SummaryAssociations label="Gruppi" items={contactGroups} />
+            ) : null}
+            {contactReferences.length > 0 ? (
+              <SummaryAssociations label="Referenti" items={contactReferences} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
-    </details>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className={`rounded-full px-2.5 py-1 ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+            {CONTACT_STATUS_LABELS[contact.status]}
+          </span>
+          {contact.missing_fields.length > 0 ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">
+              {contact.missing_fields.length} dati mancanti
+            </span>
+          ) : null}
+          <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-[#1b3272]">
+            {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+          {isManager ? (
+            <a
+              href={`/dashboard/audit?contactId=${contact.id}`}
+              className="rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 text-[#1b3272] hover:border-[#d43c2f]"
+            >
+              Storico
+            </a>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onOpenContact(contact)}
+            className="rounded-xl bg-[#1b3272] px-3 py-2 text-white transition hover:bg-[#263f86]"
+          >
+            Apri scheda
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -1667,13 +1760,13 @@ export function ContactManagement({
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visibleContacts.map((contact) => (
-              <ContactEditor
+              <ContactCard
                 key={contact.id}
                 contact={contact}
                 groups={groups}
                 references={references}
-                languages={languages}
                 isManager={isManager}
+                onOpenContact={setSelectedContact}
               />
             ))}
           </div>
@@ -1711,27 +1804,38 @@ export function ContactManagement({
           onClick={() => setSelectedContact(null)}
         >
           <div
-            className="w-full max-w-5xl"
+            className="w-full max-w-5xl overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-3 flex justify-end">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#1b3272]">
+                  {contactDisplayName(selectedContact)}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {[selectedContact.institutional_role, selectedContact.institution, selectedContact.email]
+                    .filter(Boolean)
+                    .join(" · ") || "Scheda contatto"}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedContact(null)}
-                className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Chiudi
               </button>
             </div>
-            <ContactEditor
-              key={selectedContact.id}
-              contact={selectedContact}
-              groups={groups}
-              references={references}
-              languages={languages}
-              isManager={isManager}
-              open
-            />
+            <div className="px-5 py-5">
+              <ContactEditor
+                key={selectedContact.id}
+                contact={selectedContact}
+                groups={groups}
+                references={references}
+                languages={languages}
+                isManager={isManager}
+              />
+            </div>
           </div>
         </div>
       ) : null}

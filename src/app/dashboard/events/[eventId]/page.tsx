@@ -1,0 +1,335 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireManager } from "@/lib/auth/profile";
+import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { CONTACT_COLUMNS } from "../../contacts/contact-data";
+import type { ContactRecord } from "../../contacts/contact-management";
+import { InvitationManagement, type EventInvitationRecord } from "./invitation-management";
+
+export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 80;
+
+type EventDetailSearchParams = Record<string, string | string[] | undefined>;
+
+function paramValue(searchParams: EventDetailSearchParams, key: string) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function parsePositiveInt(value: string, fallback: number) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sanitizeSearchTerm(value: string) {
+  return value.trim().replace(/[%*,]/g, " ").replace(/\s+/g, " ");
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "full",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function contactName(contact: {
+  first_name?: string | null;
+  last_name?: string | null;
+  institution?: string | null;
+}) {
+  return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome";
+}
+
+function pageHref(eventId: number, page: number, q: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return `/dashboard/events/${eventId}${query ? `?${query}` : ""}`;
+}
+
+export default async function EventDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ eventId: string }>;
+  searchParams?: Promise<EventDetailSearchParams>;
+}) {
+  await requireManager();
+  const { eventId: eventIdParam } = await params;
+  const eventId = parsePositiveInt(eventIdParam, 0);
+  if (!eventId) notFound();
+
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const page = parsePositiveInt(paramValue(resolvedSearchParams, "page"), 1);
+  const search = sanitizeSearchTerm(paramValue(resolvedSearchParams, "q"));
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+  const supabase = createSupabaseServiceClient();
+
+  const { data: event, error: eventError } = await supabase
+    .from("events")
+    .select("id,title,description,starts_at,ends_at,location,status,legacy_access_id")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (eventError) throw eventError;
+  if (!event) notFound();
+
+  let invitationsQuery = supabase
+    .from("event_invitations")
+    .select(
+      `id,event_id,contact_id,response_status,attendance_status,attention_flag,attention_note,notes,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      { count: "exact" },
+    )
+    .eq("event_id", eventId);
+
+  if (search) {
+    const pattern = `%${search}%`;
+    invitationsQuery = invitationsQuery.or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},institution.ilike.${pattern},institutional_role.ilike.${pattern},email.ilike.${pattern}`,
+      { foreignTable: "contacts" },
+    );
+  }
+
+  const [
+    { data: invitations, error: invitationsError, count },
+    { data: contacts, error: contactsError },
+    groupsResult,
+    referencesResult,
+    languagesResult,
+  ] =
+    await Promise.all([
+      invitationsQuery
+        .order("attention_flag", { ascending: false })
+        .order("last_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
+        .order("first_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
+        .range(from, to),
+      supabase
+        .from("contacts")
+        .select("id,first_name,last_name,institution,institutional_role,email")
+        .is("deleted_at", null)
+        .eq("status", "active")
+        .order("last_name")
+        .order("first_name")
+        .limit(800),
+      supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
+      supabase
+        .from("internal_references")
+        .select("id,full_name,active")
+        .is("deleted_at", null)
+        .order("active", { ascending: false })
+        .order("full_name"),
+      supabase
+        .from("contact_languages")
+        .select("id,name,active,sort_order")
+        .order("active", { ascending: false })
+        .order("sort_order")
+        .order("name"),
+    ]);
+
+  if (invitationsError) throw invitationsError;
+  if (contactsError) throw contactsError;
+  for (const result of [groupsResult, referencesResult, languagesResult]) {
+    if (result.error) throw result.error;
+  }
+
+  const invitationContacts = (invitations ?? [])
+    .map((invitation) => (Array.isArray(invitation.contacts) ? invitation.contacts[0] : invitation.contacts))
+    .filter(Boolean) as unknown as ContactRecord[];
+  const invitationContactIds = invitationContacts.map((contact) => Number(contact.id));
+  const [contactGroups, contactReferences, missingRows, eventInvitationRows] =
+    invitationContactIds.length > 0
+      ? await Promise.all([
+          fetchAllSupabaseRows(() =>
+            supabase
+              .from("contact_groups")
+              .select("contact_id,group_id")
+              .in("contact_id", invitationContactIds),
+          ),
+          fetchAllSupabaseRows(() =>
+            supabase
+              .from("contact_references")
+              .select("contact_id,reference_id")
+              .in("contact_id", invitationContactIds),
+          ),
+          fetchAllSupabaseRows(() =>
+            supabase
+              .from("contacts_missing_required_data")
+              .select("id,missing_fields")
+              .in("id", invitationContactIds),
+          ),
+          fetchAllSupabaseRows(() =>
+            supabase
+              .from("event_invitations")
+              .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
+              .in("contact_id", invitationContactIds),
+          ),
+        ])
+      : [[], [], [], []];
+
+  const groupIdsByContact = new Map<number, number[]>();
+  for (const relation of contactGroups) {
+    const contactId = Number(relation.contact_id);
+    groupIdsByContact.set(contactId, [
+      ...(groupIdsByContact.get(contactId) ?? []),
+      Number(relation.group_id),
+    ]);
+  }
+  const referenceIdsByContact = new Map<number, number[]>();
+  for (const relation of contactReferences) {
+    const contactId = Number(relation.contact_id);
+    referenceIdsByContact.set(contactId, [
+      ...(referenceIdsByContact.get(contactId) ?? []),
+      Number(relation.reference_id),
+    ]);
+  }
+  const missingByContact = new Map(
+    missingRows.map((row) => [Number(row.id), row.missing_fields ?? []]),
+  );
+  const eventHistoryByContact = new Map<number, ContactRecord["event_history"]>();
+  for (const row of eventInvitationRows) {
+    const contactId = Number(row.contact_id);
+    const historyEvent = Array.isArray(row.events) ? row.events[0] : row.events;
+    if (!historyEvent) continue;
+    eventHistoryByContact.set(contactId, [
+      ...(eventHistoryByContact.get(contactId) ?? []),
+      {
+        event_id: Number(historyEvent.id),
+        title: String(historyEvent.title),
+        starts_at: String(historyEvent.starts_at),
+        response_status: row.response_status,
+        attendance_status: row.attendance_status,
+      },
+    ]);
+  }
+  for (const [contactId, items] of eventHistoryByContact) {
+    eventHistoryByContact.set(
+      contactId,
+      items
+        .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+        .slice(0, 12),
+    );
+  }
+  const contactRecordsById = new Map<number, ContactRecord>();
+  for (const contact of invitationContacts) {
+    const contactId = Number(contact.id);
+    contactRecordsById.set(contactId, {
+      ...contact,
+      group_ids: groupIdsByContact.get(contactId) ?? [],
+      reference_ids: referenceIdsByContact.get(contactId) ?? [],
+      missing_fields: missingByContact.get(contactId) ?? [],
+      event_history: eventHistoryByContact.get(contactId) ?? [],
+    });
+  }
+
+  const invitationRows = (invitations ?? []).map((invitation) => {
+    const contact = Array.isArray(invitation.contacts) ? invitation.contacts[0] : invitation.contacts;
+    const contactRecord = contactRecordsById.get(Number(invitation.contact_id));
+    if (!contactRecord) {
+      throw new Error(`Contatto ${invitation.contact_id} non disponibile per l'invito ${invitation.id}.`);
+    }
+    return {
+      id: Number(invitation.id),
+      event_id: Number(invitation.event_id),
+      contact_id: Number(invitation.contact_id),
+      response_status: invitation.response_status,
+      attendance_status: invitation.attendance_status,
+      attention_flag: Boolean(invitation.attention_flag),
+      attention_note: invitation.attention_note,
+      notes: invitation.notes,
+      legacy_invited_raw: invitation.legacy_invited_raw,
+      legacy_viene_raw: invitation.legacy_viene_raw,
+      legacy_presence_raw: invitation.legacy_presence_raw,
+      contact_name: contactName(contact ?? {}),
+      contact_detail: [contact?.institutional_role, contact?.institution].filter(Boolean).join(" · "),
+      contact_email: contact?.email ?? contact?.email_2 ?? null,
+      contact: contactRecord,
+    };
+  }) as EventInvitationRecord[];
+
+  const invitedContactIds = new Set(invitationRows.map((invitation) => invitation.contact_id));
+  const contactOptions = (contacts ?? [])
+    .filter((contact) => !invitedContactIds.has(Number(contact.id)))
+    .map((contact) => ({
+      id: Number(contact.id),
+      name: contactName(contact),
+      detail: [contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · "),
+    }));
+
+  const total = count ?? invitationRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-8">
+          <div className="flex flex-wrap gap-3 text-sm font-semibold text-[#d43c2f]">
+            <Link href="/dashboard" className="hover:underline">← Dashboard</Link>
+            <Link href="/dashboard/events" className="hover:underline">← Eventi</Link>
+          </div>
+          <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">{event.title}</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            {formatDateTime(event.starts_at)}
+            {event.location ? ` · ${event.location}` : ""}
+            {event.legacy_access_id ? ` · Access #${event.legacy_access_id}` : ""}
+          </p>
+          <form className="mt-5 grid gap-3 rounded-2xl border border-[#d9e1f2] bg-white p-4 shadow-sm md:grid-cols-[1fr_auto]">
+            <input
+              name="q"
+              defaultValue={search}
+              placeholder="Cerca invitato, istituzione, carica o email"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
+            />
+            <button className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#263f86]">
+              Filtra
+            </button>
+          </form>
+          <p className="mt-3 text-sm text-slate-600">
+            {invitationRows.length} invitati mostrati di {total}.
+          </p>
+        </header>
+
+        <InvitationManagement
+          eventId={eventId}
+          invitations={invitationRows}
+          contactOptions={contactOptions}
+          groups={(groupsResult.data ?? []).map((group) => ({
+            id: Number(group.id),
+            name: String(group.name),
+            active: Boolean(group.active),
+          }))}
+          references={(referencesResult.data ?? []).map((reference) => ({
+            id: Number(reference.id),
+            name: String(reference.full_name),
+            active: Boolean(reference.active),
+          }))}
+          languages={(languagesResult.data ?? []).map((language) => ({
+            id: Number(language.id),
+            name: String(language.name),
+            active: Boolean(language.active),
+          }))}
+        />
+
+        {totalPages > 1 ? (
+          <nav className="mt-8 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <Link
+              href={pageHref(eventId, Math.max(1, page - 1), search)}
+              className={`rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 font-semibold text-[#1b3272] ${page <= 1 ? "pointer-events-none opacity-40" : "hover:border-[#d43c2f]"}`}
+            >
+              Precedente
+            </Link>
+            <span className="text-slate-600">Pagina {page} di {totalPages}</span>
+            <Link
+              href={pageHref(eventId, Math.min(totalPages, page + 1), search)}
+              className={`rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 font-semibold text-[#1b3272] ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:border-[#d43c2f]"}`}
+            >
+              Successiva
+            </Link>
+          </nav>
+        ) : null}
+      </div>
+    </main>
+  );
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   createGroupAction,
   createLanguageAction,
@@ -200,6 +201,12 @@ export function SettingsManagement({ languages, groups }: { languages: Language[
           >
             Gruppi
           </a>
+          <Link
+            href="/dashboard/users"
+            className="mt-2 rounded-xl border border-[#d9e1f2] bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#263f86]"
+          >
+            Utenti e ruoli
+          </Link>
         </nav>
       </aside>
 

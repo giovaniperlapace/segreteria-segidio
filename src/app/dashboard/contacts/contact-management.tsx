@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
-import { createContactAction, deleteContactAction, updateContactAction } from "../archive-actions";
+import {
+  createContactAction,
+  deleteContactAction,
+  loadContactHistoryAction,
+  updateContactAction,
+  type ContactHistoryItem,
+} from "../archive-actions";
 import {
   ActionMessage,
   inputClass,
@@ -915,9 +921,6 @@ function ContactFields({
         </label>
         <LegacyImportInfo contact={contact} />
       </div>
-      <p className="text-xs text-slate-500">
-        Inserisci almeno nome, cognome o istituzione. Gruppi e referenti selezionati sono evidenziati sopra le opzioni.
-      </p>
     </>
   );
 }
@@ -1029,6 +1032,109 @@ function LegacyImportInfo({ contact }: { contact?: ContactRecord }) {
   );
 }
 
+function historyActionLabel(action: string) {
+  if (action === "insert") return "Creazione";
+  if (action === "update") return "Modifica";
+  if (action === "delete") return "Eliminazione";
+  return action;
+}
+
+function historyDate(value: string) {
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function ContactHistoryBox({ contactId }: { contactId: number }) {
+  const [items, setItems] = useState<ContactHistoryItem[] | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  async function loadHistory() {
+    if (loaded || loading) return;
+
+    setLoading(true);
+    setError("");
+    const result = await loadContactHistoryAction(contactId);
+    if (result.status === "success") {
+      setItems(result.items);
+      setLoaded(true);
+    } else {
+      setError(result.message);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <details
+      onToggle={(event) => {
+        if (event.currentTarget.open) {
+          void loadHistory();
+        }
+      }}
+      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+    >
+      <summary className="cursor-pointer text-sm font-semibold text-[#1b3272]">
+        Storico modifiche
+      </summary>
+      <div className="mt-3 space-y-3">
+        {loading ? (
+          <p className="flex items-center gap-2 text-sm text-slate-600">
+            <PendingSpinner />
+            Caricamento storico...
+          </p>
+        ) : null}
+        {error ? (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        ) : null}
+        {loaded && items?.length === 0 ? (
+          <p className="text-sm text-slate-500">Nessuna modifica registrata.</p>
+        ) : null}
+        {items && items.length > 0 ? (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 normal-case tracking-normal">Data</th>
+                  <th className="px-3 py-2 normal-case tracking-normal">Autore</th>
+                  <th className="px-3 py-2 normal-case tracking-normal">Campi modificati</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {items.map((item) => (
+                  <tr key={item.id} className="align-top">
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                      <span className="font-semibold text-slate-900">{historyActionLabel(item.action)}</span>
+                      <br />
+                      {historyDate(item.occurredAt)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{item.actorName}</td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {item.changedFields.length > 0
+                        ? item.changedFields.join(", ")
+                        : "Solo metadati tecnici"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        <a
+          href={`/dashboard/audit?contactId=${contactId}`}
+          className="inline-block text-sm font-semibold text-[#d43c2f] hover:underline"
+        >
+          Apri audit completo →
+        </a>
+      </div>
+    </details>
+  );
+}
+
 function SummaryAssociations({ label, items }: { label: string; items: Option[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -1086,6 +1192,15 @@ export function ContactEditor({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          {isManager ? (
+            <a
+              href={`/dashboard/audit?contactId=${contact.id}`}
+              onClick={(event) => event.stopPropagation()}
+              className="rounded-full border border-[#d9e1f2] bg-white px-2.5 py-1 text-[#1b3272] hover:border-[#d43c2f]"
+            >
+              Storico
+            </a>
+          ) : null}
           <span className={`rounded-full px-2.5 py-1 ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
             {CONTACT_STATUS_LABELS[contact.status]}
           </span>
@@ -1114,6 +1229,7 @@ export function ContactEditor({
           languages={languages}
           isManager={isManager}
         />
+        {isManager ? <ContactHistoryBox contactId={contact.id} /> : null}
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton pending={pending}>Salva modifiche</SubmitButton>
           <ActionMessage state={state} />

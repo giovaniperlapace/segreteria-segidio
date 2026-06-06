@@ -242,10 +242,12 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ### Milestone 8 - Storicizzazione minima e audit
 
 - **Obiettivo**: non perdere modifiche importanti.
+- **Stato 2026-06-06**: implementata e verificata tecnicamente.
 - **Scope**: snapshot contatto o audit log su modifica, autore, data, prima/dopo.
 - **Output atteso**: storico consultabile almeno dal manager.
 - **Criteri di accettazione**: ogni modifica contatto registra chi/quando/cosa.
 - **Verifiche tecniche**: test modifica e recupero storico.
+- **Esito**: aggiunta pagina manager `/dashboard/audit` con versioni contatto e audit generale; aggiunto link storico dalla scheda contatto e card dashboard; aggiornata la funzione trigger per attribuire l'autore anche quando le scritture server-side usano la service role; migration applicata al database self-hosted con smoke test in transazione e rollback.
 - **Rischi**: audit troppo pesante o incompleto.
 - **Decisioni aperte**: possibilita' di ripristino versione precedente gia' in MVP o post-MVP.
 

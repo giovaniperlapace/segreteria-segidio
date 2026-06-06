@@ -7,7 +7,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 ## Stato attuale
 
 - Il progetto ha completato le Milestone 1-7: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio e import contatti Access.
-- La prossima milestone operativa e' la Milestone 8: storicizzazione minima e audit consultabile.
+- La prossima milestone operativa e' la Milestone 9: CRUD eventi.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -100,14 +100,14 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe consolidare il post-import e poi passare alla Milestone 8:
+La prossima sessione dovrebbe consolidare il post-import e poi passare alla Milestone 9:
 
 1. verificare `git status`;
 2. rivedere `PIANO_DI_LAVORO.md`;
 3. rivedere i valori paese legacy non normalizzati rimasti (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`);
 4. verificare operativamente filtri per gruppo e riferimento con utente manager;
 5. creare/collaudare un utente reference reale e verificare che veda solo i contatti assegnati;
-6. avviare Milestone 8 su storicizzazione consultabile e audit visibile.
+6. avviare Milestone 9 su eventi semplici.
 
 Poi seguire le milestone di `PIANO_DI_LAVORO.md`.
 
@@ -179,6 +179,7 @@ Migration MVP creata:
 - `supabase/migrations/20260605120000_contact_language_settings.sql`
 - `supabase/migrations/20260605130000_legacy_access_import_upsert.sql`
 - `supabase/migrations/20260606120000_real_access_import_fields.sql`
+- `supabase/migrations/20260606150000_contact_history_audit_actor.sql`
 
 Include:
 
@@ -190,6 +191,7 @@ Include:
 - policy RLS per manager e riferimenti.
 - tabella impostazioni `contact_languages` per alimentare il selettore lingua;
 - indice unico pieno su `contacts.legacy_access_id` per import idempotenti via PostgREST.
+- funzioni trigger aggiornate per attribuire autore a versioni contatto e audit anche nelle scritture server-side con service role.
 
 La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
 

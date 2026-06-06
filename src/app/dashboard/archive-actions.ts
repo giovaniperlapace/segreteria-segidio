@@ -12,11 +12,57 @@ export type ArchiveActionState = {
   message: string;
 };
 
+export type ContactHistoryItem = {
+  id: number;
+  action: string;
+  actorName: string;
+  occurredAt: string;
+  changedFields: string[];
+};
+
+export type ContactHistoryActionState =
+  | { status: "success"; items: ContactHistoryItem[] }
+  | { status: "error"; message: string };
+
 const CONTACT_STATUSES = ["active", "standby"] as const;
 const CONTACT_PRIORITIES = ["standard", "important", "critical"] as const;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_COLUMNS =
   "id,legacy_access_old_archive_id,honorific_title,honorific_title_english,honorific_title_invitation,first_name,last_name,legacy_description,institutional_role,institutional_role_english,institutional_role_invitation,institution,legacy_salutation,email,email_2,phone,phone_home,phone_office_2,mobile_phone,fax,fax_home,telex_office,address_line,postal_code,city,country,home_address_line,home_postal_code,home_city,home_province,home_country,office_name,office_address_line,office_postal_code,office_city,office_province,office_country,spoken_language,spoken_language_2,invitation_language,translation_language,religion,legacy_organization_id,legacy_organization_name,legacy_office_site,mail_address_preference,legacy_contacts_raw,accompanist,legacy_archive_type,legacy_created_at,legacy_updated_at,legacy_invitation_group,website,website_2,notes,missing_data_notes,status,priority";
+const HISTORY_LIMIT = 6;
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  honorific_title: "titolo",
+  first_name: "nome",
+  last_name: "cognome",
+  institutional_role: "carica",
+  institution: "istituzione",
+  email: "email",
+  email_2: "email 2",
+  phone: "telefono",
+  phone_home: "telefono casa",
+  mobile_phone: "cellulare",
+  address_line: "indirizzo",
+  postal_code: "CAP",
+  city: "citta'",
+  country: "paese",
+  spoken_language: "lingua",
+  website: "sito web",
+  notes: "note",
+  missing_data_notes: "note dati mancanti",
+  status: "stato",
+  priority: "priorita'",
+  group_id: "gruppi",
+  reference_id: "referenti",
+  is_primary: "referente principale",
+  deleted_at: "eliminazione",
+};
+const HISTORY_IGNORED_FIELDS = new Set([
+  "created_at",
+  "updated_at",
+  "created_by_profile_id",
+  "updated_by_profile_id",
+  "deleted_by_profile_id",
+]);
 type ArchiveSupabaseClient =
   | Awaited<ReturnType<typeof createSupabaseServerClient>>
   | ReturnType<typeof createSupabaseServiceClient>;
@@ -75,6 +121,86 @@ function friendlyError(error: unknown) {
 
   console.error("Archive operation failed", error);
   return "Operazione non riuscita. Controlla i dati e riprova.";
+}
+
+function changedHistoryFields(
+  oldData: Record<string, unknown> | null,
+  newData: Record<string, unknown> | null,
+) {
+  const keys = new Set([...Object.keys(oldData ?? {}), ...Object.keys(newData ?? {})]);
+  return [...keys]
+    .filter((key) => {
+      if (HISTORY_IGNORED_FIELDS.has(key)) return false;
+      return JSON.stringify(oldData?.[key] ?? null) !== JSON.stringify(newData?.[key] ?? null);
+    })
+    .map((key) => HISTORY_FIELD_LABELS[key] ?? key)
+    .sort();
+}
+
+export async function loadContactHistoryAction(
+  contactId: number,
+): Promise<ContactHistoryActionState> {
+  await requireManager();
+
+  if (!Number.isSafeInteger(contactId) || contactId <= 0) {
+    return { status: "error", message: "Contatto non valido." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data: logs, error: logsError } = await supabase
+      .from("audit_logs")
+      .select("id,action,old_data,new_data,actor_profile_id,occurred_at")
+      .or(
+        `and(table_name.eq.contacts,record_id.eq.${contactId}),and(table_name.eq.contact_groups,record_id.eq.${contactId}),and(table_name.eq.contact_references,record_id.eq.${contactId})`,
+      )
+      .order("occurred_at", { ascending: false })
+      .limit(HISTORY_LIMIT);
+
+    if (logsError) throw logsError;
+
+    const actorIds = [
+      ...new Set(
+        (logs ?? [])
+          .map((log) => log.actor_profile_id)
+          .filter((actorId): actorId is string => Boolean(actorId)),
+      ),
+    ];
+    const { data: profiles, error: profilesError } =
+      actorIds.length > 0
+        ? await supabase
+            .from("profiles")
+            .select("id,full_name,email")
+            .in("id", actorIds)
+        : { data: [], error: null };
+
+    if (profilesError) throw profilesError;
+
+    const profilesById = new Map(
+      (profiles ?? []).map((profile) => [
+        profile.id,
+        profile.full_name || profile.email || "Utente senza nome",
+      ]),
+    );
+
+    return {
+      status: "success",
+      items: (logs ?? []).map((log) => ({
+        id: Number(log.id),
+        action: String(log.action),
+        actorName: log.actor_profile_id
+          ? profilesById.get(log.actor_profile_id) ?? "Utente non trovato"
+          : "Sistema / import",
+        occurredAt: String(log.occurred_at),
+        changedFields: changedHistoryFields(
+          log.old_data as Record<string, unknown> | null,
+          log.new_data as Record<string, unknown> | null,
+        ),
+      })),
+    };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
 }
 
 export async function loadReferenceContactsAction(

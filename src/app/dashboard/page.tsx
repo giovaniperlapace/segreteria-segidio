@@ -9,6 +9,7 @@ const managerCards = [
   ["Gruppi", "Categorie flessibili per organizzare e filtrare i contatti.", "/dashboard/groups"],
   ["Referenti", "Profili interni e assegnazioni dei contatti.", "/dashboard/references"],
   ["Settings", "Lingue e impostazioni operative riutilizzabili.", "/dashboard/settings"],
+  ["Storico", "Audit modifiche e versioni contatto consultabili.", "/dashboard/audit"],
   ["Eventi", "Creazione eventi, liste invitati e risposte.", null],
 ];
 

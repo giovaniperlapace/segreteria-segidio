@@ -168,6 +168,7 @@ function tableLabel(tableName: string) {
     profiles: "Utenti",
     events: "Eventi",
     event_invitations: "Inviti evento",
+    invitation_proposals: "Proposte invito",
     contact_languages: "Lingue contatto",
   };
   return labels[tableName] ?? tableName;

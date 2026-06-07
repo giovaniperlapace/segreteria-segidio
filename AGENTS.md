@@ -6,8 +6,8 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato le Milestone 1-9: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit e gestione eventi con storico inviti Access.
-- La prossima milestone operativa e' la Milestone 10: costruzione avanzata delle liste invitati con filtri e aggiunta massiva.
+- Il progetto ha completato le Milestone 1-10: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access e costruzione avanzata delle liste invitati.
+- La prossima milestone operativa e' la Milestone 11: gestione manuale degli stati di invito e risposta.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -16,6 +16,8 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - L'archivio e' stato ripopolato dal database Access dati corretto `old_software/DbSegreteria2.mdb` con 12.956 contatti legacy, 54 gruppi, 12.946 relazioni contatto-gruppo, 297 riferimenti interni normalizzati e 13.439 relazioni contatto-riferimento.
 - La Milestone 9 ha importato 484 eventi legacy e 181.588 relazioni evento-contatto valide da `PersoneInviti`; 88 email mancanti sono state recuperate in modo conservativo da `SpedizioniEmail`. I vecchi flag Access non sono stati importati.
 - Le pagine eventi, contatti e riferimenti usano il pattern standard tabella/schede dove pertinente e popup modificabile per i dettagli. Le liste invitati evento supportano ricerca, filtri, ordinamento, flag per-evento e apertura della scheda completa del contatto.
+- La Milestone 10 aggiunge `/dashboard/events/[eventId]/build`: filtri combinabili per ricerca, stato, priorita', dati mancanti, gruppi, referenti ed evento passato con risposta/presenza; selezione massiva; inviti diretti idempotenti; proposte separate assegnate ai referenti; conversione delle proposte approvate in inviti.
+- I referenti approvano o escludono le proposte da `/dashboard/proposals`. Le proposte non entrano nei conteggi invitati finche' il manager non le converte esplicitamente.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -183,6 +185,7 @@ Migration MVP creata:
 - `supabase/migrations/20260606120000_real_access_import_fields.sql`
 - `supabase/migrations/20260606150000_contact_history_audit_actor.sql`
 - `supabase/migrations/20260606170000_events_legacy_history.sql`
+- `supabase/migrations/20260607120000_invitation_proposals_and_bulk_selection.sql`
 
 Include:
 
@@ -196,6 +199,7 @@ Include:
 - indice unico pieno su `contacts.legacy_access_id` per import idempotenti via PostgREST.
 - funzioni trigger aggiornate per attribuire autore a versioni contatto e audit anche nelle scritture server-side con service role.
 - campi legacy eventi e storico inviti, flag operativo per-evento e indici per import idempotente.
+- tabella `invitation_proposals`, stati pending/approved/excluded, audit e policy RLS per manager e referente assegnato.
 
 La migration e' stata applicata con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate 10 tabelle core, RLS attiva su tutte le tabelle, nessuna foreign key senza indice e smoke test con `begin; ... rollback;` senza lasciare dati fittizi.
 

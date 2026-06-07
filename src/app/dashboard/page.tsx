@@ -41,7 +41,10 @@ export default async function DashboardPage() {
         <section className="mt-10 grid gap-5 md:grid-cols-3">
           {(isManager
             ? managerCards
-            : [["I miei contatti", "Visualizza e aggiorna i contatti assegnati al tuo profilo.", "/dashboard/contacts"]]
+            : [
+                ["I miei contatti", "Visualizza e aggiorna i contatti assegnati al tuo profilo.", "/dashboard/contacts"],
+                ["Proposte di invito", "Approva o escludi le proposte di invito assegnate.", "/dashboard/proposals"],
+              ]
           ).map(([title, description, href]) => (
             <article
               key={title}

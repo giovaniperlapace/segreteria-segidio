@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-Le Milestone 1-9 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 10 sulla costruzione avanzata delle liste invitati.
+Le Milestone 1-10 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 11 sulla gestione manuale degli inviti e delle risposte.
 
 ## 2. Sintesi della visione dell'app
 
@@ -286,6 +286,11 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Verifiche tecniche**: test combinazioni filtro, no duplicati nello stesso evento.
 - **Rischi**: query complesse e UX confusa.
 - **Decisioni aperte**: includere subito filtro per evento passato.
+- **Stato**: completata il 2026-06-07.
+- **Decisioni adottate**: incluso subito il filtro per evento passato con risposta e presenza; filtri principali combinati in AND, con selezioni multiple di gruppi e referenti trattate in OR all'interno dello stesso filtro; esclusione automatica dei contatti gia' invitati; operazioni massive idempotenti.
+- **Workflow proposte anticipato**: introdotta `invitation_proposals` separata da `event_invitations`, con una proposta per evento/contatto/referente e stati `pending`, `approved`, `excluded`. Le proposte non alterano i conteggi invitati. Il manager puo' creare inviti diretti oppure proposte solo verso referenti associati al contatto e collegati a utenti attivi; il referente decide da `/dashboard/proposals`; il manager converte esplicitamente le approvazioni in inviti.
+- **Verifica conclusiva**: migration applicata al database self-hosted; RLS, policy, vincoli e idempotenza verificati; TypeScript, lint e build superati; flusso filtri e selezione verificato nel browser su desktop e mobile.
+- **Collaudo operativo residuo**: collegare almeno un utente `reference` reale a un referente con contatti associati e verificare approvazione/esclusione end-to-end. Al 2026-06-07 non risultano profili reference attivi collegati utilizzabili per il test.
 
 ### Milestone 11 - Gestione manuale inviti e risposte
 

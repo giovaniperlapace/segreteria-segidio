@@ -80,7 +80,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,response_status,attendance_status,attention_flag,attention_note,notes,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -95,6 +95,7 @@ export default async function EventDetailPage({
 
   const [
     { data: invitations, error: invitationsError, count },
+    proposalsResult,
     { data: contacts, error: contactsError },
     groupsResult,
     referencesResult,
@@ -106,6 +107,13 @@ export default async function EventDetailPage({
         .order("last_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
         .order("first_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
         .range(from, to),
+      supabase
+        .from("invitation_proposals")
+        .select(
+          `id,event_id,contact_id,reference_id,status,manager_note,contacts!inner(${CONTACT_COLUMNS}),internal_references!inner(id,full_name)`,
+        )
+        .eq("event_id", eventId)
+        .eq("status", "pending"),
       supabase
         .from("contacts")
         .select("id,first_name,last_name,institution,institutional_role,email")
@@ -130,15 +138,29 @@ export default async function EventDetailPage({
     ]);
 
   if (invitationsError) throw invitationsError;
+  if (proposalsResult.error) throw proposalsResult.error;
   if (contactsError) throw contactsError;
   for (const result of [groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
   }
 
-  const invitationContacts = (invitations ?? [])
-    .map((invitation) => (Array.isArray(invitation.contacts) ? invitation.contacts[0] : invitation.contacts))
+  const proposalContactIds = new Set(
+    (proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)),
+  );
+  const invitedIdsFromQuery = new Set((invitations ?? []).map((invitation) => Number(invitation.contact_id)));
+  const visibleProposals = (proposalsResult.data ?? []).filter(
+    (proposal) => !invitedIdsFromQuery.has(Number(proposal.contact_id)),
+  );
+  const invitationContacts = [
+    ...(invitations ?? []).map((invitation) =>
+      Array.isArray(invitation.contacts) ? invitation.contacts[0] : invitation.contacts,
+    ),
+    ...visibleProposals.map((proposal) =>
+      Array.isArray(proposal.contacts) ? proposal.contacts[0] : proposal.contacts,
+    ),
+  ]
     .filter(Boolean) as unknown as ContactRecord[];
-  const invitationContactIds = invitationContacts.map((contact) => Number(contact.id));
+  const invitationContactIds = [...new Set(invitationContacts.map((contact) => Number(contact.id)))];
   const [contactGroups, contactReferences, missingRows, eventInvitationRows] =
     invitationContactIds.length > 0
       ? await Promise.all([
@@ -234,6 +256,8 @@ export default async function EventDetailPage({
       id: Number(invitation.id),
       event_id: Number(invitation.event_id),
       contact_id: Number(invitation.contact_id),
+      row_type: "invitation",
+      invitation_status: invitation.invitation_status,
       response_status: invitation.response_status,
       attendance_status: invitation.attendance_status,
       attention_flag: Boolean(invitation.attention_flag),
@@ -245,11 +269,60 @@ export default async function EventDetailPage({
       contact_name: contactName(contact ?? {}),
       contact_detail: [contact?.institutional_role, contact?.institution].filter(Boolean).join(" · "),
       contact_email: contact?.email ?? contact?.email_2 ?? null,
+      approval_references: [],
+      proposal_ids: [],
       contact: contactRecord,
     };
   }) as EventInvitationRecord[];
 
-  const invitedContactIds = new Set(invitationRows.map((invitation) => invitation.contact_id));
+  const proposalsByContact = new Map<
+    number,
+    { ids: number[]; references: string[]; note: string | null }
+  >();
+  for (const proposal of visibleProposals) {
+    const contactId = Number(proposal.contact_id);
+    const reference = Array.isArray(proposal.internal_references)
+      ? proposal.internal_references[0]
+      : proposal.internal_references;
+    const current = proposalsByContact.get(contactId) ?? { ids: [], references: [], note: null };
+    current.ids.push(Number(proposal.id));
+    if (reference?.full_name) current.references.push(String(reference.full_name));
+    current.note = current.note ?? proposal.manager_note;
+    proposalsByContact.set(contactId, current);
+  }
+  const proposalRows = [...proposalsByContact.entries()].map(([contactId, proposal]) => {
+    const contact = contactRecordsById.get(contactId);
+    if (!contact) throw new Error(`Contatto ${contactId} non disponibile per la proposta.`);
+    return {
+      id: -proposal.ids[0],
+      event_id: eventId,
+      contact_id: contactId,
+      row_type: "proposal",
+      invitation_status: "pending_approval",
+      response_status: "no_response",
+      attendance_status: "unknown",
+      attention_flag: false,
+      attention_note: null,
+      notes: proposal.note,
+      legacy_invited_raw: null,
+      legacy_viene_raw: null,
+      legacy_presence_raw: null,
+      contact_name: contactName(contact),
+      contact_detail: [contact.institutional_role, contact.institution].filter(Boolean).join(" · "),
+      contact_email: contact.email ?? contact.email_2 ?? null,
+      approval_references: [...new Set(proposal.references)].sort((a, b) => a.localeCompare(b, "it")),
+      proposal_ids: proposal.ids,
+      contact,
+    };
+  }) as EventInvitationRecord[];
+  const eventRows = [...invitationRows, ...proposalRows].sort((a, b) =>
+    a.contact_name.localeCompare(b.contact_name, "it", { sensitivity: "base" }),
+  );
+
+  const invitedContactIds = new Set([
+    ...invitationRows.map((invitation) => invitation.contact_id),
+    ...proposalContactIds,
+  ]);
   const contactOptions = (contacts ?? [])
     .filter((contact) => !invitedContactIds.has(Number(contact.id)))
     .map((contact) => ({
@@ -258,7 +331,7 @@ export default async function EventDetailPage({
       detail: [contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · "),
     }));
 
-  const total = count ?? invitationRows.length;
+  const total = (count ?? invitationRows.length) + proposalRows.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -287,13 +360,19 @@ export default async function EventDetailPage({
             </button>
           </form>
           <p className="mt-3 text-sm text-slate-600">
-            {invitationRows.length} invitati mostrati di {total}.
+            {eventRows.length} contatti mostrati di {total} nella lista evento.
           </p>
+          <Link
+            href={`/dashboard/events/${eventId}/build`}
+            className="mt-4 inline-flex rounded-xl bg-[#d43c2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#bb3025]"
+          >
+            Costruisci lista con filtri
+          </Link>
         </header>
 
         <InvitationManagement
           eventId={eventId}
-          invitations={invitationRows}
+          invitations={eventRows}
           contactOptions={contactOptions}
           groups={(groupsResult.data ?? []).map((group) => ({
             id: Number(group.id),

@@ -129,7 +129,7 @@ Questa e' una bozza concettuale. Non contiene migration SQL e andra' raffinata p
 | `events` | Eventi | titolo, descrizione, date, orari, luogo, stato, note, id evento legacy | inviti, segmenti | MVP | definire stati definitivi |
 | `event_segments` | Segmenti di evento | `event_id`, nome, data/ora, luogo | inviti/risposte/check-in | Post-MVP | forse introdurla presto per Festa della Comunita' |
 | `event_invitations` | Lista invitati per evento e storico partecipazioni | `event_id`, `contact_id`, stato invito, stato risposta, presenza, flag operativo, proponente, note, campi essenziali per import storico Access | evento, contatto, risposta | MVP | il flag e' relativo all'invito/evento, non al contatto; lo storico Access da importare serve solo per eventi, invitati e partecipazioni |
-| `invitation_proposals` | Proposte dei riferimenti | evento, contatto, riferimento, decisione, note | evento, riferimento | Post-MVP | workflow e stati da definire |
+| `invitation_proposals` | Proposte dei riferimenti | evento, contatto, riferimento, decisione, note | evento, riferimento | MVP, implementata nella Milestone 10 | eventuali notifiche e workflow avanzato restano post-MVP |
 | `invitation_responses` | Storico risposte | invito, risposta, canale, data, token, note | invito | Post-MVP, manuale in MVP se semplice | stati risposta definitivi |
 | `email_templates` | Template inviti/comunicazioni | nome, oggetto, corpo, variabili, attivo | email log/eventi | Post-MVP | provider e editor da scegliere |
 | `email_logs` | Log invii email | destinatario, invito, template, stato, errore, provider id | inviti | Post-MVP | necessario per batch/retry |
@@ -280,17 +280,17 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 ### Milestone 10 - Lista invitati con filtri base
 
 - **Obiettivo**: ridurre selezione manuale nome per nome.
-- **Scope**: selezione contatti per gruppo, riferimento, stato, priorita', dati mancanti; aggiunta massiva a evento.
+- **Scope**: selezione contatti per gruppo, riferimento, stato, priorita', dati mancanti ed eventi passati; aggiunta massiva a evento; proposte assegnate ai referenti.
 - **Output atteso**: lista invitati evento costruibile da filtri.
 - **Criteri di accettazione**: il manager puo' filtrare, selezionare, aggiungere e rimuovere invitati.
 - **Verifiche tecniche**: test combinazioni filtro, no duplicati nello stesso evento.
 - **Rischi**: query complesse e UX confusa.
 - **Decisioni aperte**: includere subito filtro per evento passato.
 - **Stato**: completata il 2026-06-07.
-- **Decisioni adottate**: incluso subito il filtro per evento passato con risposta e presenza; filtri principali combinati in AND, con selezioni multiple di gruppi e referenti trattate in OR all'interno dello stesso filtro; esclusione automatica dei contatti gia' invitati; operazioni massive idempotenti.
-- **Workflow proposte anticipato**: introdotta `invitation_proposals` separata da `event_invitations`, con una proposta per evento/contatto/referente e stati `pending`, `approved`, `excluded`. Le proposte non alterano i conteggi invitati. Il manager puo' creare inviti diretti oppure proposte solo verso referenti associati al contatto e collegati a utenti attivi; il referente decide da `/dashboard/proposals`; il manager converte esplicitamente le approvazioni in inviti.
-- **Verifica conclusiva**: migration applicata al database self-hosted; RLS, policy, vincoli e idempotenza verificati; TypeScript, lint e build superati; flusso filtri e selezione verificato nel browser su desktop e mobile.
-- **Collaudo operativo residuo**: collegare almeno un utente `reference` reale a un referente con contatti associati e verificare approvazione/esclusione end-to-end. Al 2026-06-07 non risultano profili reference attivi collegati utilizzabili per il test.
+- **Decisioni adottate**: incluso subito il filtro per eventi passati con risposta e presenza; filtri principali combinati in AND, con selezioni multiple di gruppi e referenti trattate in OR all'interno dello stesso filtro; esclusione automatica dei contatti gia' invitati; operazioni massive idempotenti.
+- **Workflow proposte anticipato**: introdotta `invitation_proposals` separata da `event_invitations`, con una proposta per evento/contatto/referente e stati `pending`, `approved`, `excluded`. Le proposte non alterano i conteggi invitati. Il manager puo' creare inviti diretti oppure proposte verso uno o piu' referenti associati al contatto; il referente decide da `/dashboard/proposals`; il manager converte le approvazioni in inviti o registra direttamente un'approvazione ricevuta verbalmente o via email.
+- **Esito lista evento**: inviti e proposte pendenti sono mostrati nella stessa tabella con stati distinti (`Da invitare`, `Invitato`, `Da approvare`) e referenti approvatori visibili. Sono disponibili selezione multipla, cambio stato massivo anche per le proposte e undo dell'ultima modifica massiva.
+- **Verifica conclusiva**: migration applicate al database self-hosted; RLS, policy, vincoli e idempotenza verificati; TypeScript, lint e build superati; flusso filtri e selezione verificato nel browser; conversione `Da approvare` -> `Da invitare` e relativo undo collaudati end-to-end con ripristino dei conteggi iniziali.
 
 ### Milestone 11 - Gestione manuale inviti e risposte
 
@@ -444,13 +444,14 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Primo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe avviare la **Milestone 10: Lista invitati con filtri base**.
+Il prossimo blocco operativo dovrebbe avviare la **Milestone 11: Gestione manuale inviti e risposte**.
 
 Prima di iniziare conviene confermare:
 
-- quali filtri archivio devono essere disponibili nella selezione massiva;
-- se il filtro per evento passato, risposta e partecipazione deve entrare subito;
-- se l'aggiunta massiva deve prevedere una schermata di anteprima/conferma;
-- quanti contatti devono poter essere selezionati in una singola operazione.
+- il ciclo definitivo degli stati di invito, distinguendo chiaramente `Da invitare` da `Invitato`;
+- quali variazioni devono essere consentite singolarmente e con modifica massiva;
+- come registrare manualmente risposta, data, canale e note;
+- quali conteggi devono apparire nella pagina evento e nella dashboard;
+- quali operazioni devono essere incluse nell'audit.
 
-Output atteso del prossimo blocco: costruzione rapida della lista invitati tramite filtri combinati, selezione multipla e aggiunta idempotente all'evento.
+Output atteso del prossimo blocco: gestione manuale coerente degli stati di invito e delle risposte, con conteggi affidabili, filtri aggiornati e storico minimo delle modifiche.

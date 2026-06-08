@@ -38,6 +38,17 @@ function parseStatusFilter(searchParams: ContactsSearchParams) {
   return status === "all" || status === "standby" ? status : "active";
 }
 
+function parseDateFilter(searchParams: ContactsSearchParams, key: string) {
+  const value = paramValue(searchParams, key);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+function nextDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export default async function ContactsPage({
   searchParams,
 }: {
@@ -56,6 +67,10 @@ export default async function ContactsPage({
   const referenceId = Number(paramValue(params, "referenceId"));
   const missing = paramValue(params, "missing");
   const groupIds = parseGroupIds(params);
+  const createdFrom = parseDateFilter(params, "createdFrom");
+  const createdTo = parseDateFilter(params, "createdTo");
+  const updatedFrom = parseDateFilter(params, "updatedFrom");
+  const updatedTo = parseDateFilter(params, "updatedTo");
   const from = (page - 1) * CONTACT_PAGE_SIZE;
   const to = from + CONTACT_PAGE_SIZE - 1;
 
@@ -114,6 +129,18 @@ export default async function ContactsPage({
     } else if (missingIds.size > 0) {
       contactsQuery = contactsQuery.not("id", "in", `(${[...missingIds].join(",")})`);
     }
+  }
+  if (createdFrom) {
+    contactsQuery = contactsQuery.gte("created_at", `${createdFrom}T00:00:00`);
+  }
+  if (createdTo) {
+    contactsQuery = contactsQuery.lt("created_at", `${nextDate(createdTo)}T00:00:00`);
+  }
+  if (updatedFrom) {
+    contactsQuery = contactsQuery.gte("updated_at", `${updatedFrom}T00:00:00`);
+  }
+  if (updatedTo) {
+    contactsQuery = contactsQuery.lt("updated_at", `${nextDate(updatedTo)}T00:00:00`);
   }
 
   const [contactsResult, groupsResult, referencesResult, languagesResult] = await Promise.all([
@@ -256,6 +283,10 @@ export default async function ContactsPage({
             groupIds,
             referenceId: Number.isSafeInteger(referenceId) && referenceId > 0 ? String(referenceId) : "all",
             missing,
+            createdFrom,
+            createdTo,
+            updatedFrom,
+            updatedTo,
           }}
         />
       </div>

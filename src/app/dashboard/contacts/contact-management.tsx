@@ -76,6 +76,8 @@ export type ContactRecord = {
   missing_data_notes: string | null;
   status: "active" | "standby";
   priority: "standard" | "important" | "critical";
+  created_at: string;
+  updated_at: string;
   group_ids: number[];
   reference_ids: number[];
   missing_fields: string[];
@@ -92,6 +94,7 @@ export type ContactEventHistoryItem = {
   attendance_status: "unknown" | "attended" | "absent";
 };
 type ContactViewMode = "cards" | "table";
+type ContactCardSortKey = "default" | "createdAt" | "updatedAt";
 type ContactTableSortKey =
   | "name"
   | "role"
@@ -99,10 +102,44 @@ type ContactTableSortKey =
   | "groups"
   | "references"
   | "country"
-  | "language"
+  | "createdAt"
+  | "updatedAt"
   | "status"
   | "priority"
   | "missing";
+
+const TABLE_COLUMN_KEYS: ContactTableSortKey[] = [
+  "name",
+  "role",
+  "institution",
+  "groups",
+  "references",
+  "country",
+  "createdAt",
+  "updatedAt",
+  "status",
+  "priority",
+  "missing",
+];
+
+function readHiddenTableColumns(storageKey: string) {
+  if (typeof window === "undefined") return new Set<ContactTableSortKey>();
+
+  const rawValue = window.localStorage.getItem(storageKey);
+  if (!rawValue) return new Set<ContactTableSortKey>();
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return new Set<ContactTableSortKey>();
+
+    const allowed = new Set(TABLE_COLUMN_KEYS);
+    return new Set(parsed.filter((key): key is ContactTableSortKey => allowed.has(key)));
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return new Set<ContactTableSortKey>();
+  }
+}
+
 const FIELD_LABELS: Record<string, string> = {
   name: "nome",
   email: "email",
@@ -414,6 +451,14 @@ function compareValues(a: string | number, b: string | number, direction: "asc" 
       : String(a).localeCompare(String(b), "it", { sensitivity: "base" });
 
   return direction === "asc" ? result : -result;
+}
+
+function contactDate(value: string) {
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function CountryInput({ defaultValue }: { defaultValue: string }) {
@@ -1577,7 +1622,10 @@ function ContactsTable({
   references,
   sortKey,
   sortDirection,
+  hiddenColumnKeys,
   onSort,
+  onHideColumn,
+  onShowAllColumns,
   onOpenContact,
 }: {
   contacts: ContactRecord[];
@@ -1585,115 +1633,208 @@ function ContactsTable({
   references: Option[];
   sortKey: ContactTableSortKey;
   sortDirection: "asc" | "desc";
+  hiddenColumnKeys: Set<ContactTableSortKey>;
   onSort: (key: ContactTableSortKey) => void;
+  onHideColumn: (key: ContactTableSortKey) => void;
+  onShowAllColumns: () => void;
   onOpenContact: (contact: ContactRecord) => void;
 }) {
+  const visibleColumnCount = TABLE_COLUMN_KEYS.filter((key) => !hiddenColumnKeys.has(key)).length;
+
   function sortLabel(key: ContactTableSortKey) {
     if (sortKey !== key) return "";
     return sortDirection === "asc" ? " ↑" : " ↓";
   }
 
-  function renderHeaderButton(keyName: ContactTableSortKey, label: string) {
+  function renderHeaderButton(keyName: ContactTableSortKey, label: string, alignRight = false) {
     return (
-      <button
-        type="button"
-        onClick={() => onSort(keyName)}
-        className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
-      >
-        {label}
-        {sortLabel(keyName)}
-      </button>
+      <div className={`flex items-center gap-2 ${alignRight ? "justify-end" : ""}`}>
+        <button
+          type="button"
+          onClick={() => onSort(keyName)}
+          className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
+        >
+          {label}
+          {sortLabel(keyName)}
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onHideColumn(keyName);
+          }}
+          title={`Nascondi ${label}`}
+          aria-label={`Nascondi colonna ${label}`}
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-500 hover:border-[#d43c2f] hover:text-[#d43c2f]"
+        >
+          ×
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-[#f8fafc] px-4 py-3">
+        <p className="text-xs font-medium text-slate-600">
+          {hiddenColumnKeys.size > 0
+            ? `${hiddenColumnKeys.size} colonne nascoste`
+            : "Tutte le colonne sono visibili"}
+        </p>
+        <button
+          type="button"
+          onClick={onShowAllColumns}
+          disabled={hiddenColumnKeys.size === 0}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Mostra tutte le colonne
+        </button>
+      </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-[#f8fafc] text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("name", "Nome")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("role", "Carica")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("institution", "Istituzione")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("groups", "Gruppi")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("references", "Referenti")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("country", "Paese")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("language", "Lingua")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("status", "Stato")}
-              </th>
-              <th className="px-4 py-3 normal-case tracking-normal">
-                {renderHeaderButton("priority", "Priorita'")}
-              </th>
-              <th className="px-4 py-3 text-right normal-case tracking-normal">
-                {renderHeaderButton("missing", "Dati")}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {contacts.map((contact) => {
-              const groupsText = optionNames(contact.group_ids, groups).join(", ");
-              const referencesText = optionNames(contact.reference_ids, references).join(", ");
+        {visibleColumnCount === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-slate-500">
+            Tutte le colonne sono nascoste. Usa “Mostra tutte le colonne” per ripristinare la
+            tabella.
+          </p>
+        ) : (
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-[#f8fafc] text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                {hiddenColumnKeys.has("name") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("name", "Nome")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("role") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("role", "Carica")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("institution") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("institution", "Istituzione")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("groups") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("groups", "Gruppi")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("references") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("references", "Referenti")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("country") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("country", "Paese")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("createdAt") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("createdAt", "Creazione")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("updatedAt") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("updatedAt", "Ultima modifica")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("status") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("status", "Stato")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("priority") ? null : (
+                  <th className="px-4 py-3 normal-case tracking-normal">
+                    {renderHeaderButton("priority", "Priorita'")}
+                  </th>
+                )}
+                {hiddenColumnKeys.has("missing") ? null : (
+                  <th className="px-4 py-3 text-right normal-case tracking-normal">
+                    {renderHeaderButton("missing", "Dati", true)}
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {contacts.map((contact) => {
+                const groupsText = optionNames(contact.group_ids, groups).join(", ");
+                const referencesText = optionNames(contact.reference_ids, references).join(", ");
 
-              return (
-                <tr
-                  key={contact.id}
-                  className="cursor-pointer align-top hover:bg-[#f8fafc]"
-                  onClick={() => onOpenContact(contact)}
-                >
-                  <td className="px-4 py-3 font-semibold text-[#1b3272]">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpenContact(contact);
-                      }}
-                      className="text-left hover:underline"
-                    >
-                      {contactDisplayName(contact)}
-                    </button>
-                    {contact.email ? (
-                      <div className="mt-1 text-xs font-normal text-slate-500">{contact.email}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-slate-700">{contact.institutional_role || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700">{contact.institution || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700">{groupsText || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700">{referencesText || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700">{contact.country || "—"}</td>
-                  <td className="px-4 py-3 text-slate-700">{contact.spoken_language || "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-                      {CONTACT_STATUS_LABELS[contact.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]">
-                      {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-slate-700">
-                    {contact.missing_fields.length > 0 ? `${contact.missing_fields.length} mancanti` : "Completi"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <tr
+                    key={contact.id}
+                    className="cursor-pointer align-top hover:bg-[#f8fafc]"
+                    onClick={() => onOpenContact(contact)}
+                  >
+                    {hiddenColumnKeys.has("name") ? null : (
+                      <td className="px-4 py-3 font-semibold text-[#1b3272]">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenContact(contact);
+                          }}
+                          className="text-left hover:underline"
+                        >
+                          {contactDisplayName(contact)}
+                        </button>
+                        {contact.email ? (
+                          <div className="mt-1 text-xs font-normal text-slate-500">{contact.email}</div>
+                        ) : null}
+                      </td>
+                    )}
+                    {hiddenColumnKeys.has("role") ? null : (
+                      <td className="px-4 py-3 text-slate-700">{contact.institutional_role || "—"}</td>
+                    )}
+                    {hiddenColumnKeys.has("institution") ? null : (
+                      <td className="px-4 py-3 text-slate-700">{contact.institution || "—"}</td>
+                    )}
+                    {hiddenColumnKeys.has("groups") ? null : (
+                      <td className="px-4 py-3 text-slate-700">{groupsText || "—"}</td>
+                    )}
+                    {hiddenColumnKeys.has("references") ? null : (
+                      <td className="px-4 py-3 text-slate-700">{referencesText || "—"}</td>
+                    )}
+                    {hiddenColumnKeys.has("country") ? null : (
+                      <td className="px-4 py-3 text-slate-700">{contact.country || "—"}</td>
+                    )}
+                    {hiddenColumnKeys.has("createdAt") ? null : (
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                        {contactDate(contact.created_at)}
+                      </td>
+                    )}
+                    {hiddenColumnKeys.has("updatedAt") ? null : (
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                        {contactDate(contact.updated_at)}
+                      </td>
+                    )}
+                    {hiddenColumnKeys.has("status") ? null : (
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${contact.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                          {CONTACT_STATUS_LABELS[contact.status]}
+                        </span>
+                      </td>
+                    )}
+                    {hiddenColumnKeys.has("priority") ? null : (
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]">
+                          {contact.priority === "critical" ? "Critica" : contact.priority === "important" ? "Importante" : "Standard"}
+                        </span>
+                      </td>
+                    )}
+                    {hiddenColumnKeys.has("missing") ? null : (
+                      <td className="px-4 py-3 text-right text-slate-700">
+                        {contact.missing_fields.length > 0 ? `${contact.missing_fields.length} mancanti` : "Completi"}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -1727,6 +1868,10 @@ export function ContactManagement({
     groupIds: number[];
     referenceId: string;
     missing: string;
+    createdFrom: string;
+    createdTo: string;
+    updatedFrom: string;
+    updatedTo: string;
   };
 }) {
   const [search, setSearch] = useState(initialFilters.search);
@@ -1735,8 +1880,17 @@ export function ContactManagement({
   const [groupIds, setGroupIds] = useState<number[]>(initialFilters.groupIds);
   const [referenceId, setReferenceId] = useState(initialFilters.referenceId || "all");
   const [missing, setMissing] = useState(initialFilters.missing || "all");
+  const [createdFrom, setCreatedFrom] = useState(initialFilters.createdFrom);
+  const [createdTo, setCreatedTo] = useState(initialFilters.createdTo);
+  const [updatedFrom, setUpdatedFrom] = useState(initialFilters.updatedFrom);
+  const [updatedTo, setUpdatedTo] = useState(initialFilters.updatedTo);
   const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>("name");
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("asc");
+  const [cardSortKey, setCardSortKey] = useState<ContactCardSortKey>("default");
+  const tableColumnsPreferenceKey = `${viewPreferenceKey}:table-columns:hidden`;
+  const [hiddenTableColumns, setHiddenTableColumns] = useState<Set<ContactTableSortKey>>(
+    () => readHiddenTableColumns(tableColumnsPreferenceKey),
+  );
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const deferredSearch = useDeferredValue(search);
   const viewMode = useSyncExternalStore(
@@ -1760,6 +1914,34 @@ export function ContactManagement({
     window.dispatchEvent(new Event("contacts-view-change"));
   }
 
+  function storeHiddenTableColumns(nextHiddenColumns: Set<ContactTableSortKey>) {
+    if (nextHiddenColumns.size === 0) {
+      window.localStorage.removeItem(tableColumnsPreferenceKey);
+      return;
+    }
+
+    window.localStorage.setItem(tableColumnsPreferenceKey, JSON.stringify([...nextHiddenColumns]));
+  }
+
+  function hideTableColumn(columnKey: ContactTableSortKey) {
+    setHiddenTableColumns((current) => {
+      const next = new Set(current).add(columnKey);
+      storeHiddenTableColumns(next);
+      return next;
+    });
+
+    if (tableSortKey === columnKey) {
+      setTableSortKey("name");
+      setTableSortDirection("asc");
+    }
+  }
+
+  function showAllTableColumns() {
+    const next = new Set<ContactTableSortKey>();
+    setHiddenTableColumns(next);
+    storeHiddenTableColumns(next);
+  }
+
   function toggleTableSort(nextKey: ContactTableSortKey) {
     if (nextKey === tableSortKey) {
       setTableSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -1778,6 +1960,10 @@ export function ContactManagement({
     if (groupIds.length > 0) params.set("groups", groupIds.join(","));
     if (referenceId !== "all") params.set("referenceId", referenceId);
     if (missing !== "all") params.set("missing", missing);
+    if (createdFrom) params.set("createdFrom", createdFrom);
+    if (createdTo) params.set("createdTo", createdTo);
+    if (updatedFrom) params.set("updatedFrom", updatedFrom);
+    if (updatedTo) params.set("updatedTo", updatedTo);
     if (nextPage > 1) params.set("page", String(nextPage));
     const query = params.toString();
     return `/dashboard/contacts${query ? `?${query}` : ""}`;
@@ -1828,7 +2014,8 @@ export function ContactManagement({
         groups: [aGroups, bGroups],
         references: [aReferences, bReferences],
         country: [a.country ?? "", b.country ?? ""],
-        language: [a.spoken_language ?? "", b.spoken_language ?? ""],
+        createdAt: [new Date(a.created_at).getTime(), new Date(b.created_at).getTime()],
+        updatedAt: [new Date(a.updated_at).getTime(), new Date(b.updated_at).getTime()],
         status: [a.status, b.status],
         priority: [a.priority, b.priority],
         missing: [a.missing_fields.length, b.missing_fields.length],
@@ -1838,7 +2025,16 @@ export function ContactManagement({
       return compareValues(aValue, bValue, tableSortDirection);
     });
   }, [filtered, groups, references, tableSortDirection, tableSortKey]);
-  const visibleContacts = viewMode === "table" ? tableContacts : filtered;
+  const cardContacts = useMemo(() => {
+    if (cardSortKey === "default") return filtered;
+
+    return [...filtered].sort((a, b) => {
+      const aTime = new Date(cardSortKey === "createdAt" ? a.created_at : a.updated_at).getTime();
+      const bTime = new Date(cardSortKey === "createdAt" ? b.created_at : b.updated_at).getTime();
+      return bTime - aTime;
+    });
+  }, [cardSortKey, filtered]);
+  const visibleContacts = viewMode === "table" ? tableContacts : cardContacts;
 
   return (
     <div className="space-y-8">
@@ -1912,6 +2108,46 @@ export function ContactManagement({
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>
             </select>
           </div>
+          {viewMode === "table" ? (
+            <div className="grid w-full gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs font-semibold text-slate-600">
+                Creato dal
+                <input
+                  type="date"
+                  value={createdFrom}
+                  onChange={(event) => setCreatedFrom(event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Creato al
+                <input
+                  type="date"
+                  value={createdTo}
+                  onChange={(event) => setCreatedTo(event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Modificato dal
+                <input
+                  type="date"
+                  value={updatedFrom}
+                  onChange={(event) => setUpdatedFrom(event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Modificato al
+                <input
+                  type="date"
+                  value={updatedTo}
+                  onChange={(event) => setUpdatedTo(event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+            </div>
+          ) : null}
           <div className="flex w-full flex-wrap items-center gap-2">
             <button
               type="button"
@@ -1927,6 +2163,46 @@ export function ContactManagement({
               Rimuovi filtri
             </a>
           </div>
+          {viewMode === "cards" ? (
+            <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Ordina schede
+              </span>
+              <button
+                type="button"
+                onClick={() => setCardSortKey("updatedAt")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  cardSortKey === "updatedAt"
+                    ? "bg-[#1b3272] text-white"
+                    : "border border-slate-300 bg-white text-[#1b3272] hover:border-[#d43c2f]"
+                }`}
+                aria-pressed={cardSortKey === "updatedAt"}
+              >
+                Modifica più recente
+              </button>
+              <button
+                type="button"
+                onClick={() => setCardSortKey("createdAt")}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                  cardSortKey === "createdAt"
+                    ? "bg-[#1b3272] text-white"
+                    : "border border-slate-300 bg-white text-[#1b3272] hover:border-[#d43c2f]"
+                }`}
+                aria-pressed={cardSortKey === "createdAt"}
+              >
+                Creazione più recente
+              </button>
+              {cardSortKey !== "default" ? (
+                <button
+                  type="button"
+                  onClick={() => setCardSortKey("default")}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white"
+                >
+                  Ordine predefinito
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -1940,7 +2216,10 @@ export function ContactManagement({
             references={references}
             sortKey={tableSortKey}
             sortDirection={tableSortDirection}
+            hiddenColumnKeys={hiddenTableColumns}
             onSort={toggleTableSort}
+            onHideColumn={hideTableColumn}
+            onShowAllColumns={showAllTableColumns}
             onOpenContact={setSelectedContact}
           />
         ) : (

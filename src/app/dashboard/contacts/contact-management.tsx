@@ -152,6 +152,12 @@ const CONTACT_STATUS_LABELS: Record<ContactRecord["status"], string> = {
   standby: "Non attivo",
 };
 
+const CONTACT_PRIORITY_LABELS: Record<ContactRecord["priority"], string> = {
+  standard: "Standard",
+  important: "Importante",
+  critical: "Critica",
+};
+
 const RESPONSE_LABELS: Record<ContactEventHistoryItem["response_status"], string> = {
   no_response: "Nessuna risposta",
   attending: "Partecipa",
@@ -442,6 +448,45 @@ function contactDisplayName(contact: ContactRecord) {
 function optionNames(ids: number[], options: Option[]) {
   const selected = new Set(ids);
   return options.filter((option) => selected.has(option.id)).map((option) => option.name);
+}
+
+function FilterSummary({
+  filteredTotalCount,
+  visiblePageCount,
+  chips,
+}: {
+  filteredTotalCount: number;
+  visiblePageCount: number;
+  chips: string[];
+}) {
+  return (
+    <div className="w-full rounded-xl border border-[#d9e1f2] bg-[#f8fbff] px-3 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-[#1b3272]">
+          {filteredTotalCount} risultati totali con i filtri applicati
+        </span>
+        <span className="text-xs text-slate-500">
+          {visiblePageCount} mostrati in questa pagina
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {chips.length > 0 ? (
+          chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full border border-[#1b3272]/20 bg-white px-3 py-1 text-xs font-semibold text-[#1b3272]"
+            >
+              {chip}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+            Nessun filtro applicato
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function compareValues(a: string | number, b: string | number, direction: "asc" | "desc") {
@@ -1955,7 +2000,7 @@ export function ContactManagement({
   function contactsUrl(nextPage: number) {
     const params = new URLSearchParams();
     if (search.trim()) params.set("q", search.trim());
-    params.set("status", status);
+    if (status !== "active") params.set("status", status);
     if (priority !== "all") params.set("priority", priority);
     if (groupIds.length > 0) params.set("groups", groupIds.join(","));
     if (referenceId !== "all") params.set("referenceId", referenceId);
@@ -2035,6 +2080,37 @@ export function ContactManagement({
     });
   }, [cardSortKey, filtered]);
   const visibleContacts = viewMode === "table" ? tableContacts : cardContacts;
+  const activeFilterChips = useMemo(() => {
+    const chips: string[] = [];
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) chips.push(`Ricerca: "${trimmedSearch}"`);
+    if (status !== "active") chips.push(`Stato: ${status === "all" ? "Tutti gli stati" : CONTACT_STATUS_LABELS[status as ContactRecord["status"]] ?? status}`);
+    if (priority !== "all") chips.push(`Priorità: ${CONTACT_PRIORITY_LABELS[priority as ContactRecord["priority"]] ?? priority}`);
+    if (groupIds.length > 0) chips.push(`Gruppi: ${optionNames(groupIds, groups).join(", ") || groupIds.join(", ")}`);
+    if (referenceId !== "all") {
+      const referenceName = references.find((reference) => String(reference.id) === referenceId)?.name;
+      chips.push(`Referente: ${referenceName ?? referenceId}`);
+    }
+    if (missing !== "all") chips.push(`Dati: ${missing === "yes" ? "con dati mancanti" : "completi"}`);
+    if (createdFrom) chips.push(`Creato dal: ${createdFrom}`);
+    if (createdTo) chips.push(`Creato al: ${createdTo}`);
+    if (updatedFrom) chips.push(`Modificato dal: ${updatedFrom}`);
+    if (updatedTo) chips.push(`Modificato al: ${updatedTo}`);
+    return chips;
+  }, [
+    createdFrom,
+    createdTo,
+    groupIds,
+    groups,
+    missing,
+    priority,
+    referenceId,
+    references,
+    search,
+    status,
+    updatedFrom,
+    updatedTo,
+  ]);
 
   return (
     <div className="space-y-8">
@@ -2157,12 +2233,17 @@ export function ContactManagement({
               Applica filtri
             </button>
             <a
-              href="/dashboard/contacts?status=active"
+              href="/dashboard/contacts"
               className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              Rimuovi filtri
+              Azzera filtri
             </a>
           </div>
+          <FilterSummary
+            filteredTotalCount={totalContacts}
+            visiblePageCount={filtered.length}
+            chips={activeFilterChips}
+          />
           {viewMode === "cards" ? (
             <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -11,6 +11,36 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 100;
 type SearchParams = Record<string, string | string[] | undefined>;
 
+const STATUS_LABELS: Record<string, string> = {
+  active: "Attivi",
+  standby: "Non attivi",
+  all: "Tutti",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  standard: "Standard",
+  important: "Importante",
+  critical: "Critica",
+};
+
+const MISSING_LABELS: Record<string, string> = {
+  yes: "Con dati mancanti",
+  no: "Dati completi",
+};
+
+const PAST_RESPONSE_LABELS: Record<string, string> = {
+  attending: "Partecipa",
+  declined: "Non partecipa",
+  maybe: "Forse",
+  no_response: "Nessuna risposta",
+};
+
+const PAST_ATTENDANCE_LABELS: Record<string, string> = {
+  attended: "Presente",
+  absent: "Assente",
+  unknown: "Non verificata",
+};
+
 function values(params: SearchParams, key: string) {
   const raw = params[key];
   return (Array.isArray(raw) ? raw : raw ? [raw] : [])
@@ -29,6 +59,12 @@ function one(params: SearchParams, key: string) {
 
 function contactName(contact: { first_name: string | null; last_name: string | null; institution: string | null }) {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome";
+}
+
+function selectedOptionLabels(selectedIds: number[], options: { id: number; label: string }[]) {
+  const selected = new Set(selectedIds);
+  const labels = options.filter((option) => selected.has(option.id)).map((option) => option.label);
+  return labels.length > 0 ? labels.join(", ") : selectedIds.join(", ");
 }
 
 export default async function BuildEventInvitationsPage({
@@ -185,6 +221,33 @@ export default async function BuildEventInvitationsPage({
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageContacts = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const groupOptions = (groupsResult.data ?? []).map((group) => ({
+    id: Number(group.id),
+    label: `${group.name}${group.active ? "" : " (non attivo)"}`,
+  }));
+  const referenceOptions = (referencesResult.data ?? []).map((reference) => ({
+    id: Number(reference.id),
+    label: `${reference.full_name}${reference.active ? "" : " (non attivo)"}`,
+  }));
+  const pastEventOptions = (eventsResult.data ?? []).map((event) => ({
+    id: Number(event.id),
+    label: `${event.title} · ${new Date(event.starts_at).toLocaleDateString("it-IT")}`,
+  }));
+  const filterChips = [
+    one(query, "q") ? `Ricerca: "${one(query, "q")}"` : null,
+    status !== "active" ? `Stato: ${STATUS_LABELS[status] ?? status}` : null,
+    priority !== "all" ? `Priorità: ${PRIORITY_LABELS[priority] ?? priority}` : null,
+    groupIds.length > 0 ? `Gruppi: ${selectedOptionLabels(groupIds, groupOptions)}` : null,
+    referenceIds.length > 0 ? `Referenti: ${selectedOptionLabels(referenceIds, referenceOptions)}` : null,
+    missing !== "all" ? `Dati: ${MISSING_LABELS[missing] ?? missing}` : null,
+    pastEventIds.length > 0 ? `Eventi passati: ${selectedOptionLabels(pastEventIds, pastEventOptions)}` : null,
+    pastEventIds.length > 0 && pastResponse !== "all"
+      ? `Risposta passata: ${PAST_RESPONSE_LABELS[pastResponse] ?? pastResponse}`
+      : null,
+    pastEventIds.length > 0 && pastAttendance !== "all"
+      ? `Presenza passata: ${PAST_ATTENDANCE_LABELS[pastAttendance] ?? pastAttendance}`
+      : null,
+  ].filter((chip): chip is string => Boolean(chip));
   const candidates: CandidateContact[] = pageContacts.map((contact) => {
     const contactId = Number(contact.id);
     return {
@@ -247,10 +310,7 @@ export default async function BuildEventInvitationsPage({
               name="groupIds"
               selectedIds={groupIds}
               searchLabel="Cerca gruppo"
-              options={(groupsResult.data ?? []).map((group) => ({
-                id: Number(group.id),
-                label: `${group.name}${group.active ? "" : " (non attivo)"}`,
-              }))}
+              options={groupOptions}
             />
           </fieldset>
           <fieldset className="text-sm font-medium text-slate-700">
@@ -259,10 +319,7 @@ export default async function BuildEventInvitationsPage({
               name="referenceIds"
               selectedIds={referenceIds}
               searchLabel="Cerca referente"
-              options={(referencesResult.data ?? []).map((reference) => ({
-                id: Number(reference.id),
-                label: `${reference.full_name}${reference.active ? "" : " (non attivo)"}`,
-              }))}
+              options={referenceOptions}
             />
           </fieldset>
           <label className="text-sm font-medium text-slate-700">
@@ -277,10 +334,7 @@ export default async function BuildEventInvitationsPage({
               name="pastEventIds"
               selectedIds={pastEventIds}
               searchLabel="Cerca evento passato"
-              options={(eventsResult.data ?? []).map((event) => ({
-                id: Number(event.id),
-                label: `${event.title} · ${new Date(event.starts_at).toLocaleDateString("it-IT")}`,
-              }))}
+              options={pastEventOptions}
             />
           </fieldset>
           <label className="text-sm font-medium text-slate-700">
@@ -301,7 +355,32 @@ export default async function BuildEventInvitationsPage({
           </div>
         </form>
 
-        <p className="mb-3 text-sm text-slate-600">{filtered.length} candidati trovati · pagina {safePage} di {totalPages}</p>
+        <section className="mb-4 rounded-xl border border-[#d9e1f2] bg-[#f8fbff] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-[#1b3272]">
+              {filtered.length} candidati filtrati
+            </span>
+            <span className="text-xs text-slate-500">
+              pagina {safePage} di {totalPages} · esclusi i contatti già in lista evento
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {filterChips.length > 0 ? (
+              filterChips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full border border-[#1b3272]/20 bg-white px-3 py-1 text-xs font-semibold text-[#1b3272]"
+                >
+                  {chip}
+                </span>
+              ))
+            ) : (
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                Nessun filtro applicato
+              </span>
+            )}
+          </div>
+        </section>
         <BuildSelection
           eventId={eventId}
           candidates={candidates}

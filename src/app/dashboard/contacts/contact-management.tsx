@@ -94,6 +94,7 @@ export type ContactEventHistoryItem = {
   attendance_status: "unknown" | "attended" | "absent";
 };
 type ContactViewMode = "cards" | "table";
+type FilterMatchMode = "or" | "and";
 type ContactCardSortKey = "default" | "createdAt" | "updatedAt";
 type ContactTableSortKey =
   | "name"
@@ -448,6 +449,17 @@ function contactDisplayName(contact: ContactRecord) {
 function optionNames(ids: number[], options: Option[]) {
   const selected = new Set(ids);
   return options.filter((option) => selected.has(option.id)).map((option) => option.name);
+}
+
+function contactMatchesDateRange(value: string, from: string, to: string) {
+  const time = new Date(value).getTime();
+  if (from && time < new Date(`${from}T00:00:00`).getTime()) return false;
+  if (to) {
+    const end = new Date(`${to}T00:00:00`);
+    end.setDate(end.getDate() + 1);
+    if (time >= end.getTime()) return false;
+  }
+  return true;
 }
 
 function FilterSummary({
@@ -1913,6 +1925,7 @@ export function ContactManagement({
     groupIds: number[];
     referenceId: string;
     missing: string;
+    matchMode: FilterMatchMode;
     createdFrom: string;
     createdTo: string;
     updatedFrom: string;
@@ -1925,6 +1938,7 @@ export function ContactManagement({
   const [groupIds, setGroupIds] = useState<number[]>(initialFilters.groupIds);
   const [referenceId, setReferenceId] = useState(initialFilters.referenceId || "all");
   const [missing, setMissing] = useState(initialFilters.missing || "all");
+  const [matchMode, setMatchMode] = useState<FilterMatchMode>(initialFilters.matchMode || "and");
   const [createdFrom, setCreatedFrom] = useState(initialFilters.createdFrom);
   const [createdTo, setCreatedTo] = useState(initialFilters.createdTo);
   const [updatedFrom, setUpdatedFrom] = useState(initialFilters.updatedFrom);
@@ -2005,6 +2019,7 @@ export function ContactManagement({
     if (groupIds.length > 0) params.set("groups", groupIds.join(","));
     if (referenceId !== "all") params.set("referenceId", referenceId);
     if (missing !== "all") params.set("missing", missing);
+    if (matchMode === "or") params.set("match", "or");
     if (createdFrom) params.set("createdFrom", createdFrom);
     if (createdTo) params.set("createdTo", createdTo);
     if (updatedFrom) params.set("updatedFrom", updatedFrom);
@@ -2033,18 +2048,40 @@ export function ContactManagement({
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return (
-        (!term || haystack.includes(term)) &&
-        (status === "all" || contact.status === status) &&
-        (priority === "all" || contact.priority === priority) &&
-        (groupIds.length === 0 ||
-          groupIds.some((groupId) => contact.group_ids.includes(groupId))) &&
-        (referenceId === "all" || contact.reference_ids.includes(Number(referenceId))) &&
-        (missing === "all" ||
-          (missing === "yes" ? contact.missing_fields.length > 0 : contact.missing_fields.length === 0))
-      );
+      const baseStatusMatches = status === "active" ? contact.status === "active" : true;
+      const criteria = [
+        term ? haystack.includes(term) : null,
+        status === "standby" ? contact.status === "standby" : null,
+        priority !== "all" ? contact.priority === priority : null,
+        groupIds.length > 0 ? groupIds.some((groupId) => contact.group_ids.includes(groupId)) : null,
+        referenceId !== "all" ? contact.reference_ids.includes(Number(referenceId)) : null,
+        missing !== "all"
+          ? missing === "yes"
+            ? contact.missing_fields.length > 0
+            : contact.missing_fields.length === 0
+          : null,
+        createdFrom || createdTo ? contactMatchesDateRange(contact.created_at, createdFrom, createdTo) : null,
+        updatedFrom || updatedTo ? contactMatchesDateRange(contact.updated_at, updatedFrom, updatedTo) : null,
+      ].filter((criterion): criterion is boolean => criterion !== null);
+
+      if (criteria.length === 0) return baseStatusMatches;
+      if (matchMode === "and") return baseStatusMatches && criteria.every(Boolean);
+      return baseStatusMatches && criteria.some(Boolean);
     });
-  }, [contacts, deferredSearch, groupIds, missing, priority, referenceId, status]);
+  }, [
+    contacts,
+    createdFrom,
+    createdTo,
+    deferredSearch,
+    groupIds,
+    matchMode,
+    missing,
+    priority,
+    referenceId,
+    status,
+    updatedFrom,
+    updatedTo,
+  ]);
 
   const tableContacts = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -2096,12 +2133,14 @@ export function ContactManagement({
     if (createdTo) chips.push(`Creato al: ${createdTo}`);
     if (updatedFrom) chips.push(`Modificato dal: ${updatedFrom}`);
     if (updatedTo) chips.push(`Modificato al: ${updatedTo}`);
+    if (chips.length > 1) chips.unshift(`Logica tra campi: ${matchMode === "or" ? "OR" : "AND"}`);
     return chips;
   }, [
     createdFrom,
     createdTo,
     groupIds,
     groups,
+    matchMode,
     missing,
     priority,
     referenceId,
@@ -2183,6 +2222,38 @@ export function ContactManagement({
             <select value={missing} onChange={(event) => setMissing(event.target.value)} aria-label="Filtra per dati mancanti" className={inputClass}>
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>
             </select>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Logica tra campi
+            </span>
+            <button
+              type="button"
+              onClick={() => setMatchMode("and")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                matchMode === "and"
+                  ? "bg-[#1b3272] text-white"
+                  : "border border-slate-300 bg-white text-[#1b3272] hover:border-[#d43c2f]"
+              }`}
+              aria-pressed={matchMode === "and"}
+            >
+              AND
+            </button>
+            <button
+              type="button"
+              onClick={() => setMatchMode("or")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                matchMode === "or"
+                  ? "bg-[#1b3272] text-white"
+                  : "border border-slate-300 bg-white text-[#1b3272] hover:border-[#d43c2f]"
+              }`}
+              aria-pressed={matchMode === "or"}
+            >
+              OR
+            </button>
+            <span className="text-xs text-slate-500">
+              Più valori nello stesso campo restano sempre in OR.
+            </span>
           </div>
           {viewMode === "table" ? (
             <div className="grid w-full gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-4">

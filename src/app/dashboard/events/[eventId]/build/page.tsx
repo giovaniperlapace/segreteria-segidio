@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
 type SearchParams = Record<string, string | string[] | undefined>;
+type FilterMatchMode = "or" | "and";
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Attivi",
@@ -57,6 +58,10 @@ function one(params: SearchParams, key: string) {
   return values(params, key)[0] ?? "";
 }
 
+function matchMode(params: SearchParams): FilterMatchMode {
+  return one(params, "match") === "or" ? "or" : "and";
+}
+
 function contactName(contact: { first_name: string | null; last_name: string | null; institution: string | null }) {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome";
 }
@@ -81,6 +86,7 @@ export default async function BuildEventInvitationsPage({
   const query = (await searchParams) ?? {};
   const search = one(query, "q").toLocaleLowerCase("it");
   const status = one(query, "status") || "active";
+  const filterMatchMode = matchMode(query);
   const priority = one(query, "priority") || "all";
   const missing = one(query, "missing") || "all";
   const groupIds = ids(query, "groupIds");
@@ -205,15 +211,27 @@ export default async function BuildEventInvitationsPage({
       const contactGroupIds = groupsByContact.get(contactId) ?? [];
       const contactReferenceIds = referencesByContact.get(contactId) ?? [];
       const missingFields = missingByContact.get(contactId) ?? [];
+      const baseStatusMatches = status === "active" ? contact.status === status : true;
+      const criteria = [
+        search ? haystack.includes(search) : null,
+        status === "standby" ? contact.status === status : null,
+        priority !== "all" ? contact.priority === priority : null,
+        missing !== "all" ? (missing === "yes" ? missingFields.length > 0 : missingFields.length === 0) : null,
+        groupIds.length > 0 ? groupIds.some((id) => contactGroupIds.includes(id)) : null,
+        referenceIds.length > 0 ? referenceIds.some((id) => contactReferenceIds.includes(id)) : null,
+        pastIds ? pastIds.has(contactId) : null,
+      ].filter((criterion): criterion is boolean => criterion !== null);
+
+      const filterMatches =
+        criteria.length === 0
+          ? baseStatusMatches
+          : filterMatchMode === "and"
+            ? baseStatusMatches && criteria.every(Boolean)
+            : baseStatusMatches && criteria.some(Boolean);
+
       return (
         !invitedIds.has(contactId) &&
-        (!search || haystack.includes(search)) &&
-        (status === "all" || contact.status === status) &&
-        (priority === "all" || contact.priority === priority) &&
-        (missing === "all" || (missing === "yes" ? missingFields.length > 0 : missingFields.length === 0)) &&
-        (groupIds.length === 0 || groupIds.some((id) => contactGroupIds.includes(id))) &&
-        (referenceIds.length === 0 || referenceIds.some((id) => contactReferenceIds.includes(id))) &&
-        (!pastIds || pastIds.has(contactId))
+        filterMatches
       );
     })
     .sort((a, b) => contactName(a).localeCompare(contactName(b), "it", { sensitivity: "base" }));
@@ -248,6 +266,9 @@ export default async function BuildEventInvitationsPage({
       ? `Presenza passata: ${PAST_ATTENDANCE_LABELS[pastAttendance] ?? pastAttendance}`
       : null,
   ].filter((chip): chip is string => Boolean(chip));
+  if (filterChips.length > 1) {
+    filterChips.unshift(`Logica tra campi: ${filterMatchMode === "or" ? "OR" : "AND"}`);
+  }
   const candidates: CandidateContact[] = pageContacts.map((contact) => {
     const contactId = Number(contact.id);
     return {
@@ -283,11 +304,18 @@ export default async function BuildEventInvitationsPage({
           </div>
           <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Costruisci lista: {eventResult.data.title}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Filtri combinati in AND; più gruppi o referenti selezionati sono alternativi tra loro.
+            Più valori nello stesso campo sono alternativi tra loro. La logica tra campi può essere OR o AND.
           </p>
         </header>
 
         <form className="mb-6 grid gap-3 rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm md:grid-cols-3">
+          <label className="text-sm font-medium text-slate-700">
+            Logica tra campi
+            <select name="match" defaultValue={filterMatchMode} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5">
+              <option value="and">AND</option>
+              <option value="or">OR</option>
+            </select>
+          </label>
           <label className="text-sm font-medium text-slate-700">
             Ricerca
             <input name="q" defaultValue={one(query, "q")} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5" />

@@ -10,6 +10,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/service";
 export type ArchiveActionState = {
   status: "idle" | "success" | "error";
   message: string;
+  contactId?: number;
 };
 
 export type ContactHistoryItem = {
@@ -117,6 +118,18 @@ function friendlyError(error: unknown) {
   }
   if (message.includes("REFERENCE_NOT_FOUND")) {
     return "Il referente selezionato non esiste piu'.";
+  }
+  if (message.includes("POSITION_EXPORT_EMPTY")) {
+    return "Seleziona almeno un dato da esportare.";
+  }
+  if (message.includes("POSITION_EXPORT_IDENTITY_REQUIRED")) {
+    return "Seleziona almeno la carica o l'istituzione per identificare il nuovo contatto.";
+  }
+  if (message.includes("POSITION_EXPORT_SOURCE_IDENTITY_REQUIRED")) {
+    return "Prima di esportare, inserisci un nome o un cognome nel contatto di provenienza.";
+  }
+  if (message.includes("POSITION_EXPORT_SOURCE_NOT_FOUND")) {
+    return "Il contatto di provenienza non esiste piu'.";
   }
 
   console.error("Archive operation failed", error);
@@ -529,6 +542,50 @@ export async function updateContactAction(
 
     revalidatePath("/dashboard/contacts");
     return { status: "success", message: "Contatto aggiornato correttamente." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
+export async function exportContactPositionAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  await requireManager();
+  const contactId = Number(text(formData, "contactId"));
+  const fields = [
+    ...new Set(
+      formData
+        .getAll("fields")
+        .map(String)
+        .filter(Boolean),
+    ),
+  ];
+  const groupIds = ids(formData, "groupIds");
+
+  if (!Number.isSafeInteger(contactId) || contactId <= 0) {
+    return { status: "error", message: "Contatto non valido." };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: newContactId, error } = await supabase.rpc("export_contact_position", {
+      p_source_contact_id: contactId,
+      p_fields: fields,
+      p_group_ids: groupIds,
+    });
+
+    if (error) throw error;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/contacts");
+    revalidatePath("/dashboard/references");
+    return {
+      status: "success",
+      message:
+        "Carica esportata. Il nuovo contatto e' stato creato senza referente e senza storico eventi.",
+      contactId: Number(newContactId),
+    };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useDeferredValue, useMemo, useState, useSyncExternal
 import {
   createContactAction,
   deleteContactAction,
+  exportContactPositionAction,
   loadContactHistoryAction,
   updateContactAction,
   type ContactHistoryItem,
@@ -126,6 +127,61 @@ const ATTENDANCE_LABELS: Record<ContactEventHistoryItem["attendance_status"], st
   attended: "Presente",
   absent: "Assente",
 };
+
+const POSITION_EXPORT_FIELDS = [
+  { key: "honorific_title", label: "Titolo", group: "Identita' e carica" },
+  { key: "honorific_title_english", label: "Titolo inglese", group: "Identita' e carica" },
+  { key: "honorific_title_invitation", label: "Titolo invito", group: "Identita' e carica" },
+  { key: "institutional_role", label: "Carica", group: "Identita' e carica" },
+  { key: "institutional_role_english", label: "Carica inglese", group: "Identita' e carica" },
+  { key: "institutional_role_invitation", label: "Carica invito", group: "Identita' e carica" },
+  { key: "institution", label: "Istituzione", group: "Identita' e carica" },
+  { key: "email", label: "Email", group: "Recapiti" },
+  { key: "email_2", label: "Email 2", group: "Recapiti" },
+  { key: "phone", label: "Telefono", group: "Recapiti" },
+  { key: "phone_home", label: "Telefono casa", group: "Recapiti" },
+  { key: "phone_office_2", label: "Telefono ufficio 2", group: "Recapiti" },
+  { key: "mobile_phone", label: "Cellulare", group: "Recapiti" },
+  { key: "fax", label: "Fax", group: "Recapiti" },
+  { key: "fax_home", label: "Fax casa", group: "Recapiti" },
+  { key: "telex_office", label: "Telex ufficio", group: "Recapiti" },
+  { key: "website", label: "Sito web", group: "Recapiti" },
+  { key: "website_2", label: "Sito web 2", group: "Recapiti" },
+  { key: "address_line", label: "Indirizzo", group: "Sede" },
+  { key: "postal_code", label: "CAP", group: "Sede" },
+  { key: "city", label: "Citta'", group: "Sede" },
+  { key: "country", label: "Paese", group: "Sede" },
+  { key: "office_name", label: "Nome ufficio", group: "Sede" },
+  { key: "office_address_line", label: "Indirizzo ufficio", group: "Sede" },
+  { key: "office_postal_code", label: "CAP ufficio", group: "Sede" },
+  { key: "office_city", label: "Citta' ufficio", group: "Sede" },
+  { key: "office_province", label: "Provincia ufficio", group: "Sede" },
+  { key: "office_country", label: "Paese ufficio", group: "Sede" },
+  { key: "home_address_line", label: "Indirizzo casa", group: "Dati personali" },
+  { key: "home_postal_code", label: "CAP casa", group: "Dati personali" },
+  { key: "home_city", label: "Citta' casa", group: "Dati personali" },
+  { key: "home_province", label: "Provincia casa", group: "Dati personali" },
+  { key: "home_country", label: "Paese casa", group: "Dati personali" },
+  { key: "spoken_language", label: "Lingua", group: "Altri dati" },
+  { key: "spoken_language_2", label: "Lingua 2", group: "Altri dati" },
+  { key: "invitation_language", label: "Lingua invito", group: "Altri dati" },
+  { key: "translation_language", label: "Lingua traduzione", group: "Altri dati" },
+  { key: "religion", label: "Religione", group: "Altri dati" },
+  { key: "legacy_organization_name", label: "Organizzazione legacy", group: "Altri dati" },
+  { key: "legacy_office_site", label: "Sede ufficio legacy", group: "Altri dati" },
+  { key: "mail_address_preference", label: "Preferenza indirizzo postale", group: "Altri dati" },
+  { key: "legacy_description", label: "Descrizione Access", group: "Altri dati" },
+  { key: "legacy_salutation", label: "Intestazione", group: "Altri dati" },
+  { key: "accompanist", label: "Accompagnatore", group: "Altri dati" },
+  { key: "legacy_archive_type", label: "Tipo archivio legacy", group: "Altri dati" },
+  { key: "legacy_invitation_group", label: "Gruppo inviti legacy", group: "Altri dati" },
+  { key: "notes", label: "Note", group: "Altri dati" },
+  { key: "missing_data_notes", label: "Note dati mancanti", group: "Altri dati" },
+] as const satisfies ReadonlyArray<{
+  key: keyof ContactRecord;
+  label: string;
+  group: string;
+}>;
 
 const COUNTRY_OPTIONS = [
   "Afghanistan",
@@ -1200,6 +1256,135 @@ function ContactHistoryBox({ contactId }: { contactId: number }) {
   );
 }
 
+function exportFieldValue(value: ContactRecord[keyof ContactRecord]) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "number") return String(value);
+  return typeof value === "string" ? value : "";
+}
+
+function ExportPositionPanel({
+  contact,
+  groups,
+}: {
+  contact: ContactRecord;
+  groups: Option[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useArchiveAction(exportContactPositionAction);
+  const availableFields = POSITION_EXPORT_FIELDS.flatMap((field) => {
+    const value = exportFieldValue(contact[field.key]);
+    return value ? [{ ...field, value }] : [];
+  });
+  const contactGroups = groups.filter((group) => contact.group_ids.includes(group.id));
+  const fieldGroups = [...new Set(availableFields.map((field) => field.group))];
+
+  return (
+    <section className="rounded-xl border border-[#d9e1f2] bg-[#f8faff] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[#1b3272]">Cambio della persona in carica</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Crea una nuova scheda e rimuove dall&apos;attuale solo i dati selezionati.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="rounded-xl bg-[#1b3272] px-4 py-2 text-sm font-semibold text-white hover:bg-[#263f86]"
+          aria-expanded={open}
+        >
+          Esporta carica
+        </button>
+      </div>
+      {open ? (
+        <form
+          action={action}
+          className="mt-4 space-y-4 border-t border-[#d9e1f2] pt-4"
+          onSubmit={(event) => {
+            if (
+              !window.confirm(
+                "Creare il nuovo contatto e cancellare i dati selezionati da questa scheda?",
+              )
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <input type="hidden" name="contactId" value={contact.id} />
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            Nome, cognome, referenti e storico eventi resteranno su questa persona. Per creare la
+            nuova scheda devi selezionare almeno la carica o l&apos;istituzione.
+          </p>
+          {fieldGroups.map((group) => (
+            <fieldset key={group}>
+              <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {group}
+              </legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {availableFields
+                  .filter((field) => field.group === group)
+                  .map((field) => (
+                    <label
+                      key={field.key}
+                      className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        name="fields"
+                        value={field.key}
+                        className="mt-0.5 h-4 w-4 accent-[#1b3272]"
+                      />
+                      <span className="min-w-0">
+                        <span className="font-semibold text-slate-700">{field.label}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500" title={field.value}>
+                          {field.value}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </fieldset>
+          ))}
+          {contactGroups.length > 0 ? (
+            <fieldset>
+              <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Gruppi
+              </legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {contactGroups.map((group) => (
+                  <label
+                    key={group.id}
+                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  >
+                    <input
+                      type="checkbox"
+                      name="groupIds"
+                      value={group.id}
+                      className="h-4 w-4 accent-[#1b3272]"
+                    />
+                    {group.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <SubmitButton pending={pending}>OK, crea nuovo contatto</SubmitButton>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-white"
+            >
+              Annulla
+            </button>
+            <ActionMessage state={state} />
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 function SummaryAssociations({ label, items }: { label: string; items: Option[] }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -1257,6 +1442,7 @@ export function ContactEditor({
           <ActionMessage state={state} />
         </div>
       </form>
+      {isManager ? <ExportPositionPanel contact={contact} groups={groups} /> : null}
       {isManager ? (
         <form
           action={deleteAction}

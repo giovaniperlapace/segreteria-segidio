@@ -193,6 +193,7 @@ export default async function ContactsPage({
     contactSearchResult,
     groupsResult,
     referencesResult,
+    activeContactReferences,
     languagesResult,
   ] = await Promise.all([
     supabase.rpc("search_contacts_page", {
@@ -217,6 +218,13 @@ export default async function ContactsPage({
       .is("deleted_at", null)
       .order("active", { ascending: false })
       .order("full_name"),
+    fetchAllSupabaseRows(() =>
+      supabase
+        .from("contact_references")
+        .select("reference_id,contacts!inner(id)")
+        .is("contacts.deleted_at", null)
+        .eq("contacts.status", "active"),
+    ),
     supabase
       .from("contact_languages")
       .select("id,name,active,sort_order")
@@ -258,6 +266,17 @@ export default async function ContactsPage({
       (contact) => contact.reference_ids,
     ),
   );
+  const activeContactReferenceIds = new Set(
+    activeContactReferences.map((relation) => Number(relation.reference_id)),
+  );
+  const allReferenceOptions = (referencesResult.data ?? []).map((reference) => ({
+    id: reference.id,
+    name: reference.full_name,
+    active: reference.active,
+  }));
+  const referenceOptions = allReferenceOptions.filter(
+    (reference) => reference.active || selectedReferenceIds.has(reference.id),
+  );
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
@@ -275,9 +294,10 @@ export default async function ContactsPage({
           contacts={contactRecords}
           initialSelectedContact={initialSelectedContact}
           groups={(groupsResult.data ?? []).map((group) => ({ id: group.id, name: group.name, active: group.active }))}
-          references={(referencesResult.data ?? [])
-            .filter((reference) => reference.active || selectedReferenceIds.has(reference.id))
-            .map((reference) => ({ id: reference.id, name: reference.full_name, active: reference.active }))}
+          references={referenceOptions}
+          filterReferences={allReferenceOptions.filter((reference) =>
+            activeContactReferenceIds.has(reference.id)
+          )}
           languages={(languagesResult.data ?? []).map((language) => ({
             id: language.id,
             name: language.name,

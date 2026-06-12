@@ -1988,6 +1988,7 @@ export function ContactManagement({
   initialSelectedContact,
   groups,
   references,
+  filterReferences,
   languages,
   isManager,
   viewPreferenceKey,
@@ -2000,6 +2001,7 @@ export function ContactManagement({
   initialSelectedContact: ContactRecord | null;
   groups: Option[];
   references: Option[];
+  filterReferences: Option[];
   languages: LanguageOption[];
   isManager: boolean;
   viewPreferenceKey: string;
@@ -2313,7 +2315,7 @@ export function ContactManagement({
               onChange={setGroupIds}
             />
             <ReferenceFilter
-              references={references}
+              references={filterReferences}
               selectedIds={referenceIds}
               onChange={setReferenceIds}
             />

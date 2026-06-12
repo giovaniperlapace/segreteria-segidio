@@ -541,7 +541,11 @@ export async function updateContactAction(
     }
 
     revalidatePath("/dashboard/contacts");
-    return { status: "success", message: "Contatto aggiornato correttamente." };
+    return {
+      status: "success",
+      message: "Contatto aggiornato correttamente.",
+      contactId,
+    };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }
@@ -562,6 +566,7 @@ export async function exportContactPositionAction(
     ),
   ];
   const groupIds = ids(formData, "groupIds");
+  const exportMode = text(formData, "exportMode") === "copy" ? "copy" : "transfer";
 
   if (!Number.isSafeInteger(contactId) || contactId <= 0) {
     return { status: "error", message: "Contatto non valido." };
@@ -573,6 +578,7 @@ export async function exportContactPositionAction(
       p_source_contact_id: contactId,
       p_fields: fields,
       p_group_ids: groupIds,
+      p_mode: exportMode,
     });
 
     if (error) throw error;
@@ -583,7 +589,9 @@ export async function exportContactPositionAction(
     return {
       status: "success",
       message:
-        "Carica esportata. Il nuovo contatto e' stato creato senza referente e senza storico eventi.",
+        exportMode === "copy"
+          ? "Carica copiata. Il nuovo contatto e' stato creato senza referente e senza storico eventi."
+          : "Carica trasferita. Il nuovo contatto e' stato creato senza referente e senza storico eventi.",
       contactId: Number(newContactId),
     };
   } catch (error) {

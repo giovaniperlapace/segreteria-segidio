@@ -1372,6 +1372,7 @@ function ExportPositionPanel({
   groups: Option[];
 }) {
   const [open, setOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<"transfer" | "copy">("transfer");
   const [state, action, pending] = useArchiveAction(exportContactPositionAction);
   const availableFields = POSITION_EXPORT_FIELDS.flatMap((field) => {
     const value = exportFieldValue(contact[field.key]);
@@ -1380,13 +1381,19 @@ function ExportPositionPanel({
   const contactGroups = groups.filter((group) => contact.group_ids.includes(group.id));
   const fieldGroups = [...new Set(availableFields.map((field) => field.group))];
 
+  useEffect(() => {
+    if (state.status === "success" && state.contactId) {
+      window.location.href = `/dashboard/contacts?contactId=${state.contactId}`;
+    }
+  }, [state.contactId, state.status]);
+
   return (
     <section className="rounded-xl border border-[#d9e1f2] bg-[#f8faff] px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-[#1b3272]">Cambio della persona in carica</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Crea una nuova scheda e rimuove dall&apos;attuale solo i dati selezionati.
+            Crea una nuova scheda trasferendo o copiando i dati selezionati della carica.
           </p>
         </div>
         <button
@@ -1403,19 +1410,63 @@ function ExportPositionPanel({
           action={action}
           className="mt-4 space-y-4 border-t border-[#d9e1f2] pt-4"
           onSubmit={(event) => {
+            const confirmMessage =
+              exportMode === "copy"
+                ? "Creare il nuovo contatto copiando i dati selezionati e lasciandoli anche su questa scheda?"
+                : "Creare il nuovo contatto e cancellare i dati selezionati da questa scheda?";
             if (
-              !window.confirm(
-                "Creare il nuovo contatto e cancellare i dati selezionati da questa scheda?",
-              )
+              !window.confirm(confirmMessage)
             ) {
               event.preventDefault();
             }
           }}
         >
           <input type="hidden" name="contactId" value={contact.id} />
+          <fieldset className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Tipo operazione
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  name="exportMode"
+                  value="transfer"
+                  checked={exportMode === "transfer"}
+                  onChange={() => setExportMode("transfer")}
+                  className="mt-0.5 h-4 w-4 accent-[#1b3272]"
+                />
+                <span>
+                  <span className="font-semibold text-slate-700">Trasferisci dati</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                    Opzione predefinita: crea la nuova scheda e rimuove i dati selezionati da questa.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  name="exportMode"
+                  value="copy"
+                  checked={exportMode === "copy"}
+                  onChange={() => setExportMode("copy")}
+                  className="mt-0.5 h-4 w-4 accent-[#1b3272]"
+                />
+                <span>
+                  <span className="font-semibold text-slate-700">Copia dati</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                    Per cariche condivise: crea la nuova scheda senza modificare questa.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
             Nome, cognome, referenti e storico eventi resteranno su questa persona. Per creare la
             nuova scheda devi selezionare almeno la carica o l&apos;istituzione.
+            {exportMode === "transfer"
+              ? " Con il trasferimento i dati selezionati vengono rimossi dalla scheda attuale."
+              : " Con la copia la scheda attuale resta invariata."}
           </p>
           {fieldGroups.map((group) => (
             <fieldset key={group}>
@@ -1520,6 +1571,14 @@ export function ContactEditor({
   const [state, action, pending] = useArchiveAction(updateContactAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteContactAction);
   const displayName = contactDisplayName(contact);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.contactId) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("contactId", String(state.contactId));
+    window.history.replaceState(null, "", url);
+  }, [state.contactId, state.status]);
 
   return (
     <div className="space-y-4">
@@ -1899,6 +1958,7 @@ function ContactsTable({
 
 export function ContactManagement({
   contacts,
+  initialSelectedContact,
   groups,
   references,
   languages,
@@ -1910,6 +1970,7 @@ export function ContactManagement({
   initialFilters,
 }: {
   contacts: ContactRecord[];
+  initialSelectedContact: ContactRecord | null;
   groups: Option[];
   references: Option[];
   languages: LanguageOption[];
@@ -1950,7 +2011,7 @@ export function ContactManagement({
   const [hiddenTableColumns, setHiddenTableColumns] = useState<Set<ContactTableSortKey>>(
     () => readHiddenTableColumns(tableColumnsPreferenceKey),
   );
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(initialSelectedContact);
   const deferredSearch = useDeferredValue(search);
   const viewMode = useSyncExternalStore(
     (onStoreChange) => {
@@ -2033,6 +2094,20 @@ export function ContactManagement({
     window.location.href = contactsUrl(1);
   }
 
+  function openContact(contact: ContactRecord) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("contactId", String(contact.id));
+    window.history.replaceState(null, "", url);
+    setSelectedContact(contact);
+  }
+
+  function closeContact() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("contactId");
+    window.history.replaceState(null, "", url);
+    setSelectedContact(null);
+  }
+
   const filtered = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
     return contacts.filter((contact) => {
@@ -2042,6 +2117,7 @@ export function ContactManagement({
         contact.institution,
         contact.institutional_role,
         contact.email,
+        contact.email_2,
         contact.city,
         contact.country,
       ]
@@ -2372,7 +2448,7 @@ export function ContactManagement({
             onSort={toggleTableSort}
             onHideColumn={hideTableColumn}
             onShowAllColumns={showAllTableColumns}
-            onOpenContact={setSelectedContact}
+            onOpenContact={openContact}
           />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -2383,7 +2459,7 @@ export function ContactManagement({
                 groups={groups}
                 references={references}
                 isManager={isManager}
-                onOpenContact={setSelectedContact}
+                onOpenContact={openContact}
               />
             ))}
           </div>
@@ -2418,7 +2494,7 @@ export function ContactManagement({
           role="dialog"
           aria-modal="true"
           aria-label="Scheda contatto"
-          onClick={() => setSelectedContact(null)}
+          onClick={closeContact}
         >
           <div
             className="w-full max-w-5xl overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-xl"
@@ -2437,7 +2513,7 @@ export function ContactManagement({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedContact(null)}
+                onClick={closeContact}
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Chiudi

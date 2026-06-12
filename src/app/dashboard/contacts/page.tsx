@@ -22,6 +22,11 @@ function parsePage(searchParams: ContactsSearchParams) {
   return Number.isSafeInteger(page) && page > 0 ? page : 1;
 }
 
+function parsePositiveInteger(searchParams: ContactsSearchParams, key: string) {
+  const value = Number(paramValue(searchParams, key));
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 function parseGroupIds(searchParams: ContactsSearchParams) {
   return paramValue(searchParams, "groups")
     .split(",")
@@ -81,6 +86,23 @@ function contactMatchesDateRange(value: string, from: string, to: string) {
   return true;
 }
 
+function buildContactRecord(
+  contact: ContactRecord,
+  groupIdsByContact: Map<number, number[]>,
+  referenceIdsByContact: Map<number, number[]>,
+  missingByContact: Map<number, string[]>,
+  eventHistoryByContact: Map<number, ContactRecord["event_history"]>,
+) {
+  const contactId = Number(contact.id);
+  return {
+    ...contact,
+    group_ids: groupIdsByContact.get(contactId) ?? [],
+    reference_ids: referenceIdsByContact.get(contactId) ?? [],
+    missing_fields: missingByContact.get(contactId) ?? [],
+    event_history: eventHistoryByContact.get(contactId) ?? [],
+  } as ContactRecord;
+}
+
 export default async function ContactsPage({
   searchParams,
 }: {
@@ -93,6 +115,7 @@ export default async function ContactsPage({
       : await createSupabaseServerClient();
   const params = (await searchParams) ?? {};
   const page = parsePage(params);
+  const openContactId = parsePositiveInteger(params, "contactId");
   const search = sanitizeSearchTerm(paramValue(params, "q"));
   const status = parseStatusFilter(params);
   const matchMode = parseMatchMode(params);
@@ -190,14 +213,25 @@ export default async function ContactsPage({
   });
 
   const contacts = filteredContacts.slice(from, from + CONTACT_PAGE_SIZE);
+  const openContact = openContactId
+    ? ((allContacts ?? []) as unknown as ContactRecord[]).find(
+        (contact) => Number(contact.id) === openContactId,
+      ) ?? null
+    : null;
   const currentContactIds = contacts.map((contact) => Number(contact.id));
+  const eventContactIds = [
+    ...new Set([
+      ...currentContactIds,
+      ...(openContact ? [Number(openContact.id)] : []),
+    ]),
+  ];
   const eventInvitationRows =
-    currentContactIds.length > 0
+    eventContactIds.length > 0
       ? await fetchAllSupabaseRows(() =>
           supabase
             .from("event_invitations")
             .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
-            .in("contact_id", currentContactIds),
+            .in("contact_id", eventContactIds),
         )
       : [];
 
@@ -226,13 +260,24 @@ export default async function ContactsPage({
     );
   }
 
-  const contactRecords = contacts.map((contact) => ({
-    ...contact,
-    group_ids: groupIdsByContact.get(Number(contact.id)) ?? [],
-    reference_ids: referenceIdsByContact.get(Number(contact.id)) ?? [],
-    missing_fields: missingByContact.get(Number(contact.id)) ?? [],
-    event_history: eventHistoryByContact.get(Number(contact.id)) ?? [],
-  })) as ContactRecord[];
+  const contactRecords = contacts.map((contact) =>
+    buildContactRecord(
+      contact,
+      groupIdsByContact,
+      referenceIdsByContact,
+      missingByContact,
+      eventHistoryByContact,
+    ),
+  );
+  const initialSelectedContact = openContact
+    ? buildContactRecord(
+        openContact,
+        groupIdsByContact,
+        referenceIdsByContact,
+        missingByContact,
+        eventHistoryByContact,
+      )
+    : null;
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
@@ -248,6 +293,7 @@ export default async function ContactsPage({
         </header>
         <ContactManagement
           contacts={contactRecords}
+          initialSelectedContact={initialSelectedContact}
           groups={(groupsResult.data ?? []).map((group) => ({ id: group.id, name: group.name, active: group.active }))}
           references={(referencesResult.data ?? [])
             .filter((reference) => reference.active || selectedReferenceIds.has(reference.id))

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
-import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { BuildSelection, type CandidateContact } from "./build-selection";
 import { SearchableCheckboxFilter } from "./searchable-checkbox-filter";
@@ -62,15 +61,16 @@ function matchMode(params: SearchParams): FilterMatchMode {
   return one(params, "match") === "or" ? "or" : "and";
 }
 
-function contactName(contact: { first_name: string | null; last_name: string | null; institution: string | null }) {
-  return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome";
-}
-
 function selectedOptionLabels(selectedIds: number[], options: { id: number; label: string }[]) {
   const selected = new Set(selectedIds);
   const labels = options.filter((option) => selected.has(option.id)).map((option) => option.label);
   return labels.length > 0 ? labels.join(", ") : selectedIds.join(", ");
 }
+
+type CandidateSearchRow = {
+  candidate: CandidateContact;
+  total_count: number | null;
+};
 
 export default async function BuildEventInvitationsPage({
   params,
@@ -96,26 +96,32 @@ export default async function BuildEventInvitationsPage({
   const pastAttendance = one(query, "pastAttendance") || "all";
   const page = Math.max(1, Number(one(query, "page")) || 1);
   const supabase = createSupabaseServiceClient();
+  const offset = (page - 1) * PAGE_SIZE;
 
   const [
     eventResult,
-    contacts,
+    candidatesResult,
     groupsResult,
     referencesResult,
     eventsResult,
-    contactGroups,
-    contactReferences,
-    missingRows,
-    invitedRows,
-    proposalRows,
+    approvedProposalsResult,
   ] = await Promise.all([
     supabase.from("events").select("id,title,starts_at").eq("id", eventId).maybeSingle(),
-    fetchAllSupabaseRows(() =>
-      supabase
-        .from("contacts")
-        .select("id,first_name,last_name,institution,institutional_role,email,email_2,status,priority")
-        .is("deleted_at", null),
-    ),
+    supabase.rpc("event_candidate_contacts_page", {
+      p_event_id: eventId,
+      p_search: search,
+      p_status: status,
+      p_match: filterMatchMode,
+      p_priority: priority,
+      p_missing: missing,
+      p_group_ids: groupIds,
+      p_reference_ids: referenceIds,
+      p_past_event_ids: pastEventIds,
+      p_past_response: pastResponse,
+      p_past_attendance: pastAttendance,
+      p_limit: PAGE_SIZE,
+      p_offset: offset,
+    }),
     supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
     supabase
       .from("internal_references")
@@ -124,121 +130,24 @@ export default async function BuildEventInvitationsPage({
       .order("active", { ascending: false })
       .order("full_name"),
     supabase.from("events").select("id,title,starts_at").neq("id", eventId).order("starts_at", { ascending: false }).limit(600),
-    fetchAllSupabaseRows(() => supabase.from("contact_groups").select("contact_id,group_id")),
-    fetchAllSupabaseRows(() => supabase.from("contact_references").select("contact_id,reference_id")),
-    fetchAllSupabaseRows(() => supabase.from("contacts_missing_required_data").select("id,missing_fields")),
-    fetchAllSupabaseRows(() =>
-      supabase.from("event_invitations").select("contact_id").eq("event_id", eventId),
-    ),
-    fetchAllSupabaseRows(() =>
-      supabase
-        .from("invitation_proposals")
-        .select("contact_id,reference_id,status,internal_references(full_name)")
-        .eq("event_id", eventId),
-    ),
+    supabase
+      .from("invitation_proposals")
+      .select("id", { count: "exact", head: true })
+      .eq("event_id", eventId)
+      .eq("status", "approved"),
   ]);
 
   if (eventResult.error) throw eventResult.error;
   if (!eventResult.data) notFound();
-  for (const result of [groupsResult, referencesResult, eventsResult]) {
+  for (const result of [candidatesResult, groupsResult, referencesResult, eventsResult, approvedProposalsResult]) {
     if (result.error) throw result.error;
   }
 
-  const pastInvitationRows =
-    pastEventIds.length > 0
-      ? await fetchAllSupabaseRows(() => {
-          let request = supabase
-            .from("event_invitations")
-            .select("contact_id")
-            .in("event_id", pastEventIds);
-          if (["no_response", "attending", "declined", "maybe"].includes(pastResponse)) {
-            request = request.eq("response_status", pastResponse);
-          }
-          if (["unknown", "attended", "absent"].includes(pastAttendance)) {
-            request = request.eq("attendance_status", pastAttendance);
-          }
-          return request;
-        })
-      : null;
-
-  const groupNames = new Map((groupsResult.data ?? []).map((row) => [Number(row.id), String(row.name)]));
-  const referenceNames = new Map(
-    (referencesResult.data ?? []).map((row) => [Number(row.id), String(row.full_name)]),
-  );
-  const groupsByContact = new Map<number, number[]>();
-  for (const row of contactGroups) {
-    const contactId = Number(row.contact_id);
-    groupsByContact.set(contactId, [...(groupsByContact.get(contactId) ?? []), Number(row.group_id)]);
-  }
-  const referencesByContact = new Map<number, number[]>();
-  for (const row of contactReferences) {
-    const contactId = Number(row.contact_id);
-    referencesByContact.set(contactId, [
-      ...(referencesByContact.get(contactId) ?? []),
-      Number(row.reference_id),
-    ]);
-  }
-  const missingByContact = new Map(
-    missingRows.map((row) => [Number(row.id), (row.missing_fields ?? []) as string[]]),
-  );
-  const invitedIds = new Set(invitedRows.map((row) => Number(row.contact_id)));
-  const pastIds = pastInvitationRows
-    ? new Set(pastInvitationRows.map((row) => Number(row.contact_id)))
-    : null;
-  const proposalsByContact = new Map<number, string[]>();
-  for (const row of proposalRows) {
-    const reference = Array.isArray(row.internal_references)
-      ? row.internal_references[0]
-      : row.internal_references;
-    const label = `${reference?.full_name ?? referenceNames.get(Number(row.reference_id)) ?? "Referente"}: ${row.status}`;
-    proposalsByContact.set(Number(row.contact_id), [
-      ...(proposalsByContact.get(Number(row.contact_id)) ?? []),
-      label,
-    ]);
-  }
-
-  const filtered = contacts
-    .filter((contact) => {
-      const contactId = Number(contact.id);
-      const haystack = [
-        contact.first_name,
-        contact.last_name,
-        contact.institution,
-        contact.institutional_role,
-        contact.email,
-        contact.email_2,
-      ].filter(Boolean).join(" ").toLocaleLowerCase("it");
-      const contactGroupIds = groupsByContact.get(contactId) ?? [];
-      const contactReferenceIds = referencesByContact.get(contactId) ?? [];
-      const missingFields = missingByContact.get(contactId) ?? [];
-      const baseStatusMatches = status === "active" ? contact.status === status : true;
-      const criteria = [
-        search ? haystack.includes(search) : null,
-        status === "standby" ? contact.status === status : null,
-        priority !== "all" ? contact.priority === priority : null,
-        missing !== "all" ? (missing === "yes" ? missingFields.length > 0 : missingFields.length === 0) : null,
-        groupIds.length > 0 ? groupIds.some((id) => contactGroupIds.includes(id)) : null,
-        referenceIds.length > 0 ? referenceIds.some((id) => contactReferenceIds.includes(id)) : null,
-        pastIds ? pastIds.has(contactId) : null,
-      ].filter((criterion): criterion is boolean => criterion !== null);
-
-      const filterMatches =
-        criteria.length === 0
-          ? baseStatusMatches
-          : filterMatchMode === "and"
-            ? baseStatusMatches && criteria.every(Boolean)
-            : baseStatusMatches && criteria.some(Boolean);
-
-      return (
-        !invitedIds.has(contactId) &&
-        filterMatches
-      );
-    })
-    .sort((a, b) => contactName(a).localeCompare(contactName(b), "it", { sensitivity: "base" }));
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const candidateRows = (candidatesResult.data ?? []) as unknown as CandidateSearchRow[];
+  const candidates = candidateRows.map((row) => row.candidate);
+  const totalCandidates = Number(candidateRows[0]?.total_count ?? 0);
+  const totalPages = Math.max(1, Math.ceil(totalCandidates / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageContacts = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const groupOptions = (groupsResult.data ?? []).map((group) => ({
     id: Number(group.id),
     label: `${group.name}${group.active ? "" : " (non attivo)"}`,
@@ -269,21 +178,6 @@ export default async function BuildEventInvitationsPage({
   if (filterChips.length > 1) {
     filterChips.unshift(`Logica tra campi: ${filterMatchMode === "or" ? "OR" : "AND"}`);
   }
-  const candidates: CandidateContact[] = pageContacts.map((contact) => {
-    const contactId = Number(contact.id);
-    return {
-      id: contactId,
-      name: contactName(contact),
-      detail: [contact.institutional_role, contact.institution].filter(Boolean).join(" · "),
-      email: contact.email ?? contact.email_2 ?? null,
-      status: contact.status,
-      priority: contact.priority,
-      groups: (groupsByContact.get(contactId) ?? []).map((id) => groupNames.get(id) ?? `#${id}`),
-      references: (referencesByContact.get(contactId) ?? []).map((id) => referenceNames.get(id) ?? `#${id}`),
-      missingFields: missingByContact.get(contactId) ?? [],
-      proposalSummary: proposalsByContact.get(contactId)?.join("; ") ?? null,
-    };
-  });
 
   const pageHref = (targetPage: number) => {
     const next = new URLSearchParams();
@@ -386,7 +280,7 @@ export default async function BuildEventInvitationsPage({
         <section className="mb-4 rounded-xl border border-[#d9e1f2] bg-[#f8fbff] px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-[#1b3272]">
-              {filtered.length} candidati filtrati
+              {totalCandidates} candidati filtrati
             </span>
             <span className="text-xs text-slate-500">
               pagina {safePage} di {totalPages} · esclusi i contatti già in lista evento
@@ -415,7 +309,7 @@ export default async function BuildEventInvitationsPage({
           references={(referencesResult.data ?? [])
             .filter((reference) => reference.active && reference.profile_id)
             .map((reference) => ({ id: Number(reference.id), name: String(reference.full_name) }))}
-          approvedProposalCount={proposalRows.filter((row) => row.status === "approved").length}
+          approvedProposalCount={approvedProposalsResult.count ?? 0}
         />
 
         {totalPages > 1 ? (

@@ -98,7 +98,6 @@ type FilterMatchMode = "or" | "and";
 type ContactCardSortKey = "default" | "createdAt" | "updatedAt";
 type ContactTableSortKey =
   | "name"
-  | "role"
   | "institution"
   | "groups"
   | "references"
@@ -111,7 +110,6 @@ type ContactTableSortKey =
 
 const TABLE_COLUMN_KEYS: ContactTableSortKey[] = [
   "name",
-  "role",
   "institution",
   "groups",
   "references",
@@ -123,21 +121,23 @@ const TABLE_COLUMN_KEYS: ContactTableSortKey[] = [
   "missing",
 ];
 
+const DEFAULT_HIDDEN_TABLE_COLUMNS = new Set<ContactTableSortKey>(["createdAt", "updatedAt"]);
+
 function readHiddenTableColumns(storageKey: string) {
-  if (typeof window === "undefined") return new Set<ContactTableSortKey>();
+  if (typeof window === "undefined") return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
 
   const rawValue = window.localStorage.getItem(storageKey);
-  if (!rawValue) return new Set<ContactTableSortKey>();
+  if (!rawValue) return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
 
   try {
     const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) return new Set<ContactTableSortKey>();
+    if (!Array.isArray(parsed)) return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
 
     const allowed = new Set(TABLE_COLUMN_KEYS);
     return new Set(parsed.filter((key): key is ContactTableSortKey => allowed.has(key)));
   } catch {
     window.localStorage.removeItem(storageKey);
-    return new Set<ContactTableSortKey>();
+    return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
   }
 }
 
@@ -1821,11 +1821,6 @@ function ContactsTable({
                     {renderHeaderButton("name", "Nome")}
                   </th>
                 )}
-                {hiddenColumnKeys.has("role") ? null : (
-                  <th className="px-4 py-3 normal-case tracking-normal">
-                    {renderHeaderButton("role", "Carica")}
-                  </th>
-                )}
                 {hiddenColumnKeys.has("institution") ? null : (
                   <th className="px-4 py-3 normal-case tracking-normal">
                     {renderHeaderButton("institution", "Istituzione")}
@@ -1901,11 +1896,13 @@ function ContactsTable({
                         ) : null}
                       </td>
                     )}
-                    {hiddenColumnKeys.has("role") ? null : (
-                      <td className="px-4 py-3 text-slate-700">{contact.institutional_role || "—"}</td>
-                    )}
                     {hiddenColumnKeys.has("institution") ? null : (
-                      <td className="px-4 py-3 text-slate-700">{contact.institution || "—"}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <div>{contact.institution || "—"}</div>
+                        {contact.institutional_role ? (
+                          <div className="mt-1 text-xs text-slate-500">{contact.institutional_role}</div>
+                        ) : null}
+                      </td>
                     )}
                     {hiddenColumnKeys.has("groups") ? null : (
                       <td className="px-4 py-3 text-slate-700">{groupsText || "—"}</td>
@@ -2035,11 +2032,6 @@ export function ContactManagement({
   }
 
   function storeHiddenTableColumns(nextHiddenColumns: Set<ContactTableSortKey>) {
-    if (nextHiddenColumns.size === 0) {
-      window.localStorage.removeItem(tableColumnsPreferenceKey);
-      return;
-    }
-
     window.localStorage.setItem(tableColumnsPreferenceKey, JSON.stringify([...nextHiddenColumns]));
   }
 
@@ -2167,7 +2159,6 @@ export function ContactManagement({
       const bReferences = optionNames(b.reference_ids, references).join(", ");
       const sortValues: Record<ContactTableSortKey, [string | number, string | number]> = {
         name: [contactDisplayName(a), contactDisplayName(b)],
-        role: [a.institutional_role ?? "", b.institutional_role ?? ""],
         institution: [a.institution ?? "", b.institution ?? ""],
         groups: [aGroups, bGroups],
         references: [aReferences, bReferences],
@@ -2375,6 +2366,7 @@ export function ContactManagement({
             <button
               type="button"
               onClick={applyFilters}
+              data-pending-feedback="long"
               className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#263f86]"
             >
               Applica filtri

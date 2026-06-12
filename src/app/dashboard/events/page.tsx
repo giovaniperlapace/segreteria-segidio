@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireManager } from "@/lib/auth/profile";
-import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { EventManagement, type EventRecord } from "./event-management";
 
@@ -50,30 +49,24 @@ export default async function EventsPage({
   if (error) throw error;
 
   const eventIds = (events ?? []).map((event) => Number(event.id));
-  const invitationRows =
+  const countsResult =
     eventIds.length > 0
-      ? await fetchAllSupabaseRows(() =>
-          supabase
-            .from("event_invitations")
-            .select("event_id,response_status,attendance_status,attention_flag")
-            .in("event_id", eventIds),
-        )
-      : [];
+      ? await supabase.rpc("event_invitation_counts", { p_event_ids: eventIds })
+      : { data: [], error: null };
+  if (countsResult.error) throw countsResult.error;
 
   const counts = new Map<
     number,
     { invitation_count: number; attending_count: number; attended_count: number; attention_count: number }
   >();
-  for (const row of invitationRows) {
+  for (const row of countsResult.data ?? []) {
     const eventId = Number(row.event_id);
-    const current =
-      counts.get(eventId) ??
-      { invitation_count: 0, attending_count: 0, attended_count: 0, attention_count: 0 };
-    current.invitation_count += 1;
-    if (row.response_status === "attending") current.attending_count += 1;
-    if (row.attendance_status === "attended") current.attended_count += 1;
-    if (row.attention_flag) current.attention_count += 1;
-    counts.set(eventId, current);
+    counts.set(eventId, {
+      invitation_count: Number(row.invitation_count),
+      attending_count: Number(row.attending_count),
+      attended_count: Number(row.attended_count),
+      attention_count: Number(row.attention_count),
+    });
   }
 
   const records = (events ?? []).map((event) => ({

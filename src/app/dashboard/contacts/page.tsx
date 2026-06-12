@@ -52,40 +52,6 @@ function parseDateFilter(searchParams: ContactsSearchParams, key: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
 }
 
-function nextDate(value: string) {
-  const date = new Date(`${value}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
-}
-
-function contactMatchesSearch(contact: ContactRecord, search: string) {
-  if (!search) return true;
-
-  const term = search.toLowerCase();
-  const haystack = [
-    contact.first_name,
-    contact.last_name,
-    contact.institution,
-    contact.institutional_role,
-    contact.email,
-    contact.email_2,
-    contact.city,
-    contact.country,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(term);
-}
-
-function contactMatchesDateRange(value: string, from: string, to: string) {
-  const time = new Date(value).getTime();
-  if (from && time < new Date(`${from}T00:00:00`).getTime()) return false;
-  if (to && time >= new Date(`${nextDate(to)}T00:00:00`).getTime()) return false;
-  return true;
-}
-
 function buildContactRecord(
   contact: ContactRecord,
   groupIdsByContact: Map<number, number[]>,
@@ -101,6 +67,87 @@ function buildContactRecord(
     missing_fields: missingByContact.get(contactId) ?? [],
     event_history: eventHistoryByContact.get(contactId) ?? [],
   } as ContactRecord;
+}
+
+type ContactSearchRow = {
+  contact: ContactRecord;
+  total_count: number | null;
+};
+
+async function loadContactEventHistory(
+  supabase: ReturnType<typeof createSupabaseServiceClient>,
+  contactIds: number[],
+) {
+  if (contactIds.length === 0) {
+    return new Map<number, ContactRecord["event_history"]>();
+  }
+
+  const eventInvitationRows = await fetchAllSupabaseRows(() =>
+    supabase
+      .from("event_invitations")
+      .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
+      .in("contact_id", contactIds),
+  );
+
+  const eventHistoryByContact = new Map<number, ContactRecord["event_history"]>();
+  for (const row of eventInvitationRows) {
+    const contactId = Number(row.contact_id);
+    const event = Array.isArray(row.events) ? row.events[0] : row.events;
+    if (!event) continue;
+    eventHistoryByContact.set(contactId, [
+      ...(eventHistoryByContact.get(contactId) ?? []),
+      {
+        event_id: Number(event.id),
+        title: String(event.title),
+        starts_at: String(event.starts_at),
+        response_status: row.response_status,
+        attendance_status: row.attendance_status,
+      },
+    ]);
+  }
+  for (const [contactId, items] of eventHistoryByContact) {
+    eventHistoryByContact.set(
+      contactId,
+      items
+        .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+        .slice(0, 12),
+    );
+  }
+
+  return eventHistoryByContact;
+}
+
+async function loadContactById(
+  supabase: ReturnType<typeof createSupabaseServiceClient>,
+  contactId: number,
+) {
+  const { data: contact, error } = await supabase
+    .from("contacts")
+    .select(CONTACT_COLUMNS)
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!contact) return null;
+
+  const [contactGroups, contactReferences, missingRows, eventHistoryByContact] = await Promise.all([
+    supabase.from("contact_groups").select("contact_id,group_id").eq("contact_id", contactId),
+    supabase.from("contact_references").select("contact_id,reference_id").eq("contact_id", contactId),
+    supabase.from("contacts_missing_required_data").select("id,missing_fields").eq("id", contactId),
+    loadContactEventHistory(supabase, [contactId]),
+  ]);
+
+  for (const result of [contactGroups, contactReferences, missingRows]) {
+    if (result.error) throw result.error;
+  }
+
+  return buildContactRecord(
+    contact as unknown as ContactRecord,
+    new Map([[contactId, (contactGroups.data ?? []).map((row) => Number(row.group_id))]]),
+    new Map([[contactId, (contactReferences.data ?? []).map((row) => Number(row.reference_id))]]),
+    new Map((missingRows.data ?? []).map((row) => [Number(row.id), row.missing_fields ?? []])),
+    eventHistoryByContact,
+  );
 }
 
 export default async function ContactsPage({
@@ -131,26 +178,28 @@ export default async function ContactsPage({
   const hasReferenceFilter = Number.isSafeInteger(referenceId) && referenceId > 0;
   const hasPriorityFilter = priority === "standard" || priority === "important" || priority === "critical";
   const hasMissingFilter = missing === "yes" || missing === "no";
-  const hasCreatedFilter = Boolean(createdFrom || createdTo);
-  const hasUpdatedFilter = Boolean(updatedFrom || updatedTo);
 
   const [
-    allContacts,
+    contactSearchResult,
     groupsResult,
     referencesResult,
     languagesResult,
-    allContactGroups,
-    allContactReferences,
-    allMissingRows,
   ] = await Promise.all([
-    fetchAllSupabaseRows(() =>
-      supabase
-        .from("contacts")
-        .select(CONTACT_COLUMNS)
-        .is("deleted_at", null)
-      .order("last_name", { ascending: true, nullsFirst: false })
-        .order("first_name", { ascending: true, nullsFirst: false }),
-    ),
+    supabase.rpc("search_contacts_page", {
+      p_search: search,
+      p_status: status,
+      p_match: matchMode,
+      p_priority: hasPriorityFilter ? priority : "all",
+      p_group_ids: groupIds,
+      p_reference_id: hasReferenceFilter ? referenceId : null,
+      p_missing: hasMissingFilter ? missing : "all",
+      p_created_from: createdFrom || null,
+      p_created_to: createdTo || null,
+      p_updated_from: updatedFrom || null,
+      p_updated_to: updatedTo || null,
+      p_limit: CONTACT_PAGE_SIZE,
+      p_offset: from,
+    }),
     supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
     supabase
       .from("internal_references")
@@ -164,120 +213,41 @@ export default async function ContactsPage({
       .order("active", { ascending: false })
       .order("sort_order")
       .order("name"),
-    fetchAllSupabaseRows(() => supabase.from("contact_groups").select("contact_id,group_id")),
-    fetchAllSupabaseRows(() => supabase.from("contact_references").select("contact_id,reference_id")),
-    fetchAllSupabaseRows(() => supabase.from("contacts_missing_required_data").select("id,missing_fields")),
   ]);
 
-  for (const result of [groupsResult, referencesResult, languagesResult]) {
+  for (const result of [contactSearchResult, groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
   }
 
-  const groupIdsByContact = new Map<number, number[]>();
-  for (const relation of allContactGroups) {
-    groupIdsByContact.set(Number(relation.contact_id), [
-      ...(groupIdsByContact.get(Number(relation.contact_id)) ?? []),
-      Number(relation.group_id),
-    ]);
-  }
-  const referenceIdsByContact = new Map<number, number[]>();
-  for (const relation of allContactReferences) {
-    referenceIdsByContact.set(Number(relation.contact_id), [
-      ...(referenceIdsByContact.get(Number(relation.contact_id)) ?? []),
-      Number(relation.reference_id),
-    ]);
-  }
-  const selectedReferenceIds = new Set(allContactReferences.map((relation) => Number(relation.reference_id)));
-  const missingByContact = new Map(allMissingRows.map((row) => [Number(row.id), row.missing_fields ?? []]));
-
-  const filteredContacts = ((allContacts ?? []) as unknown as ContactRecord[]).filter((contact) => {
-    const contactId = Number(contact.id);
-    const contactGroupIds = groupIdsByContact.get(contactId) ?? [];
-    const contactReferenceIds = referenceIdsByContact.get(contactId) ?? [];
-    const missingFields = missingByContact.get(contactId) ?? [];
-    const baseStatusMatches = status === "active" ? contact.status === "active" : true;
-    const criteria = [
-      search ? contactMatchesSearch(contact, search) : null,
-      status === "standby" ? contact.status === "standby" : null,
-      hasPriorityFilter ? contact.priority === priority : null,
-      groupIds.length > 0 ? groupIds.some((groupId) => contactGroupIds.includes(groupId)) : null,
-      hasReferenceFilter ? contactReferenceIds.includes(referenceId) : null,
-      hasMissingFilter ? (missing === "yes" ? missingFields.length > 0 : missingFields.length === 0) : null,
-      hasCreatedFilter ? contactMatchesDateRange(contact.created_at, createdFrom, createdTo) : null,
-      hasUpdatedFilter ? contactMatchesDateRange(contact.updated_at, updatedFrom, updatedTo) : null,
-    ].filter((criterion): criterion is boolean => criterion !== null);
-
-    if (criteria.length === 0) return baseStatusMatches;
-    if (matchMode === "and") return baseStatusMatches && criteria.every(Boolean);
-    return baseStatusMatches && criteria.some(Boolean);
-  });
-
-  const contacts = filteredContacts.slice(from, from + CONTACT_PAGE_SIZE);
-  const openContact = openContactId
-    ? ((allContacts ?? []) as unknown as ContactRecord[]).find(
-        (contact) => Number(contact.id) === openContactId,
-      ) ?? null
+  const searchRows = (contactSearchResult.data ?? []) as unknown as ContactSearchRow[];
+  const contacts = searchRows.map((row) => row.contact);
+  const totalContacts = Number(searchRows[0]?.total_count ?? 0);
+  const contactIds = contacts.map((contact) => Number(contact.id));
+  const openContactFromPage = openContactId
+    ? contacts.find((contact) => Number(contact.id) === openContactId) ?? null
     : null;
-  const currentContactIds = contacts.map((contact) => Number(contact.id));
-  const eventContactIds = [
-    ...new Set([
-      ...currentContactIds,
-      ...(openContact ? [Number(openContact.id)] : []),
-    ]),
-  ];
-  const eventInvitationRows =
-    eventContactIds.length > 0
-      ? await fetchAllSupabaseRows(() =>
-          supabase
-            .from("event_invitations")
-            .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
-            .in("contact_id", eventContactIds),
-        )
-      : [];
-
-  const eventHistoryByContact = new Map<number, ContactRecord["event_history"]>();
-  for (const row of eventInvitationRows) {
-    const contactId = Number(row.contact_id);
-    const event = Array.isArray(row.events) ? row.events[0] : row.events;
-    if (!event) continue;
-    eventHistoryByContact.set(contactId, [
-      ...(eventHistoryByContact.get(contactId) ?? []),
-      {
-        event_id: Number(event.id),
-        title: String(event.title),
-        starts_at: String(event.starts_at),
-        response_status: row.response_status,
-        attendance_status: row.attendance_status,
-      },
-    ]);
-  }
-  for (const [contactId, items] of eventHistoryByContact) {
-    eventHistoryByContact.set(
-      contactId,
-      items
-        .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
-        .slice(0, 12),
-    );
-  }
+  const [loadedOpenContact, eventHistoryByContact] = await Promise.all([
+    openContactId && !openContactFromPage ? loadContactById(supabase, openContactId) : Promise.resolve(null),
+    loadContactEventHistory(supabase, contactIds),
+  ]);
 
   const contactRecords = contacts.map((contact) =>
-    buildContactRecord(
-      contact,
-      groupIdsByContact,
-      referenceIdsByContact,
-      missingByContact,
-      eventHistoryByContact,
+    ({
+      ...contact,
+      event_history: eventHistoryByContact.get(Number(contact.id)) ?? [],
+    }) as ContactRecord,
+  );
+  const initialSelectedContact = openContactFromPage
+    ? ({
+        ...openContactFromPage,
+        event_history: eventHistoryByContact.get(Number(openContactFromPage.id)) ?? [],
+      } as ContactRecord)
+    : loadedOpenContact;
+  const selectedReferenceIds = new Set(
+    [...contactRecords, ...(initialSelectedContact ? [initialSelectedContact] : [])].flatMap(
+      (contact) => contact.reference_ids,
     ),
   );
-  const initialSelectedContact = openContact
-    ? buildContactRecord(
-        openContact,
-        groupIdsByContact,
-        referenceIdsByContact,
-        missingByContact,
-        eventHistoryByContact,
-      )
-    : null;
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
@@ -305,7 +275,7 @@ export default async function ContactsPage({
           }))}
           isManager={profile.role === "manager"}
           viewPreferenceKey={`contacts-view:${profile.id}`}
-          totalContacts={filteredContacts.length}
+          totalContacts={totalContacts}
           page={page}
           pageSize={CONTACT_PAGE_SIZE}
           initialFilters={{

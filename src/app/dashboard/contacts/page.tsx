@@ -34,6 +34,17 @@ function parseGroupIds(searchParams: ContactsSearchParams) {
     .filter((value) => Number.isSafeInteger(value) && value > 0);
 }
 
+function parseReferenceIds(searchParams: ContactsSearchParams) {
+  const multiValue = paramValue(searchParams, "references") || paramValue(searchParams, "referenceIds");
+  const legacyValue = paramValue(searchParams, "referenceId");
+  return [...new Set(
+    `${multiValue}${multiValue && legacyValue ? "," : ""}${legacyValue}`
+      .split(",")
+      .map(Number)
+      .filter((value) => Number.isSafeInteger(value) && value > 0),
+  )];
+}
+
 function sanitizeSearchTerm(value: string) {
   return value.trim().replace(/[%*,]/g, " ").replace(/\s+/g, " ");
 }
@@ -167,15 +178,14 @@ export default async function ContactsPage({
   const status = parseStatusFilter(params);
   const matchMode = parseMatchMode(params);
   const priority = paramValue(params, "priority");
-  const referenceId = Number(paramValue(params, "referenceId"));
   const missing = paramValue(params, "missing");
   const groupIds = parseGroupIds(params);
+  const referenceIds = parseReferenceIds(params);
   const createdFrom = parseDateFilter(params, "createdFrom");
   const createdTo = parseDateFilter(params, "createdTo");
   const updatedFrom = parseDateFilter(params, "updatedFrom");
   const updatedTo = parseDateFilter(params, "updatedTo");
   const from = (page - 1) * CONTACT_PAGE_SIZE;
-  const hasReferenceFilter = Number.isSafeInteger(referenceId) && referenceId > 0;
   const hasPriorityFilter = priority === "standard" || priority === "important" || priority === "critical";
   const hasMissingFilter = missing === "yes" || missing === "no";
 
@@ -191,7 +201,7 @@ export default async function ContactsPage({
       p_match: matchMode,
       p_priority: hasPriorityFilter ? priority : "all",
       p_group_ids: groupIds,
-      p_reference_id: hasReferenceFilter ? referenceId : null,
+      p_reference_ids: referenceIds,
       p_missing: hasMissingFilter ? missing : "all",
       p_created_from: createdFrom || null,
       p_created_to: createdTo || null,
@@ -284,7 +294,7 @@ export default async function ContactsPage({
             matchMode,
             priority,
             groupIds,
-            referenceId: Number.isSafeInteger(referenceId) && referenceId > 0 ? String(referenceId) : "all",
+            referenceIds,
             missing,
             createdFrom,
             createdTo,

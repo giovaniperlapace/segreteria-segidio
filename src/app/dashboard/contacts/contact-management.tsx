@@ -835,25 +835,32 @@ function MultiGroupFilter({
 
 function ReferenceFilter({
   references,
-  selectedId,
+  selectedIds,
   onChange,
 }: {
   references: Option[];
-  selectedId: string;
-  onChange: (nextId: string) => void;
+  selectedIds: number[];
+  onChange: (nextIds: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const selected = new Set(selectedIds);
   const normalizedSearch = normalizeSearch(search);
-  const selectedReference =
-    selectedId === "all"
-      ? null
-      : references.find((reference) => String(reference.id) === selectedId) ?? null;
+  const selectedReferences = references.filter((reference) => selected.has(reference.id));
   const visibleReferences = references.filter((reference) => {
+    if (selected.has(reference.id)) return true;
     if (!normalizedSearch) return true;
     return normalizeSearch(reference.name).includes(normalizedSearch);
   });
+
+  function toggle(id: number) {
+    if (selected.has(id)) {
+      onChange(selectedIds.filter((selectedId) => selectedId !== id));
+      return;
+    }
+    onChange([...selectedIds, id]);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -881,12 +888,6 @@ function ReferenceFilter({
     };
   }, [open]);
 
-  function selectReference(nextId: string) {
-    onChange(nextId);
-    setSearch("");
-    setOpen(false);
-  }
-
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -897,12 +898,26 @@ function ReferenceFilter({
         aria-expanded={open}
       >
         <span className="truncate">
-          {selectedReference ? selectedReference.name : "Tutti i referenti"}
+          {selectedReferences.length === 0
+            ? "Tutti i referenti"
+            : selectedReferences.map((reference) => reference.name).join(", ")}
         </span>
         <span className="ml-2 text-xs text-slate-500">▾</span>
       </button>
       {open ? (
         <div className="absolute z-30 mt-1 w-full min-w-72 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
+          {selectedReferences.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {selectedReferences.map((reference) => (
+                <span
+                  key={reference.id}
+                  className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-xs font-semibold text-[#1b3272]"
+                >
+                  {reference.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <input
             type="search"
             value={search}
@@ -912,38 +927,53 @@ function ReferenceFilter({
             className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           />
           <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
-            <button
-              type="button"
-              onClick={() => selectReference("all")}
-              className={`block w-full rounded-lg px-2 py-1.5 text-left ${
-                selectedId === "all"
-                  ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
-                  : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              Tutti i referenti
-            </button>
             {visibleReferences.length > 0 ? (
               visibleReferences.map((reference) => (
-                <button
+                <label
                   key={reference.id}
-                  type="button"
-                  onClick={() => selectReference(String(reference.id))}
-                  className={`block w-full rounded-lg px-2 py-1.5 text-left ${
-                    String(reference.id) === selectedId
+                  className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${
+                    selected.has(reference.id)
                       ? "bg-[#1b3272]/10 font-semibold text-[#1b3272]"
                       : "text-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  {reference.name}
-                  {reference.active ? "" : " (non attivo)"}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(reference.id)}
+                    onChange={() => toggle(reference.id)}
+                    className="h-4 w-4 accent-[#1b3272]"
+                  />
+                  <span>
+                    {reference.name}
+                    {reference.active ? "" : " (non attivo)"}
+                  </span>
+                </label>
               ))
             ) : (
               <p className="px-2 py-3 text-sm text-slate-500">
                 Nessun referente trovato.
               </p>
             )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            {selectedIds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-xs font-semibold text-[#d43c2f] hover:underline"
+              >
+                Rimuovi filtro referenti
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-lg bg-[#1b3272] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#263f86]"
+            >
+              OK
+            </button>
           </div>
         </div>
       ) : null}
@@ -1981,7 +2011,7 @@ export function ContactManagement({
     status: string;
     priority: string;
     groupIds: number[];
-    referenceId: string;
+    referenceIds: number[];
     missing: string;
     matchMode: FilterMatchMode;
     createdFrom: string;
@@ -1994,7 +2024,7 @@ export function ContactManagement({
   const [status, setStatus] = useState(initialFilters.status || "all");
   const [priority, setPriority] = useState(initialFilters.priority || "all");
   const [groupIds, setGroupIds] = useState<number[]>(initialFilters.groupIds);
-  const [referenceId, setReferenceId] = useState(initialFilters.referenceId || "all");
+  const [referenceIds, setReferenceIds] = useState<number[]>(initialFilters.referenceIds);
   const [missing, setMissing] = useState(initialFilters.missing || "all");
   const [matchMode, setMatchMode] = useState<FilterMatchMode>(initialFilters.matchMode || "and");
   const [createdFrom, setCreatedFrom] = useState(initialFilters.createdFrom);
@@ -2070,7 +2100,7 @@ export function ContactManagement({
     if (status !== "active") params.set("status", status);
     if (priority !== "all") params.set("priority", priority);
     if (groupIds.length > 0) params.set("groups", groupIds.join(","));
-    if (referenceId !== "all") params.set("referenceId", referenceId);
+    if (referenceIds.length > 0) params.set("references", referenceIds.join(","));
     if (missing !== "all") params.set("missing", missing);
     if (matchMode === "or") params.set("match", "or");
     if (createdFrom) params.set("createdFrom", createdFrom);
@@ -2122,7 +2152,9 @@ export function ContactManagement({
         status === "standby" ? contact.status === "standby" : null,
         priority !== "all" ? contact.priority === priority : null,
         groupIds.length > 0 ? groupIds.some((groupId) => contact.group_ids.includes(groupId)) : null,
-        referenceId !== "all" ? contact.reference_ids.includes(Number(referenceId)) : null,
+        referenceIds.length > 0
+          ? referenceIds.some((referenceId) => contact.reference_ids.includes(referenceId))
+          : null,
         missing !== "all"
           ? missing === "yes"
             ? contact.missing_fields.length > 0
@@ -2145,7 +2177,7 @@ export function ContactManagement({
     matchMode,
     missing,
     priority,
-    referenceId,
+    referenceIds,
     status,
     updatedFrom,
     updatedTo,
@@ -2191,9 +2223,8 @@ export function ContactManagement({
     if (status !== "active") chips.push(`Stato: ${status === "all" ? "Tutti gli stati" : CONTACT_STATUS_LABELS[status as ContactRecord["status"]] ?? status}`);
     if (priority !== "all") chips.push(`Priorità: ${CONTACT_PRIORITY_LABELS[priority as ContactRecord["priority"]] ?? priority}`);
     if (groupIds.length > 0) chips.push(`Gruppi: ${optionNames(groupIds, groups).join(", ") || groupIds.join(", ")}`);
-    if (referenceId !== "all") {
-      const referenceName = references.find((reference) => String(reference.id) === referenceId)?.name;
-      chips.push(`Referente: ${referenceName ?? referenceId}`);
+    if (referenceIds.length > 0) {
+      chips.push(`Referenti: ${optionNames(referenceIds, references).join(", ") || referenceIds.join(", ")}`);
     }
     if (missing !== "all") chips.push(`Dati: ${missing === "yes" ? "con dati mancanti" : "completi"}`);
     if (createdFrom) chips.push(`Creato dal: ${createdFrom}`);
@@ -2210,7 +2241,7 @@ export function ContactManagement({
     matchMode,
     missing,
     priority,
-    referenceId,
+    referenceIds,
     references,
     search,
     status,
@@ -2283,8 +2314,8 @@ export function ContactManagement({
             />
             <ReferenceFilter
               references={references}
-              selectedId={referenceId}
-              onChange={setReferenceId}
+              selectedIds={referenceIds}
+              onChange={setReferenceIds}
             />
             <select value={missing} onChange={(event) => setMissing(event.target.value)} aria-label="Filtra per dati mancanti" className={inputClass}>
               <option value="all">Tutti i dati</option><option value="yes">Con dati mancanti</option><option value="no">Dati completi</option>

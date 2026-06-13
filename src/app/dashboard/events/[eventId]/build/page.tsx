@@ -193,8 +193,9 @@ export default async function BuildEventInvitationsPage({
       <div className="mx-auto max-w-7xl">
         <header className="mb-6">
           <div className="flex flex-wrap gap-3 text-sm font-semibold text-[#d43c2f]">
-            <Link href={`/dashboard/events/${eventId}`} className="hover:underline">← Lista evento</Link>
-            <Link href="/dashboard/events" className="hover:underline">← Eventi</Link>
+            <Link href="/dashboard" className="hover:underline">← Dashboard</Link>
+            <Link href="/dashboard/events" className="hover:underline">← Lista eventi</Link>
+            <Link href={`/dashboard/events/${eventId}`} className="hover:underline">← Scheda evento</Link>
           </div>
           <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">Costruisci lista: {eventResult.data.title}</h1>
           <p className="mt-2 text-sm text-slate-600">

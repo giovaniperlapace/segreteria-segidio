@@ -116,7 +116,7 @@ export default async function EventDetailPage({
         .eq("status", "pending"),
       supabase
         .from("contacts")
-        .select("id,first_name,last_name,institution,institutional_role,email")
+        .select("id,first_name,last_name,institution,institutional_role,email,status")
         .is("deleted_at", null)
         .eq("status", "active")
         .order("last_name")
@@ -324,7 +324,11 @@ export default async function EventDetailPage({
     ...proposalContactIds,
   ]);
   const contactOptions = (contacts ?? [])
-    .filter((contact) => !invitedContactIds.has(Number(contact.id)))
+    .filter(
+      (contact) =>
+        contact.status === "active" &&
+        !invitedContactIds.has(Number(contact.id)),
+    )
     .map((contact) => ({
       id: Number(contact.id),
       name: contactName(contact),
@@ -348,30 +352,14 @@ export default async function EventDetailPage({
             {event.location ? ` · ${event.location}` : ""}
             {event.legacy_access_id ? ` · Access #${event.legacy_access_id}` : ""}
           </p>
-          <form className="mt-5 grid gap-3 rounded-2xl border border-[#d9e1f2] bg-white p-4 shadow-sm md:grid-cols-[1fr_auto]">
-            <input
-              name="q"
-              defaultValue={search}
-              placeholder="Cerca invitato, istituzione, carica o email"
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
-            />
-            <button className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#263f86]">
-              Filtra
-            </button>
-          </form>
           <p className="mt-3 text-sm text-slate-600">
             {eventRows.length} contatti mostrati di {total} nella lista evento.
           </p>
-          <Link
-            href={`/dashboard/events/${eventId}/build`}
-            className="mt-4 inline-flex rounded-xl bg-[#d43c2f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#bb3025]"
-          >
-            Costruisci lista con filtri
-          </Link>
         </header>
 
         <InvitationManagement
           eventId={eventId}
+          pageSearch={search}
           invitations={eventRows}
           contactOptions={contactOptions}
           groups={(groupsResult.data ?? []).map((group) => ({

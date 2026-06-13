@@ -1,6 +1,7 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   addInvitationAction,
   bulkUpdateInvitationStatusAction,
@@ -90,6 +91,109 @@ const ATTENDANCE_LABELS: Record<EventInvitationRecord["attendance_status"], stri
   absent: "Assente",
 };
 
+function normalizeContactSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it");
+}
+
+function SearchableContactSelect({
+  contacts,
+}: {
+  contacts: ContactOption[];
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const deferredSearch = useDeferredValue(search);
+  const term = normalizeContactSearch(deferredSearch.trim());
+  const selectedContact = contacts.find((contact) => contact.id === selectedId);
+  const visibleContacts = contacts
+    .filter((contact) => {
+      if (!term) return true;
+      return normalizeContactSearch(`${contact.name} ${contact.detail}`).includes(term);
+    })
+    .slice(0, 40);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative mt-1.5">
+      <input type="hidden" name="contactId" value={selectedId ?? ""} />
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setSelectedId(null);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder={selectedContact ? selectedContact.name : "Cerca nome, istituzione o carica"}
+        aria-label="Cerca un contatto da aggiungere"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls="add-invitation-contact-options"
+        aria-autocomplete="list"
+        autoComplete="off"
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
+      />
+      {open ? (
+        <div
+          id="add-invitation-contact-options"
+          role="listbox"
+          className="absolute z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
+        >
+          {visibleContacts.length > 0 ? (
+            visibleContacts.map((contact) => (
+              <button
+                key={contact.id}
+                type="button"
+                role="option"
+                aria-selected={contact.id === selectedId}
+                onClick={() => {
+                  setSelectedId(contact.id);
+                  setSearch(contact.name);
+                  setOpen(false);
+                }}
+                className="block w-full px-3 py-2 text-left text-slate-800 hover:bg-[#f5f7fb] focus:bg-[#f5f7fb] focus:outline-none"
+              >
+                <span className="block font-medium">{contact.name}</span>
+                {contact.detail ? (
+                  <span className="mt-0.5 block text-xs text-slate-500">{contact.detail}</span>
+                ) : null}
+              </button>
+            ))
+          ) : (
+            <p className="px-3 py-3 text-sm text-slate-500">Nessun contatto trovato.</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AddInvitationForm({
   eventId,
   contacts,
@@ -103,14 +207,7 @@ function AddInvitationForm({
       <input type="hidden" name="eventId" value={eventId} />
       <label className="text-sm font-medium text-slate-700">
         Aggiungi invitato
-        <select name="contactId" className={inputClass} defaultValue="">
-          <option value="" disabled>Seleziona un contatto</option>
-          {contacts.map((contact) => (
-            <option key={contact.id} value={contact.id}>
-              {contact.name}{contact.detail ? ` - ${contact.detail}` : ""}
-            </option>
-          ))}
-        </select>
+        <SearchableContactSelect contacts={contacts} />
       </label>
       <SubmitButton pending={pending}>Aggiungi</SubmitButton>
       <div className="md:col-span-2">
@@ -448,6 +545,7 @@ function InvitationsTable({
 
 export function InvitationManagement({
   eventId,
+  pageSearch,
   invitations,
   contactOptions,
   groups,
@@ -455,6 +553,7 @@ export function InvitationManagement({
   languages,
 }: {
   eventId: number;
+  pageSearch: string;
   invitations: EventInvitationRecord[];
   contactOptions: ContactOption[];
   groups: Option[];
@@ -600,9 +699,36 @@ export function InvitationManagement({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
-        <AddInvitationForm eventId={eventId} contacts={contactOptions} />
-      </section>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
+          <form className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="text-sm font-medium text-slate-700">
+              Cerca tra gli invitati
+              <input
+                name="q"
+                type="search"
+                defaultValue={pageSearch}
+                placeholder="Nome, istituzione, carica o email"
+                className={inputClass}
+              />
+            </label>
+            <button className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#263f86]">
+              Filtra
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
+          <AddInvitationForm eventId={eventId} contacts={contactOptions} />
+        </section>
+
+        <Link
+          href={`/dashboard/events/${eventId}/build`}
+          className="inline-flex items-center justify-center self-end rounded-xl bg-[#d43c2f] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#bb3025] md:col-span-2 lg:col-span-1"
+        >
+          Costruisci lista con filtri
+        </Link>
+      </div>
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">

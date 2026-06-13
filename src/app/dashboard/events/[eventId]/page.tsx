@@ -80,7 +80,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -292,6 +292,8 @@ export default async function EventDetailPage({
       attention_note: invitation.attention_note,
       notes: invitation.notes,
       response_note: invitation.response_note,
+      companion_count: Number(invitation.companion_count ?? 0),
+      companion_names: invitation.companion_names,
       invited_at: invitation.invited_at,
       response_recorded_at: invitation.response_recorded_at,
       response_recorded_by_profile_id: invitation.response_recorded_by_profile_id,
@@ -345,6 +347,8 @@ export default async function EventDetailPage({
       attention_note: null,
       notes: proposal.note,
       response_note: null,
+      companion_count: 0,
+      companion_names: null,
       invited_at: null,
       response_recorded_at: null,
       response_recorded_by_profile_id: null,

@@ -23,6 +23,11 @@ function numberField(formData: FormData, key: string) {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+function nonNegativeNumberField(formData: FormData, key: string) {
+  const value = Number(text(formData, key));
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function numberFields(formData: FormData, key: string) {
   return [
     ...new Set(
@@ -345,6 +350,8 @@ export async function updateInvitationAction(
   const status = invitationStatus(text(formData, "invitationStatus"));
   const requestedResponse = responseStatus(text(formData, "responseStatus")) ?? "no_response";
   const attendance = attendanceStatus(text(formData, "attendanceStatus"));
+  const requestedCompanionCount = Math.min(nonNegativeNumberField(formData, "companionCount") ?? 0, 20);
+  const requestedCompanionNames = optionalText(formData, "companionNames");
 
   if (!invitationId || !eventId || !status || !attendance) {
     return { status: "error", message: "Invito non valido." };
@@ -354,7 +361,7 @@ export async function updateInvitationAction(
     const supabase = createSupabaseServiceClient();
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
-      .select("invitation_status,response_status,invited_at,response_recorded_at,response_recorded_by_profile_id")
+      .select("invitation_status,response_status,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id")
       .eq("id", invitationId)
       .maybeSingle();
     if (currentError) throw currentError;
@@ -366,6 +373,12 @@ export async function updateInvitationAction(
     const statusChanged = status !== currentInvitation.invitation_status;
     const isInvited = status === "invited";
     const response = isInvited ? requestedResponse : "no_response";
+    const companionCount = isInvited && response === "attending" ? requestedCompanionCount : 0;
+    const companionNames = companionCount > 0 ? requestedCompanionNames : null;
+    const responseDetailsChanged =
+      responseChanged ||
+      companionCount !== Number(currentInvitation.companion_count ?? 0) ||
+      companionNames !== (currentInvitation.companion_names ?? null);
     const now = new Date().toISOString();
     const { error } = await supabase
       .from("event_invitations")
@@ -377,16 +390,18 @@ export async function updateInvitationAction(
         attention_note: attentionNote,
         notes: optionalText(formData, "notes"),
         response_note: isInvited ? optionalText(formData, "responseNote") : null,
+        companion_count: companionCount,
+        companion_names: companionNames,
         response_recorded_at:
           response === "no_response"
             ? null
-            : responseChanged
+            : responseDetailsChanged
               ? now
               : currentInvitation.response_recorded_at,
         response_recorded_by_profile_id:
           response === "no_response"
             ? null
-            : responseChanged
+            : responseDetailsChanged
               ? profile.id
               : currentInvitation.response_recorded_by_profile_id,
         invited_at: isInvited ? currentInvitation.invited_at ?? now : null,
@@ -474,6 +489,8 @@ export async function bulkUpdateInvitationStatusAction(
             invited_at: isInvited ? row.invited_at ?? now : null,
             response_status: isInvited ? undefined : "no_response",
             response_note: isInvited ? undefined : null,
+            companion_count: isInvited ? undefined : 0,
+            companion_names: isInvited ? undefined : null,
             response_recorded_at: isInvited ? undefined : null,
             response_recorded_by_profile_id: isInvited ? undefined : null,
             attendance_status: isInvited ? undefined : "unknown",
@@ -575,6 +592,8 @@ export async function bulkUpdateInvitationResponseAction(
       .update({
         response_status: response,
         response_note: optionalText(formData, "responseNote"),
+        companion_count: 0,
+        companion_names: null,
         response_recorded_at: response === "no_response" ? null : new Date().toISOString(),
         response_recorded_by_profile_id: response === "no_response" ? null : profile.id,
         updated_by_profile_id: profile.id,
@@ -612,6 +631,8 @@ export async function undoBulkInvitationStatusAction(
     responseStatus: (typeof RESPONSE_STATUSES)[number];
     attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
     responseNote: string | null;
+    companionCount: number;
+    companionNames: string | null;
     invitedAt: string | null;
     responseRecordedAt: string | null;
     responseRecordedByProfileId: string | null;
@@ -640,6 +661,14 @@ export async function undoBulkInvitationStatusAction(
             typeof item?.responseNote === "string" && item.responseNote.trim()
               ? item.responseNote.trim()
               : null,
+          companionCount:
+            Number.isSafeInteger(Number(item?.companionCount)) && Number(item?.companionCount) > 0
+              ? Math.min(Number(item.companionCount), 20)
+              : 0,
+          companionNames:
+            typeof item?.companionNames === "string" && item.companionNames.trim()
+              ? item.companionNames.trim()
+              : null,
           invitedAt: typeof item?.invitedAt === "string" ? item.invitedAt : null,
           responseRecordedAt:
             typeof item?.responseRecordedAt === "string" ? item.responseRecordedAt : null,
@@ -660,6 +689,8 @@ export async function undoBulkInvitationStatusAction(
             responseStatus: (typeof RESPONSE_STATUSES)[number];
             attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
             responseNote: string | null;
+            companionCount: number;
+            companionNames: string | null;
             invitedAt: string | null;
             responseRecordedAt: string | null;
             responseRecordedByProfileId: string | null;
@@ -717,6 +748,8 @@ export async function undoBulkInvitationStatusAction(
           response_status: item.responseStatus,
           attendance_status: item.attendanceStatus,
           response_note: item.responseNote,
+          companion_count: item.companionCount,
+          companion_names: item.companionCount > 0 ? item.companionNames : null,
           response_recorded_at: item.responseRecordedAt,
           response_recorded_by_profile_id: item.responseRecordedByProfileId,
         })

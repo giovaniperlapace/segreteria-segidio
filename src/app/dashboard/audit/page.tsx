@@ -107,6 +107,8 @@ const FIELD_LABELS: Record<string, string> = {
   response_status: "risposta",
   attendance_status: "presenza",
   response_note: "nota risposta",
+  companion_count: "numero accompagnatori",
+  companion_names: "nomi accompagnatori",
   invited_at: "data invito",
   response_recorded_at: "data risposta",
   response_recorded_by_profile_id: "autore risposta",

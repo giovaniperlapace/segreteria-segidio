@@ -130,7 +130,7 @@ Questa e' una bozza concettuale. Non contiene migration SQL e andra' raffinata p
 | `event_segments` | Segmenti di evento | `event_id`, nome, data/ora, luogo | inviti/risposte/check-in | Post-MVP | forse introdurla presto per Festa della Comunita' |
 | `event_invitations` | Lista invitati per evento e storico partecipazioni | `event_id`, `contact_id`, stato invito, stato risposta, presenza, flag operativo, proponente, note, campi essenziali per import storico Access | evento, contatto, risposta | MVP | il flag e' relativo all'invito/evento, non al contatto; lo storico Access da importare serve solo per eventi, invitati e partecipazioni |
 | `invitation_proposals` | Proposte dei riferimenti | evento, contatto, riferimento, decisione, note | evento, riferimento | MVP, implementata nella Milestone 10 | eventuali notifiche e workflow avanzato restano post-MVP |
-| `invitation_responses` | Storico risposte | invito, risposta, canale, data, token, note | invito | Post-MVP, manuale in MVP se semplice | stati risposta definitivi |
+| `invitation_responses` | Storico risposte | invito, risposta, canale, data, token, note | invito | Post-MVP; nel MVP lo stato corrente e i metadati manuali sono in `event_invitations` | valutare storico completo, canale e token pubblico |
 | `email_templates` | Template inviti/comunicazioni | nome, oggetto, corpo, variabili, attivo | email log/eventi | Post-MVP | provider e editor da scegliere |
 | `email_logs` | Log invii email | destinatario, invito, template, stato, errore, provider id | inviti | Post-MVP | necessario per batch/retry |
 | `checkins` | Presenze e QR code | invito, segmento, data/ora, operatore, note | inviti/segmenti | Post-MVP | flusso ingresso da progettare |
@@ -301,8 +301,8 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Criteri di accettazione**: conteggi corretti per invitati, si', no, forse, nessuna risposta.
 - **Verifiche tecniche**: test dashboard e filtri su risposta.
 - **Rischi**: stati non allineati al processo reale.
-- **Decisioni adottate**: il ciclo operativo usa `Da invitare` -> `Invitato`; una risposta e' applicabile solo agli invitati; gli stati risposta definitivi MVP sono `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`; tornando a uno stato precedente vengono azzerati risposta, presenza e relativi metadati.
-- **Esito**: aggiunti riepilogo completo nella scheda evento, modifica singola e massiva delle risposte, nota risposta dedicata, autore/data delle variazioni, undo, filtri coerenti e audit attribuito all'operatore. La migration `20260613190000_manual_invitation_responses.sql` e' stata applicata al database self-hosted.
+- **Decisioni adottate**: il ciclo operativo usa `Da invitare` -> `Invitato`; una risposta e' applicabile solo agli invitati; gli stati risposta definitivi MVP sono `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`; tornando a uno stato precedente vengono azzerati risposta, presenza e relativi metadati. Gli accompagnatori sono gestiti solo nella risposta singola, partono da zero e incrementano il conteggio partecipanti di `Partecipa`.
+- **Esito**: aggiunti riepilogo completo nella scheda evento, modifica singola e massiva delle risposte, nota risposta dedicata, accompagnatori con nomi sulla risposta singola, autore/data delle variazioni, undo, filtri coerenti e audit attribuito all'operatore. La lista evento dispone di viste a schede e tabella; il contatto riunisce nome, cognome, carica e istituzione mantenendo ordinamenti separati; le colonne operative sono nascondibili e ripristinabili; le note risposta sono visibili in entrambe le viste. Nelle schede, quando esiste una risposta effettiva il badge `Invitato` viene omesso e `Partecipa` e' evidenziato in verde. Le migration `20260613190000_manual_invitation_responses.sql` e `20260613203000_invitation_companions.sql` sono state applicate al database self-hosted.
 - **Verifica conclusiva**: conteggi database, smoke test transazionale con rollback, audit autore, TypeScript, lint, build e flussi browser desktop/mobile superati; nessuna email automatica introdotta.
 
 ### Milestone 12 - Dashboard MVP
@@ -353,7 +353,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Criteri di accettazione**: risposta corretta, token non riusabile impropriamente, modifica gestita.
 - **Verifiche tecniche**: test sicurezza link e casi scaduti.
 - **Rischi**: privacy e link inoltrati.
-- **Decisioni aperte**: opzioni risposta definitive.
+- **Decisioni adottate per il nucleo risposta**: mantenere `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`; gli accompagnatori sono gia' gestiti nella risposta singola MVP; restano da progettare segmenti e modifica tramite link pubblico.
 
 ### Milestone 17 - Post-MVP workflow riferimenti
 
@@ -429,7 +429,7 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - Quale provider email usare per inviti e comunicazioni successive?
 - Gli invii devono partire da un indirizzo istituzionale gia' esistente?
 - Come gestire allegati: caricamento nell'app, file da template o allegati manuali per evento?
-- Quali stati risposta definitivi usare: si/no/forse, accompagnatori, segmenti, note?
+- Come estendere le risposte pubbliche con segmenti e modifica tramite link, mantenendo gli stati MVP gia' adottati?
 - Quali campi contatto sono davvero obbligatori nell'MVP?
 - Come distinguere nel primo schema persona fisica, carica e istituzione senza rendere il sistema troppo complesso?
 - Il ripristino di versioni precedenti deve essere disponibile gia' nell'MVP o solo consultazione storico?
@@ -445,16 +445,16 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - I riferimenti possono modificare direttamente i contatti o solo proporre modifiche da approvare?
 - I segmenti evento sono necessari subito per casi come la Festa della Comunita' o possono attendere il post-MVP?
 
-## 12. Primo blocco operativo consigliato
+## 12. Prossimo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe avviare la **Milestone 11: Gestione manuale inviti e risposte**.
+Il prossimo blocco operativo dovrebbe avviare la **Milestone 12: Dashboard MVP**.
 
-Prima di iniziare conviene confermare:
+Prima di iniziare conviene definire:
 
-- il ciclo definitivo degli stati di invito, distinguendo chiaramente `Da invitare` da `Invitato`;
-- quali variazioni devono essere consentite singolarmente e con modifica massiva;
-- come registrare manualmente risposta, data, canale e note;
-- quali conteggi devono apparire nella pagina evento e nella dashboard;
-- quali operazioni devono essere incluse nell'audit.
+- le metriche prioritarie per manager e riferimenti interni;
+- quali eventi futuri o attivi devono essere messi in evidenza;
+- come presentare risposte mancanti, contatti non attivi e dati incompleti;
+- quali conteggi della pagina evento riusare senza duplicare logica;
+- i limiti di query e paginazione necessari sui dati reali.
 
-Output atteso del prossimo blocco: gestione manuale coerente degli stati di invito e delle risposte, con conteggi affidabili, filtri aggiornati e storico minimo delle modifiche.
+Output atteso del prossimo blocco: dashboard operative sintetiche, con numeri coerenti con le liste evento e collegamenti diretti alle attività che richiedono attenzione.

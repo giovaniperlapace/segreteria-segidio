@@ -19,7 +19,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - La Milestone 10 aggiunge `/dashboard/events/[eventId]/build`: filtri combinabili per ricerca, stato, priorita', dati mancanti, gruppi, referenti ed eventi passati con risposta/presenza; selezione massiva; inviti diretti idempotenti; proposte separate assegnate a uno o piu' referenti; conversione delle proposte approvate in inviti.
 - I referenti approvano o escludono le proposte da `/dashboard/proposals`. Le proposte non entrano nei conteggi invitati finche' il manager non le converte esplicitamente.
 - La lista evento mostra insieme inviti effettivi e proposte pendenti, distinguendo gli stati `Da invitare`, `Invitato` e `Da approvare`. Il manager puo' cambiare stato massivamente anche alle proposte, registrare approvazioni ricevute fuori dall'app e annullare l'ultima modifica massiva.
-- La Milestone 11 rende coerente il ciclo manuale invito/risposta: le risposte sono registrabili solo per lo stato `Invitato`; sono disponibili modifica singola e massiva, note risposta, autore/data, undo, filtri e conteggi completi `Partecipa`/`Non partecipa`/`Forse`/`Nessuna risposta`.
+- La Milestone 11 rende coerente il ciclo manuale invito/risposta: le risposte sono registrabili solo per lo stato `Invitato`; sono disponibili modifica singola e massiva, note risposta, accompagnatori sulla risposta singola, autore/data, undo, filtri e conteggi completi `Partecipa`/`Non partecipa`/`Forse`/`Nessuna risposta`. La lista evento offre viste a schede e tabella, ordinamento separato per nome/cognome/carica, colonne operative nascondibili con ripristino e note risposta visibili in entrambe le viste. Il conteggio `Partecipa` conta i partecipanti attesi, includendo eventuali accompagnatori.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -189,6 +189,7 @@ Migration MVP creata:
 - `supabase/migrations/20260607120000_invitation_proposals_and_bulk_selection.sql`
 - `supabase/migrations/20260607160000_manager_proposal_override.sql`
 - `supabase/migrations/20260613190000_manual_invitation_responses.sql`
+- `supabase/migrations/20260613203000_invitation_companions.sql`
 
 Include:
 
@@ -205,6 +206,7 @@ Include:
 - tabella `invitation_proposals`, stati pending/approved/excluded, audit e policy RLS per manager e referente assegnato.
 - override controllato per consentire al manager di registrare decisioni sulle proposte ricevute verbalmente o via email.
 - metadati manuali di stato/risposta sugli inviti, nota risposta, attribuzione audit e funzione di conteggio completa per evento.
+- accompagnatori per risposta singola, con conteggio partecipanti derivato da invitato piu' accompagnatori.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 
@@ -356,7 +358,6 @@ Se non si riesce ad accedere, non inventare credenziali o workaround. Dire chiar
 ## Decisioni aperte da ricordare
 
 - Provider email.
-- Stati risposta definitivi.
 - Gestione allegati.
 - Campi contatto obbligatori.
 - Separazione persona/carica/istituzione.

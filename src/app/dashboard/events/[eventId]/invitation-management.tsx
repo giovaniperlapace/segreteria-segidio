@@ -37,6 +37,8 @@ export type EventInvitationRecord = {
   attention_note: string | null;
   notes: string | null;
   response_note: string | null;
+  companion_count: number;
+  companion_names: string | null;
   invited_at: string | null;
   response_recorded_at: string | null;
   response_recorded_by_profile_id: string | null;
@@ -64,6 +66,8 @@ type BulkUndoItem = {
   responseStatus: EventInvitationRecord["response_status"];
   attendanceStatus: EventInvitationRecord["attendance_status"];
   responseNote: string | null;
+  companionCount: number;
+  companionNames: string | null;
   invitedAt: string | null;
   responseRecordedAt: string | null;
   responseRecordedByProfileId: string | null;
@@ -287,6 +291,10 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
   const [state, action, pending] = useArchiveAction(updateInvitationAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(removeInvitationAction);
   const [invitationStatus, setInvitationStatus] = useState(invitation.invitation_status);
+  const [responseStatus, setResponseStatus] = useState(invitation.response_status);
+  const [companionCount, setCompanionCount] = useState(invitation.companion_count);
+  const canEditResponse = invitationStatus === "invited";
+  const canEditCompanions = canEditResponse && responseStatus === "attending";
 
   useEffect(() => {
     if (state.status !== "success") return;
@@ -319,16 +327,19 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
         </label>
         <label className="text-sm font-medium text-slate-700">
           Risposta
-          {invitationStatus !== "invited" ? (
+          {!canEditResponse ? (
             <input type="hidden" name="responseStatus" value="no_response" />
           ) : null}
           <select
-            name={invitationStatus === "invited" ? "responseStatus" : undefined}
-            defaultValue={invitation.response_status}
-            disabled={invitationStatus !== "invited"}
+            name={canEditResponse ? "responseStatus" : undefined}
+            value={canEditResponse ? responseStatus : "no_response"}
+            onChange={(event) =>
+              setResponseStatus(event.target.value as EventInvitationRecord["response_status"])
+            }
+            disabled={!canEditResponse}
             className={inputClass}
           >
-            {invitationStatus !== "invited" ? (
+            {!canEditResponse ? (
               <option value="no_response">N/A</option>
             ) : (
               <>
@@ -340,13 +351,44 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
             )}
           </select>
         </label>
+        <label className="text-sm font-medium text-slate-700">
+          Accompagnatori
+          <input
+            name="companionCount"
+            type="number"
+            min={0}
+            max={20}
+            step={1}
+            value={canEditCompanions ? companionCount : 0}
+            onChange={(event) => {
+              const nextValue = Number(event.target.value);
+              setCompanionCount(
+                Number.isSafeInteger(nextValue) && nextValue > 0 ? nextValue : 0,
+              );
+            }}
+            disabled={!canEditCompanions}
+            className={inputClass}
+          />
+        </label>
+        {canEditCompanions && companionCount > 0 ? (
+          <label className="text-sm font-medium text-slate-700 md:col-span-2">
+            Nomi accompagnatori
+            <textarea
+              name="companionNames"
+              rows={2}
+              defaultValue={invitation.companion_names ?? ""}
+              placeholder="Es. Mario Rossi, Anna Bianchi"
+              className={inputClass}
+            />
+          </label>
+        ) : null}
         <label className="text-sm font-medium text-slate-700 md:col-span-2">
           Nota risposta
           <textarea
             name="responseNote"
             rows={2}
             defaultValue={invitation.response_note ?? ""}
-            disabled={invitationStatus !== "invited"}
+            disabled={!canEditResponse}
             placeholder="Es. conferma ricevuta telefonicamente"
             className={inputClass}
           />
@@ -439,6 +481,7 @@ function InvitationBadges({ invitation }: { invitation: EventInvitationRecord })
     invitation.response_status === "attending"
       ? "bg-emerald-100 text-emerald-800"
       : "bg-[#1b3272]/10 text-[#1b3272]";
+  const participantCount = 1 + Math.max(invitation.companion_count, 0);
 
   return (
     <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -455,6 +498,11 @@ function InvitationBadges({ invitation }: { invitation: EventInvitationRecord })
       </span>
       {invitation.attention_flag ? (
         <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900">Da seguire</span>
+      ) : null}
+      {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">
+          {participantCount} partecipanti
+        </span>
       ) : null}
     </div>
   );
@@ -521,6 +569,22 @@ function InvitationCard({
             <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">
               {invitation.response_note}
             </p>
+          </div>
+        ) : null}
+        {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
+          <div className="mt-3 border-l-2 border-[#1b3272]/30 pl-3">
+            <div className="text-[11px] font-semibold uppercase text-slate-500">
+              Accompagnatori
+            </div>
+            <p className="mt-0.5 text-sm leading-5 text-slate-700">
+              {invitation.companion_count}{" "}
+              {invitation.companion_count === 1 ? "accompagnatore" : "accompagnatori"}
+            </p>
+            {invitation.companion_names ? (
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-600">
+                {invitation.companion_names}
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -769,9 +833,19 @@ function InvitationsTable({
                 {hiddenColumnKeys.has("response") ? null : (
                   <td className="px-4 py-3 text-slate-700">
                     <div>{responseLabel(invitation)}</div>
+                    {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
+                      <div className="mt-1 text-xs font-semibold text-emerald-800">
+                        {1 + invitation.companion_count} partecipanti
+                      </div>
+                    ) : null}
                     {invitation.response_note ? (
                       <div className="mt-1 max-w-64 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">
                         {invitation.response_note}
+                      </div>
+                    ) : null}
+                    {invitation.companion_names ? (
+                      <div className="mt-1 max-w-64 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">
+                        Accompagnatori: {invitation.companion_names}
                       </div>
                     ) : null}
                   </td>
@@ -1267,6 +1341,8 @@ export function InvitationManagement({
                     responseStatus: invitation.response_status,
                     attendanceStatus: invitation.attendance_status,
                     responseNote: invitation.response_note,
+                    companionCount: invitation.companion_count,
+                    companionNames: invitation.companion_names,
                     invitedAt: invitation.invited_at,
                     responseRecordedAt: invitation.response_recorded_at,
                     responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -1357,6 +1433,8 @@ export function InvitationManagement({
                   responseStatus: invitation.response_status,
                   attendanceStatus: invitation.attendance_status,
                   responseNote: invitation.response_note,
+                  companionCount: invitation.companion_count,
+                  companionNames: invitation.companion_names,
                   invitedAt: invitation.invited_at,
                   responseRecordedAt: invitation.response_recorded_at,
                   responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -1458,7 +1536,7 @@ export function InvitationManagement({
             </div>
             <div className="px-5 py-5">
               <InvitationEditor
-                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.notes ?? ""}`}
+                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.notes ?? ""}`}
                 invitation={selectedInvitation}
               />
             </div>

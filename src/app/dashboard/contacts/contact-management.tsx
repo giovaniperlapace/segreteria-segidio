@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import {
   createContactAction,
@@ -96,7 +97,7 @@ export type ContactEventHistoryItem = {
 type ContactViewMode = "cards" | "table";
 type FilterMatchMode = "or" | "and";
 type ContactCardSortKey = "default" | "createdAt" | "updatedAt";
-type ContactTableSortKey =
+type ContactTableColumnKey =
   | "name"
   | "institution"
   | "groups"
@@ -107,8 +108,9 @@ type ContactTableSortKey =
   | "status"
   | "priority"
   | "missing";
+type ContactTableSortKey = ContactTableColumnKey | "lastName";
 
-const TABLE_COLUMN_KEYS: ContactTableSortKey[] = [
+const TABLE_COLUMN_KEYS: ContactTableColumnKey[] = [
   "name",
   "institution",
   "groups",
@@ -121,7 +123,7 @@ const TABLE_COLUMN_KEYS: ContactTableSortKey[] = [
   "missing",
 ];
 
-const DEFAULT_HIDDEN_TABLE_COLUMNS = new Set<ContactTableSortKey>(["createdAt", "updatedAt"]);
+const DEFAULT_HIDDEN_TABLE_COLUMNS = new Set<ContactTableColumnKey>(["createdAt", "updatedAt"]);
 
 function readHiddenTableColumns(storageKey: string) {
   if (typeof window === "undefined") return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
@@ -134,7 +136,7 @@ function readHiddenTableColumns(storageKey: string) {
     if (!Array.isArray(parsed)) return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
 
     const allowed = new Set(TABLE_COLUMN_KEYS);
-    return new Set(parsed.filter((key): key is ContactTableSortKey => allowed.has(key)));
+    return new Set(parsed.filter((key): key is ContactTableColumnKey => allowed.has(key)));
   } catch {
     window.localStorage.removeItem(storageKey);
     return new Set(DEFAULT_HIDDEN_TABLE_COLUMNS);
@@ -444,6 +446,28 @@ function contactDisplayName(contact: ContactRecord) {
     contact.institution ||
     "Contatto senza nome"
   );
+}
+
+function contactFirstNameSortValue(contact: ContactRecord) {
+  return [
+    contact.first_name,
+    contact.last_name,
+    contact.institution,
+    contact.email,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function contactLastNameSortValue(contact: ContactRecord) {
+  return [
+    contact.last_name,
+    contact.first_name,
+    contact.institution,
+    contact.email,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function optionNames(ids: number[], options: Option[]) {
@@ -1590,14 +1614,17 @@ export function ContactEditor({
   references,
   languages,
   isManager,
+  onContactUpdated,
 }: {
   contact: ContactRecord;
   groups: Option[];
   references: Option[];
   languages: LanguageOption[];
   isManager: boolean;
+  onContactUpdated?: (contact: ContactRecord) => void;
   open?: boolean;
 }) {
+  const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateContactAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteContactAction);
   const displayName = contactDisplayName(contact);
@@ -1608,7 +1635,11 @@ export function ContactEditor({
     const url = new URL(window.location.href);
     url.searchParams.set("contactId", String(state.contactId));
     window.history.replaceState(null, "", url);
-  }, [state.contactId, state.status]);
+    if (state.contact) {
+      onContactUpdated?.(state.contact as ContactRecord);
+    }
+    router.refresh();
+  }, [onContactUpdated, router, state.contact, state.contactId, state.status]);
 
   return (
     <div className="space-y-4">
@@ -1620,6 +1651,7 @@ export function ContactEditor({
           </p>
         ) : null}
         <ContactFields
+          key={`${contact.id}:${contact.updated_at}`}
           contact={contact}
           groups={groups}
           references={references}
@@ -1779,9 +1811,9 @@ function ContactsTable({
   references: Option[];
   sortKey: ContactTableSortKey;
   sortDirection: "asc" | "desc";
-  hiddenColumnKeys: Set<ContactTableSortKey>;
+  hiddenColumnKeys: Set<ContactTableColumnKey>;
   onSort: (key: ContactTableSortKey) => void;
-  onHideColumn: (key: ContactTableSortKey) => void;
+  onHideColumn: (key: ContactTableColumnKey) => void;
   onShowAllColumns: () => void;
   onOpenContact: (contact: ContactRecord) => void;
 }) {
@@ -1792,11 +1824,12 @@ function ContactsTable({
     return sortDirection === "asc" ? " ↑" : " ↓";
   }
 
-  function renderHeaderButton(keyName: ContactTableSortKey, label: string, alignRight = false) {
+  function renderHeaderButton(keyName: ContactTableColumnKey, label: string, alignRight = false) {
     return (
       <div className={`flex items-center gap-2 ${alignRight ? "justify-end" : ""}`}>
         <button
           type="button"
+          data-pending-feedback="off"
           onClick={() => onSort(keyName)}
           className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
         >
@@ -1805,6 +1838,7 @@ function ContactsTable({
         </button>
         <button
           type="button"
+          data-pending-feedback="off"
           onClick={(event) => {
             event.stopPropagation();
             onHideColumn(keyName);
@@ -1812,6 +1846,57 @@ function ContactsTable({
           title={`Nascondi ${label}`}
           aria-label={`Nascondi colonna ${label}`}
           className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-500 hover:border-[#d43c2f] hover:text-[#d43c2f]"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  function renderNameHeader() {
+    const nameSortOptions: { key: ContactTableSortKey; label: string }[] = [
+      { key: "name", label: "Nome" },
+      { key: "lastName", label: "Cognome" },
+    ];
+
+    return (
+      <div className="flex min-w-44 items-start justify-between gap-2">
+        <div className="space-y-1">
+          <div className="font-semibold text-[#1b3272]">Nome</div>
+          <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 normal-case shadow-sm">
+            {nameSortOptions.map((option) => {
+              const active = sortKey === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  data-pending-feedback="off"
+                  onClick={() => onSort(option.key)}
+                  aria-pressed={active}
+                  aria-label={`Ordina per ${option.label.toLowerCase()}`}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                    active
+                      ? "border-[#1b3272] bg-[#eef4ff] text-[#1b3272]"
+                      : "border-transparent text-[#1b3272] hover:bg-[#1b3272]/10"
+                  }`}
+                >
+                  {option.label}
+                  {active ? (sortDirection === "asc" ? " ↑" : " ↓") : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <button
+          type="button"
+          data-pending-feedback="off"
+          onClick={(event) => {
+            event.stopPropagation();
+            onHideColumn("name");
+          }}
+          title="Nascondi Nome"
+          aria-label="Nascondi colonna Nome"
+          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-500 hover:border-[#d43c2f] hover:text-[#d43c2f]"
         >
           ×
         </button>
@@ -1829,6 +1914,7 @@ function ContactsTable({
         </p>
         <button
           type="button"
+          data-pending-feedback="off"
           onClick={onShowAllColumns}
           disabled={hiddenColumnKeys.size === 0}
           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f] disabled:cursor-not-allowed disabled:opacity-50"
@@ -1848,7 +1934,7 @@ function ContactsTable({
               <tr>
                 {hiddenColumnKeys.has("name") ? null : (
                   <th className="px-4 py-3 normal-case tracking-normal">
-                    {renderHeaderButton("name", "Nome")}
+                    {renderNameHeader()}
                   </th>
                 )}
                 {hiddenColumnKeys.has("institution") ? null : (
@@ -2033,14 +2119,16 @@ export function ContactManagement({
   const [createdTo, setCreatedTo] = useState(initialFilters.createdTo);
   const [updatedFrom, setUpdatedFrom] = useState(initialFilters.updatedFrom);
   const [updatedTo, setUpdatedTo] = useState(initialFilters.updatedTo);
-  const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>("name");
+  const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>("lastName");
   const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("asc");
   const [cardSortKey, setCardSortKey] = useState<ContactCardSortKey>("default");
   const tableColumnsPreferenceKey = `${viewPreferenceKey}:table-columns:hidden`;
-  const [hiddenTableColumns, setHiddenTableColumns] = useState<Set<ContactTableSortKey>>(
+  const [hiddenTableColumns, setHiddenTableColumns] = useState<Set<ContactTableColumnKey>>(
     () => readHiddenTableColumns(tableColumnsPreferenceKey),
   );
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(initialSelectedContact);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(
+    initialSelectedContact?.id ?? null,
+  );
   const deferredSearch = useDeferredValue(search);
   const viewMode = useSyncExternalStore(
     (onStoreChange) => {
@@ -2063,25 +2151,25 @@ export function ContactManagement({
     window.dispatchEvent(new Event("contacts-view-change"));
   }
 
-  function storeHiddenTableColumns(nextHiddenColumns: Set<ContactTableSortKey>) {
+  function storeHiddenTableColumns(nextHiddenColumns: Set<ContactTableColumnKey>) {
     window.localStorage.setItem(tableColumnsPreferenceKey, JSON.stringify([...nextHiddenColumns]));
   }
 
-  function hideTableColumn(columnKey: ContactTableSortKey) {
+  function hideTableColumn(columnKey: ContactTableColumnKey) {
     setHiddenTableColumns((current) => {
       const next = new Set(current).add(columnKey);
       storeHiddenTableColumns(next);
       return next;
     });
 
-    if (tableSortKey === columnKey) {
-      setTableSortKey("name");
+    if (tableSortKey === columnKey || (columnKey === "name" && tableSortKey === "lastName")) {
+      setTableSortKey(columnKey === "name" ? "institution" : "lastName");
       setTableSortDirection("asc");
     }
   }
 
   function showAllTableColumns() {
-    const next = new Set<ContactTableSortKey>();
+    const next = new Set<ContactTableColumnKey>();
     setHiddenTableColumns(next);
     storeHiddenTableColumns(next);
   }
@@ -2122,15 +2210,21 @@ export function ContactManagement({
     const url = new URL(window.location.href);
     url.searchParams.set("contactId", String(contact.id));
     window.history.replaceState(null, "", url);
-    setSelectedContact(contact);
+    setSelectedContactId(contact.id);
   }
 
   function closeContact() {
     const url = new URL(window.location.href);
     url.searchParams.delete("contactId");
     window.history.replaceState(null, "", url);
-    setSelectedContact(null);
+    setSelectedContactId(null);
   }
+
+  const selectedContact = useMemo(() => {
+    if (!selectedContactId) return null;
+    if (initialSelectedContact?.id === selectedContactId) return initialSelectedContact;
+    return contacts.find((contact) => contact.id === selectedContactId) ?? null;
+  }, [contacts, initialSelectedContact, selectedContactId]);
 
   const filtered = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
@@ -2192,7 +2286,8 @@ export function ContactManagement({
       const aReferences = optionNames(a.reference_ids, references).join(", ");
       const bReferences = optionNames(b.reference_ids, references).join(", ");
       const sortValues: Record<ContactTableSortKey, [string | number, string | number]> = {
-        name: [contactDisplayName(a), contactDisplayName(b)],
+        name: [contactFirstNameSortValue(a), contactFirstNameSortValue(b)],
+        lastName: [contactLastNameSortValue(a), contactLastNameSortValue(b)],
         institution: [a.institution ?? "", b.institution ?? ""],
         groups: [aGroups, bGroups],
         references: [aReferences, bReferences],

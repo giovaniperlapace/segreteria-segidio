@@ -1,6 +1,7 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   type ArchiveActionState,
   convertReferenceToUserAction,
@@ -106,6 +107,7 @@ function ReferenceRow({
   contactLoad: ContactLoadState;
   contactReferences: Option[];
 }) {
+  const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateReferenceAction);
   const [convertState, convertAction, convertPending] = useArchiveAction(convertReferenceToUserAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(deleteReferenceAction);
@@ -159,6 +161,17 @@ function ReferenceRow({
   }
 
   const [moveState, moveAction, movePending] = useArchiveAction(moveContactsAndSync);
+
+  useEffect(() => {
+    if (
+      state.status !== "success" &&
+      convertState.status !== "success" &&
+      deleteState.status !== "success"
+    ) {
+      return;
+    }
+    router.refresh();
+  }, [convertState.status, deleteState.status, router, state.status]);
 
   function toggleContactSelection(contactId: number) {
     setSelectedContactIds((current) => {
@@ -591,7 +604,7 @@ export function ReferenceManagement({
   const [sortKey, setSortKey] = useState<SortKey>("last_name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [openReferenceId, setOpenReferenceId] = useState<number | null>(null);
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [contactsByReference, setContactsByReference] = useState<Record<number, ContactLoadState>>({});
   const deferredSearch = useDeferredValue(search);
 
@@ -639,6 +652,34 @@ export function ReferenceManagement({
   const selectedReference = openReferenceId
     ? references.find((reference) => reference.id === openReferenceId) ?? null
     : null;
+  const selectedContact = useMemo(() => {
+    if (!selectedContactId) return null;
+
+    for (const contactState of Object.values(contactsByReference)) {
+      const contact = contactState.contacts.find((item) => item.id === selectedContactId);
+      if (contact) return contact;
+    }
+
+    return null;
+  }, [contactsByReference, selectedContactId]);
+
+  const updateLoadedContact = useCallback((updatedContact: ContactRecord) => {
+    setContactsByReference((current) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(current).map(([referenceId, state]) => {
+          const contacts = state.contacts.map((contact) => {
+            if (contact.id !== updatedContact.id) return contact;
+            changed = true;
+            return updatedContact;
+          });
+          return [referenceId, { ...state, contacts }];
+        }),
+      ) as Record<number, ContactLoadState>;
+
+      return changed ? next : current;
+    });
+  }, []);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -853,7 +894,7 @@ export function ReferenceManagement({
                   reference={reference}
                   isOpen={false}
                   onToggle={() => toggleReference(reference)}
-                  onOpenContact={setSelectedContact}
+                  onOpenContact={(contact) => setSelectedContactId(contact.id)}
                   onReferenceContactsChanged={updateReferenceContactLinks}
                   contactLoad={
                     contactsByReference[reference.id] ?? {
@@ -911,7 +952,7 @@ export function ReferenceManagement({
                     isOpen
                     showSummaryRow={false}
                     onToggle={() => setOpenReferenceId(null)}
-                    onOpenContact={setSelectedContact}
+                    onOpenContact={(contact) => setSelectedContactId(contact.id)}
                     onReferenceContactsChanged={updateReferenceContactLinks}
                     contactLoad={
                       contactsByReference[selectedReference.id] ?? {
@@ -933,7 +974,7 @@ export function ReferenceManagement({
           role="dialog"
           aria-modal="true"
           aria-label="Scheda contatto"
-          onClick={() => setSelectedContact(null)}
+          onClick={() => setSelectedContactId(null)}
         >
           <div
             className="w-full max-w-5xl overflow-hidden rounded-2xl border border-[#d9e1f2] bg-white shadow-xl"
@@ -953,7 +994,7 @@ export function ReferenceManagement({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedContact(null)}
+                onClick={() => setSelectedContactId(null)}
                 className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Chiudi
@@ -967,6 +1008,7 @@ export function ReferenceManagement({
                 references={contactReferences}
                 languages={languages}
                 isManager
+                onContactUpdated={updateLoadedContact}
               />
             </div>
           </div>

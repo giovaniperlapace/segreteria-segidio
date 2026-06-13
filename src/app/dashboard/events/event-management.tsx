@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { createEventAction, updateEventAction } from "./actions";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
 
@@ -137,7 +138,14 @@ function EventModal({
   event: EventRecord;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateEventAction);
+
+  useEffect(() => {
+    if (state.status !== "success") return;
+    router.refresh();
+  }, [router, state.status]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/35 px-4 py-8">
       <div className="w-full max-w-3xl rounded-2xl border border-[#d9e1f2] bg-white shadow-xl">
@@ -173,7 +181,10 @@ function EventModal({
         </div>
         <form action={action} className="space-y-4 border-t border-slate-200 px-5 py-5">
           <input type="hidden" name="eventId" value={event.id} />
-          <EventFields event={event} />
+          <EventFields
+            key={`${event.id}:${event.title}:${event.starts_at}:${event.ends_at ?? ""}:${event.location ?? ""}:${event.status}`}
+            event={event}
+          />
           {event.legacy_access_id ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
               Evento importato da Access #{event.legacy_access_id}
@@ -370,7 +381,7 @@ export function EventManagement({ events }: { events: EventRecord[] }) {
   );
   const [sortKey, setSortKey] = useState<EventSortKey>("starts_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [selectedEvent, setSelectedEvent] = useState<EventRecord | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   function toggleSort(nextKey: EventSortKey) {
@@ -408,6 +419,10 @@ export function EventManagement({ events }: { events: EventRecord[] }) {
         return compareValues(aValue, bValue, sortDirection);
       });
   }, [deferredSearch, events, sortDirection, sortKey, statusFilter]);
+  const selectedEvent = useMemo(() => {
+    if (!selectedEventId) return null;
+    return events.find((event) => event.id === selectedEventId) ?? null;
+  }, [events, selectedEventId]);
 
   return (
     <div className="space-y-8">
@@ -474,19 +489,19 @@ export function EventManagement({ events }: { events: EventRecord[] }) {
       </section>
 
       {viewMode === "table" ? (
-        <EventsTable
+          <EventsTable
           events={visibleEvents}
           sortKey={sortKey}
           sortDirection={sortDirection}
           statusFilter={statusFilter}
           onSort={toggleSort}
           onStatusFilterChange={setStatusFilter}
-          onOpen={setSelectedEvent}
+          onOpen={(event) => setSelectedEventId(event.id)}
         />
       ) : (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visibleEvents.map((event) => (
-            <EventCard key={event.id} event={event} onOpen={setSelectedEvent} />
+            <EventCard key={event.id} event={event} onOpen={(item) => setSelectedEventId(item.id)} />
           ))}
         </section>
       )}
@@ -496,7 +511,7 @@ export function EventManagement({ events }: { events: EventRecord[] }) {
             Nessun evento trovato.
           </p>
       ) : null}
-      {selectedEvent ? <EventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} /> : null}
+      {selectedEvent ? <EventModal event={selectedEvent} onClose={() => setSelectedEventId(null)} /> : null}
     </div>
   );
 }

@@ -11,6 +11,7 @@ export type ArchiveActionState = {
   status: "idle" | "success" | "error";
   message: string;
   contactId?: number;
+  contact?: unknown;
 };
 
 export type ContactHistoryItem = {
@@ -29,7 +30,7 @@ const CONTACT_STATUSES = ["active", "standby"] as const;
 const CONTACT_PRIORITIES = ["standard", "important", "critical"] as const;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_COLUMNS =
-  "id,legacy_access_old_archive_id,honorific_title,honorific_title_english,honorific_title_invitation,first_name,last_name,legacy_description,institutional_role,institutional_role_english,institutional_role_invitation,institution,legacy_salutation,email,email_2,phone,phone_home,phone_office_2,mobile_phone,fax,fax_home,telex_office,address_line,postal_code,city,country,home_address_line,home_postal_code,home_city,home_province,home_country,office_name,office_address_line,office_postal_code,office_city,office_province,office_country,spoken_language,spoken_language_2,invitation_language,translation_language,religion,legacy_organization_id,legacy_organization_name,legacy_office_site,mail_address_preference,legacy_contacts_raw,accompanist,legacy_archive_type,legacy_created_at,legacy_updated_at,legacy_invitation_group,website,website_2,notes,missing_data_notes,status,priority";
+  "id,legacy_access_old_archive_id,honorific_title,honorific_title_english,honorific_title_invitation,first_name,last_name,legacy_description,institutional_role,institutional_role_english,institutional_role_invitation,institution,legacy_salutation,email,email_2,phone,phone_home,phone_office_2,mobile_phone,fax,fax_home,telex_office,address_line,postal_code,city,country,home_address_line,home_postal_code,home_city,home_province,home_country,office_name,office_address_line,office_postal_code,office_city,office_province,office_country,spoken_language,spoken_language_2,invitation_language,translation_language,religion,legacy_organization_id,legacy_organization_name,legacy_office_site,mail_address_preference,legacy_contacts_raw,accompanist,legacy_archive_type,legacy_created_at,legacy_updated_at,legacy_invitation_group,website,website_2,notes,missing_data_notes,status,priority,created_at,updated_at";
 const HISTORY_LIMIT = 6;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   honorific_title: "titolo",
@@ -476,6 +477,62 @@ async function replaceAssociations(
   }
 }
 
+async function loadUpdatedContactRecord(supabase: ArchiveSupabaseClient, contactId: number) {
+  const { data: contact, error } = await supabase
+    .from("contacts")
+    .select(CONTACT_COLUMNS)
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!contact) return null;
+
+  const [contactGroups, contactReferences, missingRows, eventInvitationRows] = await Promise.all([
+    fetchAllSupabaseRows(() =>
+      supabase.from("contact_groups").select("contact_id,group_id").eq("contact_id", contactId),
+    ),
+    fetchAllSupabaseRows(() =>
+      supabase
+        .from("contact_references")
+        .select("contact_id,reference_id")
+        .eq("contact_id", contactId),
+    ),
+    fetchAllSupabaseRows(() =>
+      supabase.from("contacts_missing_required_data").select("id,missing_fields").eq("id", contactId),
+    ),
+    fetchAllSupabaseRows(() =>
+      supabase
+        .from("event_invitations")
+        .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
+        .eq("contact_id", contactId),
+    ),
+  ]);
+
+  const eventHistory = eventInvitationRows
+    .flatMap((row) => {
+      const event = Array.isArray(row.events) ? row.events[0] : row.events;
+      if (!event) return [];
+      return [{
+        event_id: Number(event.id),
+        title: String(event.title),
+        starts_at: String(event.starts_at),
+        response_status: row.response_status,
+        attendance_status: row.attendance_status,
+      }];
+    })
+    .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+    .slice(0, 12);
+
+  return {
+    ...contact,
+    group_ids: contactGroups.map((row) => Number(row.group_id)),
+    reference_ids: contactReferences.map((row) => Number(row.reference_id)),
+    missing_fields: missingRows[0]?.missing_fields ?? [],
+    event_history: eventHistory,
+  };
+}
+
 export async function createContactAction(
   _previousState: ArchiveActionState,
   formData: FormData,
@@ -540,10 +597,16 @@ export async function updateContactAction(
       );
     }
 
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/contacts");
+    revalidatePath("/dashboard/references");
+    const updatedContact = await loadUpdatedContactRecord(supabase, contactId);
+
     return {
       status: "success",
       message: "Contatto aggiornato correttamente.",
       contactId,
+      contact: updatedContact ?? undefined,
     };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };

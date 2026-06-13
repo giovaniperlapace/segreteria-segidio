@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   addInvitationAction,
   bulkUpdateInvitationStatusAction,
@@ -218,9 +219,15 @@ function AddInvitationForm({
 }
 
 function InvitationEditor({ invitation }: { invitation: EventInvitationRecord }) {
+  const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateInvitationAction);
   const [deleteState, deleteAction, deletePending] = useArchiveAction(removeInvitationAction);
   const [invitationStatus, setInvitationStatus] = useState(invitation.invitation_status);
+
+  useEffect(() => {
+    if (state.status !== "success") return;
+    router.refresh();
+  }, [router, state.status]);
 
   return (
     <div className="space-y-4">
@@ -567,9 +574,10 @@ export function InvitationManagement({
   const [flagFilter, setFlagFilter] = useState("all");
   const [sortKey, setSortKey] = useState<InvitationSortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [selectedInvitation, setSelectedInvitation] = useState<EventInvitationRecord | null>(null);
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
+  const [selectedInvitationId, setSelectedInvitationId] = useState<number | null>(null);
+  const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [selectedInvitationIds, setSelectedInvitationIds] = useState<Set<number>>(new Set());
+  const [contactOverrides, setContactOverrides] = useState<Map<number, ContactRecord>>(new Map());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [pendingUndo, setPendingUndo] = useState<BulkUndoItem[]>([]);
   const [undoPayload, setUndoPayload] = useState<BulkUndoItem[]>([]);
@@ -614,6 +622,26 @@ export function InvitationManagement({
       return next;
     });
   }
+
+  const selectedInvitation = useMemo(() => {
+    if (!selectedInvitationId) return null;
+    return invitations.find((invitation) => invitation.id === selectedInvitationId) ?? null;
+  }, [invitations, selectedInvitationId]);
+
+  const selectedContact = useMemo(() => {
+    if (!selectedContactId) return null;
+    const overriddenContact = contactOverrides.get(selectedContactId);
+    if (overriddenContact) return overriddenContact;
+    return invitations.find((invitation) => invitation.contact_id === selectedContactId)?.contact ?? null;
+  }, [contactOverrides, invitations, selectedContactId]);
+
+  const updateSelectedContact = useCallback((updatedContact: ContactRecord) => {
+    setContactOverrides((current) => {
+      const next = new Map(current);
+      next.set(updatedContact.id, updatedContact);
+      return next;
+    });
+  }, []);
 
   function toggleAllVisible() {
     const selectable = visibleInvitations;
@@ -868,8 +896,8 @@ export function InvitationManagement({
             sortKey={sortKey}
             sortDirection={sortDirection}
             onSort={toggleSort}
-            onOpenInvitation={setSelectedInvitation}
-            onOpenContact={setSelectedContact}
+            onOpenInvitation={(invitation) => setSelectedInvitationId(invitation.id)}
+            onOpenContact={(contact) => setSelectedContactId(contact.id)}
             onToggleInvitation={toggleInvitation}
             onToggleAll={toggleAllVisible}
           />
@@ -880,8 +908,8 @@ export function InvitationManagement({
                 key={invitation.id}
                 invitation={invitation}
                 selected={selectedInvitationIds.has(invitation.id)}
-                onOpenInvitation={setSelectedInvitation}
-                onOpenContact={setSelectedContact}
+                onOpenInvitation={(item) => setSelectedInvitationId(item.id)}
+                onOpenContact={(contact) => setSelectedContactId(contact.id)}
                 onToggleInvitation={toggleInvitation}
               />
             ))}
@@ -981,7 +1009,7 @@ export function InvitationManagement({
           role="dialog"
           aria-modal="true"
           aria-label="Dettaglio invito"
-          onClick={() => setSelectedInvitation(null)}
+          onClick={() => setSelectedInvitationId(null)}
         >
           <div
             className={`w-full max-w-3xl overflow-hidden rounded-xl border bg-white shadow-xl ${
@@ -995,7 +1023,7 @@ export function InvitationManagement({
               <div>
                 <button
                   type="button"
-                  onClick={() => setSelectedContact(selectedInvitation.contact)}
+                  onClick={() => setSelectedContactId(selectedInvitation.contact_id)}
                   className="text-left text-xl font-semibold text-[#1b3272] hover:underline"
                 >
                   {selectedInvitation.contact_name}
@@ -1011,14 +1039,17 @@ export function InvitationManagement({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedInvitation(null)}
+                onClick={() => setSelectedInvitationId(null)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white"
               >
                 Chiudi
               </button>
             </div>
             <div className="px-5 py-5">
-              <InvitationEditor invitation={selectedInvitation} />
+              <InvitationEditor
+                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.notes ?? ""}`}
+                invitation={selectedInvitation}
+              />
             </div>
           </div>
         </div>
@@ -1030,7 +1061,7 @@ export function InvitationManagement({
           role="dialog"
           aria-modal="true"
           aria-label="Scheda contatto"
-          onClick={() => setSelectedContact(null)}
+          onClick={() => setSelectedContactId(null)}
         >
           <div
             className="w-full max-w-5xl overflow-hidden rounded-xl border border-[#d9e1f2] bg-white shadow-xl"
@@ -1051,7 +1082,7 @@ export function InvitationManagement({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedContact(null)}
+                onClick={() => setSelectedContactId(null)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Chiudi
@@ -1065,6 +1096,7 @@ export function InvitationManagement({
                 references={references}
                 languages={languages}
                 isManager
+                onContactUpdated={updateSelectedContact}
               />
             </div>
           </div>

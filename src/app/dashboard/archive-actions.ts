@@ -540,7 +540,6 @@ export async function updateContactAction(
       );
     }
 
-    revalidatePath("/dashboard/contacts");
     return {
       status: "success",
       message: "Contatto aggiornato correttamente.",

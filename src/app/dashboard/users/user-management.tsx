@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useActionState, useDeferredValue, useMemo, useState } from "react";
+import { Fragment, useActionState, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { INTERACTION_FINISHED_EVENT } from "@/app/pending-interaction-feedback";
 import {
   createUserAction,
   updateUserAction,
@@ -22,6 +23,11 @@ type SortKey = "first_name" | "last_name" | "email" | "role" | "active";
 type SortDirection = "asc" | "desc";
 
 function ActionMessage({ state }: { state: UserActionState }) {
+  useEffect(() => {
+    if (state.status === "idle") return;
+    window.dispatchEvent(new Event(INTERACTION_FINISHED_EVENT));
+  }, [state.message, state.status]);
+
   if (state.status === "idle") return null;
 
   return (

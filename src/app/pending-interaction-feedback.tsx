@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 const ACTION_SELECTOR =
   'a[href], button, input[type="submit"], input[type="button"], [role="button"]';
+export const INTERACTION_FINISHED_EVENT = "app:interaction-finished";
 const LONG_FEEDBACK_MS = 30_000;
 const SHORT_FEEDBACK_MS = 900;
 
@@ -107,18 +108,20 @@ export function PendingInteractionFeedback() {
       const control = submitter ?? fallbackSubmitter;
 
       if (!isActionControl(control) || control.disabled) return;
-      markPending(control, true);
+      markPending(control, isLongInteraction(control) || form.dataset.pendingFeedback === "long");
     }
 
     clearPendingRef.current = clearPending;
     document.addEventListener("click", onClick, true);
     document.addEventListener("submit", onSubmit, true);
+    window.addEventListener(INTERACTION_FINISHED_EVENT, clearPending);
     window.addEventListener("pagehide", clearPending);
     window.addEventListener("pageshow", clearPending);
 
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("submit", onSubmit, true);
+      window.removeEventListener(INTERACTION_FINISHED_EVENT, clearPending);
       window.removeEventListener("pagehide", clearPending);
       window.removeEventListener("pageshow", clearPending);
       clearPending();

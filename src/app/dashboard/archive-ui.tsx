@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { INTERACTION_FINISHED_EVENT } from "../pending-interaction-feedback";
 import type { ArchiveActionState } from "./archive-actions";
 
 export const INITIAL_ARCHIVE_STATE: ArchiveActionState = {
@@ -12,6 +13,11 @@ export const inputClass =
   "mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20";
 
 export function ActionMessage({ state }: { state: ArchiveActionState }) {
+  useEffect(() => {
+    if (state.status === "idle") return;
+    window.dispatchEvent(new Event(INTERACTION_FINISHED_EVENT));
+  }, [state.message, state.status]);
+
   if (state.status === "idle") return null;
   return (
     <p

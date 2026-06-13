@@ -103,6 +103,15 @@ const FIELD_LABELS: Record<string, string> = {
   reference_id: "referente",
   is_primary: "referente principale",
   deleted_at: "eliminazione",
+  invitation_status: "stato invito",
+  response_status: "risposta",
+  attendance_status: "presenza",
+  response_note: "nota risposta",
+  invited_at: "data invito",
+  response_recorded_at: "data risposta",
+  response_recorded_by_profile_id: "autore risposta",
+  invitation_status_updated_at: "data variazione stato",
+  invitation_status_updated_by_profile_id: "autore variazione stato",
 };
 
 const IGNORED_CHANGE_FIELDS = new Set([
@@ -111,6 +120,7 @@ const IGNORED_CHANGE_FIELDS = new Set([
   "created_by_profile_id",
   "updated_by_profile_id",
   "deleted_by_profile_id",
+  "selected_by_profile_id",
 ]);
 
 function paramValue(searchParams: AuditSearchParams, key: string) {

@@ -6,8 +6,8 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato le Milestone 1-10: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access e costruzione avanzata delle liste invitati.
-- La prossima milestone operativa e' la Milestone 11: gestione manuale degli stati di invito e risposta.
+- Il progetto ha completato le Milestone 1-11: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access, costruzione avanzata delle liste invitati e gestione manuale di inviti/risposte.
+- La prossima milestone operativa e' la Milestone 12: dashboard MVP.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -19,6 +19,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - La Milestone 10 aggiunge `/dashboard/events/[eventId]/build`: filtri combinabili per ricerca, stato, priorita', dati mancanti, gruppi, referenti ed eventi passati con risposta/presenza; selezione massiva; inviti diretti idempotenti; proposte separate assegnate a uno o piu' referenti; conversione delle proposte approvate in inviti.
 - I referenti approvano o escludono le proposte da `/dashboard/proposals`. Le proposte non entrano nei conteggi invitati finche' il manager non le converte esplicitamente.
 - La lista evento mostra insieme inviti effettivi e proposte pendenti, distinguendo gli stati `Da invitare`, `Invitato` e `Da approvare`. Il manager puo' cambiare stato massivamente anche alle proposte, registrare approvazioni ricevute fuori dall'app e annullare l'ultima modifica massiva.
+- La Milestone 11 rende coerente il ciclo manuale invito/risposta: le risposte sono registrabili solo per lo stato `Invitato`; sono disponibili modifica singola e massiva, note risposta, autore/data, undo, filtri e conteggi completi `Partecipa`/`Non partecipa`/`Forse`/`Nessuna risposta`.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -105,14 +106,13 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe avviare la Milestone 11:
+La prossima sessione dovrebbe avviare la Milestone 12:
 
 1. verificare `git status` e rivedere `PIANO_DI_LAVORO.md`;
-2. definire con precisione il ciclo `Da invitare` -> `Invitato` e gli stati di risposta manuale;
-3. rendere coerenti modifica singola, modifica massiva, conteggi e filtri della lista evento;
-4. registrare data, autore e note delle variazioni operative rilevanti;
-5. verificare i flussi manager per risposta `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`;
-6. collaudare conteggi e audit senza introdurre ancora l'invio email automatico.
+2. definire le metriche prioritarie della dashboard manager e della vista referente;
+3. riusare i conteggi evento introdotti nelle Milestone 10-11;
+4. evidenziare eventi futuri/attivi, risposte mancanti e dati contatto incompleti;
+5. verificare coerenza e prestazioni dei conteggi su dati reali.
 
 Restano inoltre da rivedere i valori paese legacy non normalizzati (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`).
 
@@ -188,6 +188,7 @@ Migration MVP creata:
 - `supabase/migrations/20260606170000_events_legacy_history.sql`
 - `supabase/migrations/20260607120000_invitation_proposals_and_bulk_selection.sql`
 - `supabase/migrations/20260607160000_manager_proposal_override.sql`
+- `supabase/migrations/20260613190000_manual_invitation_responses.sql`
 
 Include:
 
@@ -203,6 +204,7 @@ Include:
 - campi legacy eventi e storico inviti, flag operativo per-evento e indici per import idempotente.
 - tabella `invitation_proposals`, stati pending/approved/excluded, audit e policy RLS per manager e referente assegnato.
 - override controllato per consentire al manager di registrare decisioni sulle proposte ricevute verbalmente o via email.
+- metadati manuali di stato/risposta sugli inviti, nota risposta, attribuzione audit e funzione di conteggio completa per evento.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 

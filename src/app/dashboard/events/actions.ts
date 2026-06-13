@@ -154,7 +154,7 @@ export async function addInvitationAction(
   _previousState: ArchiveActionState,
   formData: FormData,
 ): Promise<ArchiveActionState> {
-  await requireManager();
+  const profile = await requireManager();
   const eventId = numberField(formData, "eventId");
   const contactId = numberField(formData, "contactId");
 
@@ -170,6 +170,10 @@ export async function addInvitationAction(
       invitation_status: "selected",
       response_status: "no_response",
       attendance_status: "unknown",
+      selected_by_profile_id: profile.id,
+      invitation_status_updated_at: new Date().toISOString(),
+      invitation_status_updated_by_profile_id: profile.id,
+      updated_by_profile_id: profile.id,
     });
     if (error) throw error;
     revalidatePath("/dashboard/events");
@@ -202,6 +206,9 @@ export async function bulkAddInvitationsAction(
         response_status: "no_response",
         attendance_status: "unknown",
         selected_by_profile_id: profile.id,
+        invitation_status_updated_at: new Date().toISOString(),
+        invitation_status_updated_by_profile_id: profile.id,
+        updated_by_profile_id: profile.id,
       })),
       { onConflict: "event_id,contact_id", ignoreDuplicates: true },
     );
@@ -309,6 +316,9 @@ export async function addApprovedProposalsAction(
         response_status: "no_response",
         attendance_status: "unknown",
         selected_by_profile_id: profile.id,
+        invitation_status_updated_at: new Date().toISOString(),
+        invitation_status_updated_by_profile_id: profile.id,
+        updated_by_profile_id: profile.id,
       })),
       { onConflict: "event_id,contact_id", ignoreDuplicates: true },
     );
@@ -329,7 +339,7 @@ export async function updateInvitationAction(
   _previousState: ArchiveActionState,
   formData: FormData,
 ): Promise<ArchiveActionState> {
-  await requireManager();
+  const profile = await requireManager();
   const invitationId = numberField(formData, "invitationId");
   const eventId = numberField(formData, "eventId");
   const status = invitationStatus(text(formData, "invitationStatus"));
@@ -342,28 +352,48 @@ export async function updateInvitationAction(
 
   try {
     const supabase = createSupabaseServiceClient();
-    const response = status === "invited" ? requestedResponse : "no_response";
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
-      .select("invited_at")
+      .select("invitation_status,response_status,invited_at,response_recorded_at,response_recorded_by_profile_id")
       .eq("id", invitationId)
       .maybeSingle();
     if (currentError) throw currentError;
+    if (!currentInvitation) {
+      return { status: "error", message: "Invito non trovato." };
+    }
     const attentionNote = optionalText(formData, "attentionNote");
+    const responseChanged = requestedResponse !== currentInvitation.response_status;
+    const statusChanged = status !== currentInvitation.invitation_status;
+    const isInvited = status === "invited";
+    const response = isInvited ? requestedResponse : "no_response";
+    const now = new Date().toISOString();
     const { error } = await supabase
       .from("event_invitations")
       .update({
         invitation_status: status,
         response_status: response,
-        attendance_status: attendance,
+        attendance_status: isInvited ? attendance : "unknown",
         attention_flag: formData.get("attentionFlag") === "on",
         attention_note: attentionNote,
         notes: optionalText(formData, "notes"),
-        response_recorded_at: response === "no_response" ? null : new Date().toISOString(),
-        invited_at:
-          status === "invited"
-            ? currentInvitation?.invited_at ?? new Date().toISOString()
-            : null,
+        response_note: isInvited ? optionalText(formData, "responseNote") : null,
+        response_recorded_at:
+          response === "no_response"
+            ? null
+            : responseChanged
+              ? now
+              : currentInvitation.response_recorded_at,
+        response_recorded_by_profile_id:
+          response === "no_response"
+            ? null
+            : responseChanged
+              ? profile.id
+              : currentInvitation.response_recorded_by_profile_id,
+        invited_at: isInvited ? currentInvitation.invited_at ?? now : null,
+        selected_by_profile_id: statusChanged ? profile.id : undefined,
+        invitation_status_updated_at: statusChanged ? now : undefined,
+        invitation_status_updated_by_profile_id: statusChanged ? profile.id : undefined,
+        updated_by_profile_id: profile.id,
       })
       .eq("id", invitationId);
     if (error) throw error;
@@ -391,16 +421,22 @@ export async function bulkUpdateInvitationStatusAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    let invitationRows: Array<{
+      id: number;
+      invitation_status: (typeof INVITATION_STATUSES)[number];
+      invited_at: string | null;
+    }> = [];
     if (invitationIds.length > 0) {
       const { data: rows, error: rowsError } = await supabase
         .from("event_invitations")
-        .select("id")
+        .select("id,invitation_status,invited_at")
         .eq("event_id", eventId)
         .in("id", invitationIds);
       if (rowsError) throw rowsError;
       if ((rows ?? []).length !== invitationIds.length) {
         return { status: "error", message: "Una o più righe non appartengono a questo evento." };
       }
+      invitationRows = (rows ?? []) as typeof invitationRows;
     }
 
     let proposalRows: Array<{ id: number; contact_id: number }> = [];
@@ -422,18 +458,32 @@ export async function bulkUpdateInvitationStatusAction(
       }
     }
 
-    if (invitationIds.length > 0) {
-      const update: Record<string, unknown> = {
-        invitation_status: status,
-        selected_by_profile_id: profile.id,
-      };
-      if (status === "invited") update.invited_at = new Date().toISOString();
-      const { error } = await supabase
-        .from("event_invitations")
-        .update(update)
-        .eq("event_id", eventId)
-        .in("id", invitationIds);
-      if (error) throw error;
+    if (invitationRows.length > 0) {
+      const now = new Date().toISOString();
+      const updates = invitationRows.map((row) => {
+        const isInvited = status === "invited";
+        const statusChanged = row.invitation_status !== status;
+        return supabase
+          .from("event_invitations")
+          .update({
+            invitation_status: status,
+            selected_by_profile_id: statusChanged ? profile.id : undefined,
+            invitation_status_updated_at: statusChanged ? now : undefined,
+            invitation_status_updated_by_profile_id: statusChanged ? profile.id : undefined,
+            updated_by_profile_id: profile.id,
+            invited_at: isInvited ? row.invited_at ?? now : null,
+            response_status: isInvited ? undefined : "no_response",
+            response_note: isInvited ? undefined : null,
+            response_recorded_at: isInvited ? undefined : null,
+            response_recorded_by_profile_id: isInvited ? undefined : null,
+            attendance_status: isInvited ? undefined : "unknown",
+          })
+          .eq("event_id", eventId)
+          .eq("id", row.id);
+      });
+      const results = await Promise.all(updates);
+      const updateError = results.find((result) => result.error)?.error;
+      if (updateError) throw updateError;
     }
 
     const convertedContactIds = [...new Set(proposalRows.map((row) => row.contact_id))];
@@ -448,6 +498,9 @@ export async function bulkUpdateInvitationStatusAction(
             response_status: "no_response",
             attendance_status: "unknown",
             selected_by_profile_id: profile.id,
+            invitation_status_updated_at: now,
+            invitation_status_updated_by_profile_id: profile.id,
+            updated_by_profile_id: profile.id,
             invited_at: status === "invited" ? now : null,
           })),
         );
@@ -486,11 +539,69 @@ export async function bulkUpdateInvitationStatusAction(
   }
 }
 
+export async function bulkUpdateInvitationResponseAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const profile = await requireManager();
+  const eventId = numberField(formData, "eventId");
+  const invitationIds = numberFields(formData, "invitationIds");
+  const response = responseStatus(text(formData, "responseStatus"));
+
+  if (!eventId || invitationIds.length === 0 || !response) {
+    return { status: "error", message: "Seleziona almeno un invitato e una risposta valida." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data: rows, error: rowsError } = await supabase
+      .from("event_invitations")
+      .select("id,invitation_status")
+      .eq("event_id", eventId)
+      .in("id", invitationIds);
+    if (rowsError) throw rowsError;
+    if ((rows ?? []).length !== invitationIds.length) {
+      return { status: "error", message: "Una o più righe non appartengono a questo evento." };
+    }
+    if ((rows ?? []).some((row) => row.invitation_status !== "invited")) {
+      return {
+        status: "error",
+        message: "Le risposte possono essere registrate solo per contatti con stato Invitato.",
+      };
+    }
+
+    const { error } = await supabase
+      .from("event_invitations")
+      .update({
+        response_status: response,
+        response_note: optionalText(formData, "responseNote"),
+        response_recorded_at: response === "no_response" ? null : new Date().toISOString(),
+        response_recorded_by_profile_id: response === "no_response" ? null : profile.id,
+        updated_by_profile_id: profile.id,
+      })
+      .eq("event_id", eventId)
+      .in("id", invitationIds);
+    if (error) throw error;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/events");
+    revalidatePath(`/dashboard/events/${eventId}`);
+    return {
+      status: "success",
+      message: `Risposta aggiornata per ${invitationIds.length} ${
+        invitationIds.length === 1 ? "invitato" : "invitati"
+      }.`,
+    };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
 export async function undoBulkInvitationStatusAction(
   _previousState: ArchiveActionState,
   formData: FormData,
 ): Promise<ArchiveActionState> {
-  await requireManager();
+  const profile = await requireManager();
   const eventId = numberField(formData, "eventId");
   let previousStates: Array<{
     id: number;
@@ -498,6 +609,12 @@ export async function undoBulkInvitationStatusAction(
     rowType: "invitation" | "proposal";
     status: (typeof INVITATION_STATUSES)[number] | "pending_approval";
     proposalIds: number[];
+    responseStatus: (typeof RESPONSE_STATUSES)[number];
+    attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
+    responseNote: string | null;
+    invitedAt: string | null;
+    responseRecordedAt: string | null;
+    responseRecordedByProfileId: string | null;
   }> = [];
 
   try {
@@ -517,6 +634,19 @@ export async function undoBulkInvitationStatusAction(
               .map(Number)
               .filter((id: number) => Number.isSafeInteger(id) && id > 0)
             : [],
+          responseStatus: responseStatus(String(item?.responseStatus ?? "")) ?? "no_response",
+          attendanceStatus: attendanceStatus(String(item?.attendanceStatus ?? "")) ?? "unknown",
+          responseNote:
+            typeof item?.responseNote === "string" && item.responseNote.trim()
+              ? item.responseNote.trim()
+              : null,
+          invitedAt: typeof item?.invitedAt === "string" ? item.invitedAt : null,
+          responseRecordedAt:
+            typeof item?.responseRecordedAt === "string" ? item.responseRecordedAt : null,
+          responseRecordedByProfileId:
+            typeof item?.responseRecordedByProfileId === "string"
+              ? item.responseRecordedByProfileId
+              : null,
         }))
         .filter(
           (
@@ -527,6 +657,12 @@ export async function undoBulkInvitationStatusAction(
             rowType: "invitation" | "proposal";
             status: (typeof INVITATION_STATUSES)[number] | "pending_approval";
             proposalIds: number[];
+            responseStatus: (typeof RESPONSE_STATUSES)[number];
+            attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
+            responseNote: string | null;
+            invitedAt: string | null;
+            responseRecordedAt: string | null;
+            responseRecordedByProfileId: string | null;
           } =>
             Number.isSafeInteger(item.id) &&
             Number.isSafeInteger(item.contactId) &&
@@ -550,24 +686,39 @@ export async function undoBulkInvitationStatusAction(
     const invitationStates = previousStates.filter((item) => item.rowType === "invitation");
     const proposalStates = previousStates.filter((item) => item.rowType === "proposal");
     const invitationIds = invitationStates.map((item) => item.id);
+    const currentInvitationStatusById = new Map<number, string>();
     if (invitationIds.length > 0) {
       const { data: rows, error: rowsError } = await supabase
         .from("event_invitations")
-        .select("id")
+        .select("id,invitation_status")
         .eq("event_id", eventId)
         .in("id", invitationIds);
       if (rowsError) throw rowsError;
       if ((rows ?? []).length !== invitationIds.length) {
         return { status: "error", message: "Una o più righe non appartengono a questo evento." };
       }
+      for (const row of rows ?? []) {
+        currentInvitationStatusById.set(Number(row.id), String(row.invitation_status));
+      }
     }
 
     for (const item of invitationStates) {
       if (item.status === "pending_approval") continue;
+      const statusChanged = currentInvitationStatusById.get(item.id) !== item.status;
       const { error } = await supabase
         .from("event_invitations")
         .update({
           invitation_status: item.status,
+          selected_by_profile_id: statusChanged ? profile.id : undefined,
+          invitation_status_updated_at: statusChanged ? new Date().toISOString() : undefined,
+          invitation_status_updated_by_profile_id: statusChanged ? profile.id : undefined,
+          updated_by_profile_id: profile.id,
+          invited_at: item.invitedAt,
+          response_status: item.responseStatus,
+          attendance_status: item.attendanceStatus,
+          response_note: item.responseNote,
+          response_recorded_at: item.responseRecordedAt,
+          response_recorded_by_profile_id: item.responseRecordedByProfileId,
         })
         .eq("event_id", eventId)
         .eq("id", item.id);
@@ -607,6 +758,7 @@ export async function undoBulkInvitationStatusAction(
       }
     }
 
+    revalidatePath("/dashboard");
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return { status: "success", message: "Ultima modifica massiva annullata." };

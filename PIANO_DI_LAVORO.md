@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-Le Milestone 1-10 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 11 sulla gestione manuale degli inviti e delle risposte.
+Le Milestone 1-11 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 12 sulla dashboard MVP.
 
 ## 2. Sintesi della visione dell'app
 
@@ -294,13 +294,16 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 11 - Gestione manuale inviti e risposte
 
+- **Stato**: completata il 2026-06-13.
 - **Obiettivo**: tracciare stato invito e risposta senza automazione email.
 - **Scope**: stati invito/risposta, note, proponente, inserimento manuale risposte.
 - **Output atteso**: situazione evento sempre aggiornata.
 - **Criteri di accettazione**: conteggi corretti per invitati, si', no, forse, nessuna risposta.
 - **Verifiche tecniche**: test dashboard e filtri su risposta.
 - **Rischi**: stati non allineati al processo reale.
-- **Decisioni aperte**: nomenclatura stati risposta.
+- **Decisioni adottate**: il ciclo operativo usa `Da invitare` -> `Invitato`; una risposta e' applicabile solo agli invitati; gli stati risposta definitivi MVP sono `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`; tornando a uno stato precedente vengono azzerati risposta, presenza e relativi metadati.
+- **Esito**: aggiunti riepilogo completo nella scheda evento, modifica singola e massiva delle risposte, nota risposta dedicata, autore/data delle variazioni, undo, filtri coerenti e audit attribuito all'operatore. La migration `20260613190000_manual_invitation_responses.sql` e' stata applicata al database self-hosted.
+- **Verifica conclusiva**: conteggi database, smoke test transazionale con rollback, audit autore, TypeScript, lint, build e flussi browser desktop/mobile superati; nessuna email automatica introdotta.
 
 ### Milestone 12 - Dashboard MVP
 

@@ -80,7 +80,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -100,6 +100,7 @@ export default async function EventDetailPage({
     groupsResult,
     referencesResult,
     languagesResult,
+    responseCountsResult,
   ] =
     await Promise.all([
       invitationsQuery
@@ -135,6 +136,7 @@ export default async function EventDetailPage({
         .order("active", { ascending: false })
         .order("sort_order")
         .order("name"),
+      supabase.rpc("event_invitation_response_counts", { p_event_id: eventId }).maybeSingle(),
     ]);
 
   if (invitationsError) throw invitationsError;
@@ -143,6 +145,32 @@ export default async function EventDetailPage({
   for (const result of [groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
   }
+  if (responseCountsResult.error) throw responseCountsResult.error;
+
+  const invitationProfileIds = [
+    ...new Set(
+      (invitations ?? [])
+        .flatMap((invitation) => [
+          invitation.invitation_status_updated_by_profile_id,
+          invitation.response_recorded_by_profile_id,
+        ])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const { data: invitationProfiles, error: invitationProfilesError } =
+    invitationProfileIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id,full_name,email")
+          .in("id", invitationProfileIds)
+      : { data: [], error: null };
+  if (invitationProfilesError) throw invitationProfilesError;
+  const invitationProfilesById = new Map(
+    (invitationProfiles ?? []).map((profile) => [
+      profile.id,
+      profile.full_name || profile.email || "Utente senza nome",
+    ]),
+  );
 
   const proposalContactIds = new Set(
     (proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)),
@@ -263,6 +291,18 @@ export default async function EventDetailPage({
       attention_flag: Boolean(invitation.attention_flag),
       attention_note: invitation.attention_note,
       notes: invitation.notes,
+      response_note: invitation.response_note,
+      invited_at: invitation.invited_at,
+      response_recorded_at: invitation.response_recorded_at,
+      response_recorded_by_profile_id: invitation.response_recorded_by_profile_id,
+      response_recorded_by_name: invitation.response_recorded_by_profile_id
+        ? invitationProfilesById.get(invitation.response_recorded_by_profile_id) ?? "Utente non disponibile"
+        : null,
+      invitation_status_updated_at: invitation.invitation_status_updated_at,
+      invitation_status_updated_by_profile_id: invitation.invitation_status_updated_by_profile_id,
+      invitation_status_updated_by_name: invitation.invitation_status_updated_by_profile_id
+        ? invitationProfilesById.get(invitation.invitation_status_updated_by_profile_id) ?? "Utente non disponibile"
+        : null,
       legacy_invited_raw: invitation.legacy_invited_raw,
       legacy_viene_raw: invitation.legacy_viene_raw,
       legacy_presence_raw: invitation.legacy_presence_raw,
@@ -304,6 +344,14 @@ export default async function EventDetailPage({
       attention_flag: false,
       attention_note: null,
       notes: proposal.note,
+      response_note: null,
+      invited_at: null,
+      response_recorded_at: null,
+      response_recorded_by_profile_id: null,
+      response_recorded_by_name: null,
+      invitation_status_updated_at: null,
+      invitation_status_updated_by_profile_id: null,
+      invitation_status_updated_by_name: null,
       legacy_invited_raw: null,
       legacy_viene_raw: null,
       legacy_presence_raw: null,
@@ -337,6 +385,23 @@ export default async function EventDetailPage({
 
   const total = (count ?? invitationRows.length) + proposalRows.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const responseCounts = (responseCountsResult.data ?? {
+    total_count: 0,
+    selected_count: 0,
+    invited_count: 0,
+    no_response_count: 0,
+    attending_count: 0,
+    declined_count: 0,
+    maybe_count: 0,
+  }) as {
+    total_count: number;
+    selected_count: number;
+    invited_count: number;
+    no_response_count: number;
+    attending_count: number;
+    declined_count: number;
+    maybe_count: number;
+  };
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
@@ -361,6 +426,16 @@ export default async function EventDetailPage({
           eventId={eventId}
           pageSearch={search}
           invitations={eventRows}
+          summary={{
+            total: Number(responseCounts.total_count) + proposalsByContact.size,
+            pendingApproval: proposalsByContact.size,
+            selected: Number(responseCounts.selected_count),
+            invited: Number(responseCounts.invited_count),
+            noResponse: Number(responseCounts.no_response_count),
+            attending: Number(responseCounts.attending_count),
+            declined: Number(responseCounts.declined_count),
+            maybe: Number(responseCounts.maybe_count),
+          }}
           contactOptions={contactOptions}
           groups={(groupsResult.data ?? []).map((group) => ({
             id: Number(group.id),

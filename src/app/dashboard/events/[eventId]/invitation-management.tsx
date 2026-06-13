@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   addInvitationAction,
+  bulkUpdateInvitationResponseAction,
   bulkUpdateInvitationStatusAction,
   removeInvitationAction,
   undoBulkInvitationStatusAction,
@@ -35,6 +36,14 @@ export type EventInvitationRecord = {
   attention_flag: boolean;
   attention_note: string | null;
   notes: string | null;
+  response_note: string | null;
+  invited_at: string | null;
+  response_recorded_at: string | null;
+  response_recorded_by_profile_id: string | null;
+  response_recorded_by_name: string | null;
+  invitation_status_updated_at: string | null;
+  invitation_status_updated_by_profile_id: string | null;
+  invitation_status_updated_by_name: string | null;
   legacy_invited_raw: string | null;
   legacy_viene_raw: string | null;
   legacy_presence_raw: string | null;
@@ -52,17 +61,64 @@ type BulkUndoItem = {
   rowType: EventInvitationRecord["row_type"];
   status: EventInvitationRecord["invitation_status"];
   proposalIds: number[];
+  responseStatus: EventInvitationRecord["response_status"];
+  attendanceStatus: EventInvitationRecord["attendance_status"];
+  responseNote: string | null;
+  invitedAt: string | null;
+  responseRecordedAt: string | null;
+  responseRecordedByProfileId: string | null;
+};
+
+type InvitationSummary = {
+  total: number;
+  pendingApproval: number;
+  selected: number;
+  invited: number;
+  noResponse: number;
+  attending: number;
+  declined: number;
+  maybe: number;
 };
 
 type InvitationViewMode = "cards" | "table";
 type InvitationSortKey =
-  | "name"
-  | "detail"
+  | "firstName"
+  | "lastName"
+  | "role"
   | "status"
   | "response"
   | "attendance"
   | "flag";
 type SortDirection = "asc" | "desc";
+type InvitationTableColumnKey = "status" | "approval" | "response" | "attendance" | "flag";
+
+const INVITATION_TABLE_COLUMN_KEYS: InvitationTableColumnKey[] = [
+  "status",
+  "approval",
+  "response",
+  "attendance",
+  "flag",
+];
+
+function readHiddenInvitationColumns(storageKey: string) {
+  if (typeof window === "undefined") return new Set<InvitationTableColumnKey>();
+
+  const rawValue = window.localStorage.getItem(storageKey);
+  if (!rawValue) return new Set<InvitationTableColumnKey>();
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return new Set<InvitationTableColumnKey>();
+
+    const allowed = new Set(INVITATION_TABLE_COLUMN_KEYS);
+    return new Set(
+      parsed.filter((key): key is InvitationTableColumnKey => allowed.has(key)),
+    );
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return new Set<InvitationTableColumnKey>();
+  }
+}
 
 const RESPONSE_LABELS: Record<EventInvitationRecord["response_status"], string> = {
   no_response: "Nessuna risposta",
@@ -91,6 +147,14 @@ const ATTENDANCE_LABELS: Record<EventInvitationRecord["attendance_status"], stri
   attended: "Presente",
   absent: "Assente",
 };
+
+function formatOperationalDate(value: string | null) {
+  if (!value) return "Non registrata";
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
 
 function normalizeContactSearch(value: string) {
   return value
@@ -276,6 +340,17 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
             )}
           </select>
         </label>
+        <label className="text-sm font-medium text-slate-700 md:col-span-2">
+          Nota risposta
+          <textarea
+            name="responseNote"
+            rows={2}
+            defaultValue={invitation.response_note ?? ""}
+            disabled={invitationStatus !== "invited"}
+            placeholder="Es. conferma ricevuta telefonicamente"
+            className={inputClass}
+          />
+        </label>
         <label className="text-sm font-medium text-slate-700">
           Presenza
           <select name="attendanceStatus" defaultValue={invitation.attendance_status} className={inputClass}>
@@ -301,6 +376,26 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
           Note invito
           <textarea name="notes" rows={3} defaultValue={invitation.notes ?? ""} className={inputClass} />
         </label>
+        <dl className="grid gap-3 rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-600 md:col-span-2 sm:grid-cols-2">
+          <div>
+            <dt className="font-semibold text-slate-700">Ultima variazione stato</dt>
+            <dd className="mt-1">
+              {formatOperationalDate(invitation.invitation_status_updated_at)}
+              {invitation.invitation_status_updated_by_name
+                ? ` · ${invitation.invitation_status_updated_by_name}`
+                : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-700">Risposta registrata</dt>
+            <dd className="mt-1">
+              {formatOperationalDate(invitation.response_recorded_at)}
+              {invitation.response_recorded_by_name
+                ? ` · ${invitation.response_recorded_by_name}`
+                : ""}
+            </dd>
+          </div>
+        </dl>
         {invitation.legacy_invited_raw || invitation.legacy_viene_raw || invitation.legacy_presence_raw ? (
           <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
             Access: Invitato={invitation.legacy_invited_raw || "-"} · Viene={invitation.legacy_viene_raw || "-"} · Presenza={invitation.legacy_presence_raw || "-"}
@@ -337,12 +432,22 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
 }
 
 function InvitationBadges({ invitation }: { invitation: EventInvitationRecord }) {
+  const hasRecordedResponse =
+    invitation.invitation_status === "invited" &&
+    invitation.response_status !== "no_response";
+  const responseBadgeClass =
+    invitation.response_status === "attending"
+      ? "bg-emerald-100 text-emerald-800"
+      : "bg-[#1b3272]/10 text-[#1b3272]";
+
   return (
     <div className="flex flex-wrap gap-2 text-xs font-semibold">
-      <span className="rounded-full bg-[#d43c2f]/10 px-2.5 py-1 text-[#b62f24]">
-        {INVITATION_STATUS_LABELS[invitation.invitation_status]}
-      </span>
-      <span className="rounded-full bg-[#1b3272]/10 px-2.5 py-1 text-[#1b3272]">
+      {hasRecordedResponse ? null : (
+        <span className="rounded-full bg-[#d43c2f]/10 px-2.5 py-1 text-[#b62f24]">
+          {INVITATION_STATUS_LABELS[invitation.invitation_status]}
+        </span>
+      )}
+      <span className={`rounded-full px-2.5 py-1 ${responseBadgeClass}`}>
         {responseLabel(invitation)}
       </span>
       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
@@ -408,6 +513,16 @@ function InvitationCard({
             Approvazione: {invitation.approval_references.join(", ")}
           </p>
         ) : null}
+        {invitation.response_note ? (
+          <div className="mt-3 border-l-2 border-emerald-300 pl-3">
+            <div className="text-[11px] font-semibold uppercase text-slate-500">
+              Nota risposta
+            </div>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">
+              {invitation.response_note}
+            </p>
+          </div>
+        ) : null}
       </div>
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
         <InvitationBadges invitation={invitation} />
@@ -432,7 +547,10 @@ function InvitationsTable({
   selectedInvitationIds,
   sortKey,
   sortDirection,
+  hiddenColumnKeys,
   onSort,
+  onHideColumn,
+  onShowAllColumns,
   onOpenInvitation,
   onOpenContact,
   onToggleInvitation,
@@ -442,7 +560,10 @@ function InvitationsTable({
   selectedInvitationIds: Set<number>;
   sortKey: InvitationSortKey;
   sortDirection: SortDirection;
+  hiddenColumnKeys: Set<InvitationTableColumnKey>;
   onSort: (key: InvitationSortKey) => void;
+  onHideColumn: (key: InvitationTableColumnKey) => void;
+  onShowAllColumns: () => void;
   onOpenInvitation: (invitation: EventInvitationRecord) => void;
   onOpenContact: (contact: ContactRecord) => void;
   onToggleInvitation: (invitationId: number) => void;
@@ -456,18 +577,110 @@ function InvitationsTable({
   function header(key: InvitationSortKey, label: string) {
     const arrow = sortKey === key ? (sortDirection === "asc" ? " ↑" : " ↓") : "";
     return (
-      <button
-        type="button"
-        onClick={() => onSort(key)}
-        className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
-      >
-        {label}{arrow}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          data-pending-feedback="off"
+          onClick={() => onSort(key)}
+          className="font-semibold text-[#1b3272] hover:text-[#d43c2f]"
+        >
+          {label}{arrow}
+        </button>
+        <button
+          type="button"
+          data-pending-feedback="off"
+          onClick={(event) => {
+            event.stopPropagation();
+            onHideColumn(key as InvitationTableColumnKey);
+          }}
+          title={`Nascondi ${label}`}
+          aria-label={`Nascondi colonna ${label}`}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-500 hover:border-[#d43c2f] hover:text-[#d43c2f]"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  function plainHeader(key: InvitationTableColumnKey, label: string) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="font-semibold text-slate-600">{label}</span>
+        <button
+          type="button"
+          data-pending-feedback="off"
+          onClick={(event) => {
+            event.stopPropagation();
+            onHideColumn(key);
+          }}
+          title={`Nascondi ${label}`}
+          aria-label={`Nascondi colonna ${label}`}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-500 hover:border-[#d43c2f] hover:text-[#d43c2f]"
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  function contactHeader() {
+    const sortOptions: { key: InvitationSortKey; label: string }[] = [
+      { key: "firstName", label: "Nome" },
+      { key: "lastName", label: "Cognome" },
+      { key: "role", label: "Carica" },
+    ];
+
+    return (
+      <div className="min-w-56 space-y-1">
+        <div className="font-semibold text-[#1b3272]">Contatto</div>
+        <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 normal-case shadow-sm">
+          {sortOptions.map((option) => {
+            const active = sortKey === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                data-pending-feedback="off"
+                onClick={() => onSort(option.key)}
+                aria-pressed={active}
+                aria-label={`Ordina per ${option.label.toLowerCase()}`}
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                  active
+                    ? "border-[#1b3272] bg-[#eef4ff] text-[#1b3272]"
+                    : "border-transparent text-[#1b3272] hover:bg-[#1b3272]/10"
+                }`}
+              >
+                {option.label}
+                {active ? (sortDirection === "asc" ? " ↑" : " ↓") : ""}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     );
   }
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#d9e1f2] bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <p className="text-xs font-medium text-slate-600">
+          {hiddenColumnKeys.size > 0
+            ? `${hiddenColumnKeys.size} ${
+                hiddenColumnKeys.size === 1 ? "colonna nascosta" : "colonne nascoste"
+              }`
+            : "Tutte le colonne sono visibili"}
+        </p>
+        <button
+          type="button"
+          data-pending-feedback="off"
+          onClick={onShowAllColumns}
+          disabled={hiddenColumnKeys.size === 0}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Mostra tutte le colonne
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs text-slate-600">
@@ -482,13 +695,22 @@ function InvitationsTable({
                   className="h-4 w-4 accent-[#1b3272]"
                 />
               </th>
-              <th className="px-4 py-3">{header("name", "Contatto")}</th>
-              <th className="px-4 py-3">{header("detail", "Carica / Istituzione")}</th>
-              <th className="px-4 py-3">{header("status", "Stato")}</th>
-              <th className="px-4 py-3">Approvazione richiesta a</th>
-              <th className="px-4 py-3">{header("response", "Risposta")}</th>
-              <th className="px-4 py-3">{header("attendance", "Presenza")}</th>
-              <th className="px-4 py-3">{header("flag", "Da seguire")}</th>
+              <th className="px-4 py-3">{contactHeader()}</th>
+              {hiddenColumnKeys.has("status") ? null : (
+                <th className="px-4 py-3">{header("status", "Stato")}</th>
+              )}
+              {hiddenColumnKeys.has("approval") ? null : (
+                <th className="px-4 py-3">{plainHeader("approval", "Approvazione richiesta a")}</th>
+              )}
+              {hiddenColumnKeys.has("response") ? null : (
+                <th className="px-4 py-3">{header("response", "Risposta")}</th>
+              )}
+              {hiddenColumnKeys.has("attendance") ? null : (
+                <th className="px-4 py-3">{header("attendance", "Presenza")}</th>
+              )}
+              {hiddenColumnKeys.has("flag") ? null : (
+                <th className="px-4 py-3">{header("flag", "Da seguire")}</th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -528,19 +750,42 @@ function InvitationsTable({
                   {invitation.contact_email ? (
                     <div className="mt-1 text-xs text-slate-500">{invitation.contact_email}</div>
                   ) : null}
+                  {invitation.contact_detail ? (
+                    <div className="mt-1 max-w-xl text-xs leading-5 text-slate-600">
+                      {invitation.contact_detail}
+                    </div>
+                  ) : null}
                 </td>
-                <td className="px-4 py-3 text-slate-700">{invitation.contact_detail || "—"}</td>
-                <td className="px-4 py-3 text-slate-700">
-                  {INVITATION_STATUS_LABELS[invitation.invitation_status]}
-                </td>
-                <td className="px-4 py-3 text-slate-700">
-                  {invitation.approval_references.join(", ") || "—"}
-                </td>
-                <td className="px-4 py-3 text-slate-700">{responseLabel(invitation)}</td>
-                <td className="px-4 py-3 text-slate-700">{ATTENDANCE_LABELS[invitation.attendance_status]}</td>
-                <td className="px-4 py-3 text-slate-700">
-                  {invitation.attention_flag ? invitation.attention_note || "Sì" : "No"}
-                </td>
+                {hiddenColumnKeys.has("status") ? null : (
+                  <td className="px-4 py-3 text-slate-700">
+                    {INVITATION_STATUS_LABELS[invitation.invitation_status]}
+                  </td>
+                )}
+                {hiddenColumnKeys.has("approval") ? null : (
+                  <td className="px-4 py-3 text-slate-700">
+                    {invitation.approval_references.join(", ") || "—"}
+                  </td>
+                )}
+                {hiddenColumnKeys.has("response") ? null : (
+                  <td className="px-4 py-3 text-slate-700">
+                    <div>{responseLabel(invitation)}</div>
+                    {invitation.response_note ? (
+                      <div className="mt-1 max-w-64 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">
+                        {invitation.response_note}
+                      </div>
+                    ) : null}
+                  </td>
+                )}
+                {hiddenColumnKeys.has("attendance") ? null : (
+                  <td className="px-4 py-3 text-slate-700">
+                    {ATTENDANCE_LABELS[invitation.attendance_status]}
+                  </td>
+                )}
+                {hiddenColumnKeys.has("flag") ? null : (
+                  <td className="px-4 py-3 text-slate-700">
+                    {invitation.attention_flag ? invitation.attention_note || "Sì" : "No"}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -554,6 +799,7 @@ export function InvitationManagement({
   eventId,
   pageSearch,
   invitations,
+  summary,
   contactOptions,
   groups,
   references,
@@ -562,6 +808,7 @@ export function InvitationManagement({
   eventId: number;
   pageSearch: string;
   invitations: EventInvitationRecord[];
+  summary: InvitationSummary;
   contactOptions: ContactOption[];
   groups: Option[];
   references: Option[];
@@ -572,19 +819,27 @@ export function InvitationManagement({
   const [responseFilter, setResponseFilter] = useState("all");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
   const [flagFilter, setFlagFilter] = useState("all");
-  const [sortKey, setSortKey] = useState<InvitationSortKey>("name");
+  const [sortKey, setSortKey] = useState<InvitationSortKey>("lastName");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [selectedInvitationId, setSelectedInvitationId] = useState<number | null>(null);
   const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [selectedInvitationIds, setSelectedInvitationIds] = useState<Set<number>>(new Set());
   const [contactOverrides, setContactOverrides] = useState<Map<number, ContactRecord>>(new Map());
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkResponseModalOpen, setBulkResponseModalOpen] = useState(false);
   const [pendingUndo, setPendingUndo] = useState<BulkUndoItem[]>([]);
   const [undoPayload, setUndoPayload] = useState<BulkUndoItem[]>([]);
   const [bulkState, bulkAction, bulkPending] = useArchiveAction(bulkUpdateInvitationStatusAction);
+  const [bulkResponseState, bulkResponseAction, bulkResponsePending] = useArchiveAction(
+    bulkUpdateInvitationResponseAction,
+  );
   const [undoState, undoAction, undoPending] = useArchiveAction(undoBulkInvitationStatusAction);
   const deferredSearch = useDeferredValue(search);
   const viewPreferenceKey = `event-invitations-view:${eventId}`;
+  const tableColumnsPreferenceKey = `${viewPreferenceKey}:table-columns:hidden`;
+  const [hiddenTableColumns, setHiddenTableColumns] = useState<
+    Set<InvitationTableColumnKey>
+  >(() => readHiddenInvitationColumns(tableColumnsPreferenceKey));
   const viewMode = useSyncExternalStore(
     (onStoreChange) => {
       window.addEventListener("storage", onStoreChange);
@@ -610,6 +865,32 @@ export function InvitationManagement({
     }
     setSortKey(nextKey);
     setSortDirection("asc");
+  }
+
+  function storeHiddenTableColumns(nextHiddenColumns: Set<InvitationTableColumnKey>) {
+    window.localStorage.setItem(
+      tableColumnsPreferenceKey,
+      JSON.stringify([...nextHiddenColumns]),
+    );
+  }
+
+  function hideTableColumn(columnKey: InvitationTableColumnKey) {
+    setHiddenTableColumns((current) => {
+      const next = new Set(current).add(columnKey);
+      storeHiddenTableColumns(next);
+      return next;
+    });
+
+    if (sortKey === columnKey) {
+      setSortKey("lastName");
+      setSortDirection("asc");
+    }
+  }
+
+  function showAllTableColumns() {
+    const next = new Set<InvitationTableColumnKey>();
+    setHiddenTableColumns(next);
+    storeHiddenTableColumns(next);
   }
 
   function toggleInvitation(invitationId: number) {
@@ -659,19 +940,24 @@ export function InvitationManagement({
   }
 
   useEffect(() => {
-    if (bulkState.status === "error") {
+    if (bulkState.status === "error" || bulkResponseState.status === "error") {
       const timeout = window.setTimeout(() => setPendingUndo([]), 0);
       return () => window.clearTimeout(timeout);
     }
-    if (bulkState.status !== "success" || pendingUndo.length === 0) return;
+    if (
+      bulkState.status !== "success" &&
+      bulkResponseState.status !== "success"
+    ) return;
+    if (pendingUndo.length === 0) return;
     const timeout = window.setTimeout(() => {
       setUndoPayload(pendingUndo);
       setPendingUndo([]);
       setSelectedInvitationIds(new Set());
       setBulkModalOpen(false);
+      setBulkResponseModalOpen(false);
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [bulkState.status, pendingUndo]);
+  }, [bulkResponseState.status, bulkState.status, pendingUndo]);
 
   useEffect(() => {
     if (undoState.status !== "success") return;
@@ -688,6 +974,7 @@ export function InvitationManagement({
         invitation.contact_email,
         invitation.attention_note,
         invitation.notes,
+        invitation.response_note,
         invitation.approval_references.join(" "),
       ]
         .filter(Boolean)
@@ -710,8 +997,12 @@ export function InvitationManagement({
     const direction = sortDirection === "asc" ? 1 : -1;
     return filtered.sort((a, b) => {
       const values: Record<InvitationSortKey, [string | number, string | number]> = {
-        name: [a.contact_name, b.contact_name],
-        detail: [a.contact_detail, b.contact_detail],
+        firstName: [a.contact.first_name ?? "", b.contact.first_name ?? ""],
+        lastName: [a.contact.last_name ?? "", b.contact.last_name ?? ""],
+        role: [
+          a.contact.institutional_role ?? a.contact.institution ?? "",
+          b.contact.institutional_role ?? b.contact.institution ?? "",
+        ],
         status: [
           INVITATION_STATUS_LABELS[a.invitation_status],
           INVITATION_STATUS_LABELS[b.invitation_status],
@@ -724,9 +1015,33 @@ export function InvitationManagement({
       return String(aValue).localeCompare(String(bValue), "it", { numeric: true }) * direction;
     });
   })();
+  const selectedInvitedRows = invitations.filter(
+    (invitation) =>
+      selectedInvitationIds.has(invitation.id) &&
+      invitation.row_type === "invitation" &&
+      invitation.invitation_status === "invited",
+  );
 
   return (
     <div className="space-y-6">
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8" aria-label="Riepilogo inviti e risposte">
+        {[
+          ["Totale lista", summary.total],
+          ["Da approvare", summary.pendingApproval],
+          ["Da invitare", summary.selected],
+          ["Invitati", summary.invited],
+          ["Partecipa", summary.attending],
+          ["Non partecipa", summary.declined],
+          ["Forse", summary.maybe],
+          ["Nessuna risposta", summary.noResponse],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-0 rounded-lg border border-[#d9e1f2] bg-white px-3 py-3 shadow-sm">
+            <div className="text-2xl font-semibold text-[#1b3272]">{value}</div>
+            <div className="mt-1 text-xs font-medium text-slate-600">{label}</div>
+          </div>
+        ))}
+      </section>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <form className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -768,6 +1083,14 @@ export function InvitationManagement({
           >
             Cambia stato ({selectedInvitationIds.size})
           </button>
+          <button
+            type="button"
+            disabled={selectedInvitedRows.length === 0}
+            onClick={() => setBulkResponseModalOpen(true)}
+            className="rounded-xl border border-[#1b3272] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Registra risposta ({selectedInvitedRows.length})
+          </button>
           {undoPayload.length > 0 ? (
             <form action={undoAction}>
               <input type="hidden" name="eventId" value={eventId} />
@@ -789,6 +1112,7 @@ export function InvitationManagement({
           <div className="basis-full">
             <div className="space-y-2">
               <ActionMessage state={bulkState} />
+              <ActionMessage state={bulkResponseState} />
               <ActionMessage state={undoState} />
             </div>
           </div>
@@ -895,7 +1219,10 @@ export function InvitationManagement({
             selectedInvitationIds={selectedInvitationIds}
             sortKey={sortKey}
             sortDirection={sortDirection}
+            hiddenColumnKeys={hiddenTableColumns}
             onSort={toggleSort}
+            onHideColumn={hideTableColumn}
+            onShowAllColumns={showAllTableColumns}
             onOpenInvitation={(invitation) => setSelectedInvitationId(invitation.id)}
             onOpenContact={(contact) => setSelectedContactId(contact.id)}
             onToggleInvitation={toggleInvitation}
@@ -937,6 +1264,12 @@ export function InvitationManagement({
                     rowType: invitation.row_type,
                     status: invitation.invitation_status,
                     proposalIds: invitation.proposal_ids,
+                    responseStatus: invitation.response_status,
+                    attendanceStatus: invitation.attendance_status,
+                    responseNote: invitation.response_note,
+                    invitedAt: invitation.invited_at,
+                    responseRecordedAt: invitation.response_recorded_at,
+                    responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
                   })),
               );
             }}
@@ -1003,6 +1336,84 @@ export function InvitationManagement({
         </div>
       ) : null}
 
+      {bulkResponseModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Registra risposta massiva"
+          onClick={() => setBulkResponseModalOpen(false)}
+        >
+          <form
+            action={bulkResponseAction}
+            onSubmit={() => {
+              setPendingUndo(
+                selectedInvitedRows.map((invitation) => ({
+                  id: invitation.id,
+                  contactId: invitation.contact_id,
+                  rowType: invitation.row_type,
+                  status: invitation.invitation_status,
+                  proposalIds: invitation.proposal_ids,
+                  responseStatus: invitation.response_status,
+                  attendanceStatus: invitation.attendance_status,
+                  responseNote: invitation.response_note,
+                  invitedAt: invitation.invited_at,
+                  responseRecordedAt: invitation.response_recorded_at,
+                  responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
+                })),
+              );
+            }}
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-lg space-y-4 rounded-xl border border-[#d9e1f2] bg-white p-5 shadow-xl"
+          >
+            <input type="hidden" name="eventId" value={eventId} />
+            {selectedInvitedRows.map((invitation) => (
+              <input
+                key={invitation.id}
+                type="hidden"
+                name="invitationIds"
+                value={invitation.id}
+              />
+            ))}
+            <div>
+              <h2 className="text-xl font-semibold text-[#1b3272]">Registra risposta</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                La risposta sarà applicata a {selectedInvitedRows.length}{" "}
+                {selectedInvitedRows.length === 1 ? "invitato" : "invitati"}.
+              </p>
+            </div>
+            <label className="text-sm font-medium text-slate-700">
+              Risposta
+              <select name="responseStatus" defaultValue="attending" className={inputClass}>
+                <option value="no_response">Nessuna risposta</option>
+                <option value="attending">Partecipa</option>
+                <option value="declined">Non partecipa</option>
+                <option value="maybe">Forse</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Nota risposta
+              <textarea
+                name="responseNote"
+                rows={3}
+                placeholder="Es. conferma ricevuta telefonicamente"
+                className={inputClass}
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setBulkResponseModalOpen(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              >
+                Annulla
+              </button>
+              <SubmitButton pending={bulkResponsePending}>Applica risposta</SubmitButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       {selectedInvitation ? (
         <div
           className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
@@ -1047,7 +1458,7 @@ export function InvitationManagement({
             </div>
             <div className="px-5 py-5">
               <InvitationEditor
-                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.notes ?? ""}`}
+                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.notes ?? ""}`}
                 invitation={selectedInvitation}
               />
             </div>

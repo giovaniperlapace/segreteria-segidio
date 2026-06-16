@@ -869,6 +869,38 @@ function InvitationsTable({
   );
 }
 
+function EventExportLinkGroup({
+  title,
+  pdfHref,
+  xlsxHref,
+}: {
+  title: string;
+  pdfHref: string;
+  xlsxHref?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <span className="text-sm font-semibold text-[#1b3272]">{title}</span>
+      <span className="flex items-center gap-2">
+        <a
+          href={pdfHref}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f]"
+        >
+          PDF
+        </a>
+        {xlsxHref ? (
+          <a
+            href={xlsxHref}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f]"
+          >
+            Excel
+          </a>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 export function InvitationManagement({
   eventId,
   pageSearch,
@@ -930,6 +962,14 @@ export function InvitationManagement({
   function changeViewMode(nextMode: InvitationViewMode) {
     window.localStorage.setItem(viewPreferenceKey, nextMode);
     window.dispatchEvent(new Event("event-invitations-view-change"));
+  }
+
+  function exportUrl(type: string, format: "pdf" | "xlsx") {
+    const params = new URLSearchParams();
+    if (pageSearch.trim()) params.set("q", pageSearch.trim());
+    params.set("type", type);
+    params.set("format", format);
+    return `/api/exports/events/${eventId}?${params.toString()}`;
   }
 
   function toggleSort(nextKey: InvitationSortKey) {
@@ -1189,6 +1229,51 @@ export function InvitationManagement({
               <ActionMessage state={bulkResponseState} />
               <ActionMessage state={undoState} />
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold text-[#1b3272]">Stampe ed export</h2>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <EventExportLinkGroup
+              title="Lista invitati"
+              pdfHref={exportUrl("invitations", "pdf")}
+              xlsxHref={exportUrl("invitations", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Invitati per gruppo"
+              pdfHref={exportUrl("invitations_by_group", "pdf")}
+              xlsxHref={exportUrl("invitations_by_group", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Risposte"
+              pdfHref={exportUrl("responses", "pdf")}
+              xlsxHref={exportUrl("responses", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Partecipanti"
+              pdfHref={exportUrl("participants", "pdf")}
+              xlsxHref={exportUrl("participants", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Da ricontattare"
+              pdfHref={exportUrl("followup", "pdf")}
+              xlsxHref={exportUrl("followup", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Non ancora invitati"
+              pdfHref={exportUrl("not_invited", "pdf")}
+              xlsxHref={exportUrl("not_invited", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Proposte"
+              pdfHref={exportUrl("proposals", "pdf")}
+              xlsxHref={exportUrl("proposals", "xlsx")}
+            />
+            <EventExportLinkGroup
+              title="Etichette"
+              pdfHref={exportUrl("labels", "pdf")}
+            />
           </div>
         </div>
 

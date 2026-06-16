@@ -1608,6 +1608,38 @@ function SummaryAssociations({ label, items }: { label: string; items: Option[] 
   );
 }
 
+function ExportLinkGroup({
+  title,
+  pdfHref,
+  xlsxHref,
+}: {
+  title: string;
+  pdfHref: string;
+  xlsxHref?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <span className="text-sm font-semibold text-[#1b3272]">{title}</span>
+      <span className="flex items-center gap-2">
+        <a
+          href={pdfHref}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f]"
+        >
+          PDF
+        </a>
+        {xlsxHref ? (
+          <a
+            href={xlsxHref}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-[#1b3272] hover:border-[#d43c2f]"
+          >
+            Excel
+          </a>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 export function ContactEditor({
   contact,
   groups,
@@ -2202,6 +2234,24 @@ export function ContactManagement({
     return `/dashboard/contacts${query ? `?${query}` : ""}`;
   }
 
+  function exportUrl(type: "list" | "missing" | "labels", format: "pdf" | "xlsx") {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (status !== "active") params.set("status", status);
+    if (priority !== "all") params.set("priority", priority);
+    if (groupIds.length > 0) params.set("groups", groupIds.join(","));
+    if (referenceIds.length > 0) params.set("references", referenceIds.join(","));
+    if (missing !== "all") params.set("missing", missing);
+    if (matchMode === "or") params.set("match", "or");
+    if (createdFrom) params.set("createdFrom", createdFrom);
+    if (createdTo) params.set("createdTo", createdTo);
+    if (updatedFrom) params.set("updatedFrom", updatedFrom);
+    if (updatedTo) params.set("updatedTo", updatedTo);
+    params.set("type", type);
+    params.set("format", format);
+    return `/api/exports/contacts?${params.toString()}`;
+  }
+
   function applyFilters() {
     window.location.href = contactsUrl(1);
   }
@@ -2505,6 +2555,22 @@ export function ContactManagement({
             >
               Azzera filtri
             </a>
+          </div>
+          <div className="grid w-full gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+            <ExportLinkGroup
+              title="Lista contatti"
+              pdfHref={exportUrl("list", "pdf")}
+              xlsxHref={exportUrl("list", "xlsx")}
+            />
+            <ExportLinkGroup
+              title="Dati mancanti"
+              pdfHref={exportUrl("missing", "pdf")}
+              xlsxHref={exportUrl("missing", "xlsx")}
+            />
+            <ExportLinkGroup
+              title="Etichette"
+              pdfHref={exportUrl("labels", "pdf")}
+            />
           </div>
           <FilterSummary
             filteredTotalCount={totalContacts}

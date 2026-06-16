@@ -1,9 +1,6 @@
 import nodemailer from "nodemailer";
 
-export async function sendMagicLinkEmail(input: {
-  to: string;
-  magicLink: string;
-}) {
+function createGmailTransporter() {
   const gmailUser = process.env.GMAIL_USER?.trim();
   const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
 
@@ -11,18 +8,28 @@ export async function sendMagicLinkEmail(input: {
     throw new Error("Missing GMAIL_USER or GMAIL_APP_PASSWORD");
   }
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    auth: {
-      user: gmailUser,
-      pass: gmailAppPassword,
-    },
-  });
+  return {
+    from: gmailUser,
+    transporter: nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: gmailUser,
+        pass: gmailAppPassword,
+      },
+    }),
+  };
+}
+
+export async function sendMagicLinkEmail(input: {
+  to: string;
+  magicLink: string;
+}) {
+  const { from, transporter } = createGmailTransporter();
 
   await transporter.sendMail({
-    from: gmailUser,
+    from,
     to: input.to,
     subject: "Segreteria Segidio - Link di accesso",
     text: [
@@ -46,4 +53,34 @@ export async function sendMagicLinkEmail(input: {
       </div>
     `,
   });
+}
+
+export async function sendSmtpEmail(input: {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string | null;
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    content: Buffer;
+  }>;
+}) {
+  const { from, transporter } = createGmailTransporter();
+  const info = await transporter.sendMail({
+    from,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html ?? undefined,
+    attachments: input.attachments?.map((attachment) => ({
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      content: attachment.content,
+    })),
+  });
+
+  return {
+    messageId: typeof info.messageId === "string" ? info.messageId : null,
+  };
 }

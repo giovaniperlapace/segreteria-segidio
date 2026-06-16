@@ -349,13 +349,16 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 15 - Post-MVP email robuste e template
 
+- **Stato 2026-06-16**: prima versione implementata e migration applicata al database self-hosted.
 - **Obiettivo**: inviare comunicazioni dall'app in modo affidabile.
-- **Scope**: provider email, template, batch, retry, logging, reinvio.
-- **Output atteso**: invii tracciati e gestibili.
-- **Criteri di accettazione**: invio a liste grandi senza blocchi, log errori chiaro.
-- **Verifiche tecniche**: test sandbox provider, limiti rate, retry.
+- **Scope**: provider email, template, batch, retry, logging, reinvio, allegati.
+- **Output atteso**: invii tracciati e gestibili dalla scheda evento.
+- **Criteri di accettazione**: invio a liste grandi tramite blocchi controllati, log errori chiaro, retry dei falliti, allegati inclusi nel batch.
+- **Verifiche tecniche**: TypeScript, lint, build, applicazione migration, verifica read-only tabelle create.
 - **Rischi**: deliverability, limiti provider, gestione allegati.
-- **Decisioni aperte**: provider email.
+- **Decisioni adottate**: usare lo stesso SMTP Gmail dei magic link e lo stesso account mittente; non introdurre un provider nuovo in questa fase.
+- **Esito**: aggiunta pagina manager `/dashboard/email-templates` per creare/modificare template con variabili; aggiunto pannello “Email inviti” nella scheda evento per preparare batch su tutti i `Da invitare`, sulle righe selezionate o sugli `Invitati senza risposta`; salvataggio allegati per batch; invio a blocchi di 25 email; log per destinatario con stato `queued`/`sent`/`failed`/`skipped`; retry manuale dei falliti; gli invii riusciti su righe `Da invitare` aggiornano lo stato invito a `Invitato`.
+- **Limiti consapevoli**: le risposte via link pubblico restano Milestone 16; il primo collaudo operativo va fatto con destinatari controllati e allegati piccoli, evitando email di prova a `segreteriagenerale@santegidio.org`.
 
 ### Milestone 16 - Post-MVP risposte via link pubblico
 
@@ -459,15 +462,16 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Prossimo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe avviare la **Milestone 15: Post-MVP email robuste e template**, solo dopo una breve fase di specifica operativa.
+Il prossimo blocco operativo dovrebbe collaudare la **Milestone 15: Post-MVP email robuste e template** con un evento controllato.
 
-Prima di iniziare conviene definire:
+Prima di usarla su liste reali conviene verificare:
 
-- provider email e canale mittente effettivo;
-- template minimi, variabili e anteprima;
-- limiti di invio, batch, retry, log errori e reinvio;
+- template base e variabili da usare per il primo invito reale;
+- invio di un batch piccolo con destinatari controllati;
+- allegati piccoli e formato accettato dal destinatario;
+- log errori, retry e aggiornamento automatico dello stato `Invitato`;
 - separazione tra invio automatico post-MVP e flusso manuale gia' usato in produzione;
-- ambiente e indirizzi di test, evitando email di prova a `segreteriagenerale@santegidio.org`;
+- indirizzi di test, evitando email di prova a `segreteriagenerale@santegidio.org`;
 - criteri di rollback o disattivazione rapida della funzione email se crea problemi operativi.
 
-Output atteso del prossimo blocco: invio email progettato e poi implementato in modo controllato, con logging sufficiente a capire cosa e' stato inviato, a chi, quando e con quale esito, senza compromettere l'uso manuale dell'MVP.
+Output atteso del prossimo blocco: conferma operativa che l'invio SMTP, gli allegati, i log e il retry funzionano su un caso reale controllato, senza compromettere l'uso manuale dell'MVP.

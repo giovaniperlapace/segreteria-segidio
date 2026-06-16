@@ -58,6 +58,7 @@ type IconName =
   | "check"
   | "clock"
   | "history"
+  | "mail"
   | "settings"
   | "users";
 
@@ -92,6 +93,12 @@ const managerCards: NavigationItem[] = [
     description: "Audit modifiche e versioni contatto consultabili.",
     href: "/dashboard/audit",
     icon: "history",
+  },
+  {
+    title: "Template email",
+    description: "Testi riutilizzabili per inviti e comunicazioni evento.",
+    href: "/dashboard/email-templates",
+    icon: "mail",
   },
   {
     title: "Settings",
@@ -226,6 +233,15 @@ function DashboardIcon({ name, className = "h-5 w-5" }: { name: IconName; classN
       <svg aria-hidden="true" {...common}>
         <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" />
         <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.7a8 8 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2 1.2l.4 2.7h4.4l.4-2.7a8 8 0 0 0 2-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2Z" />
+      </svg>
+    );
+  }
+
+  if (name === "mail") {
+    return (
+      <svg aria-hidden="true" {...common}>
+        <path d="M4.5 7.5h15v9h-15v-9Z" />
+        <path d="m5 8 7 5 7-5" />
       </svg>
     );
   }

@@ -18,6 +18,11 @@ import {
   type LanguageOption,
   type Option,
 } from "../../contacts/contact-management";
+import {
+  EventEmailPanel,
+  type EventEmailBatchRecord,
+  type EventEmailTemplateOption,
+} from "./event-email-panel";
 
 type ContactOption = {
   id: number;
@@ -910,6 +915,8 @@ export function InvitationManagement({
   groups,
   references,
   languages,
+  emailTemplates,
+  emailBatches,
 }: {
   eventId: number;
   pageSearch: string;
@@ -919,6 +926,8 @@ export function InvitationManagement({
   groups: Option[];
   references: Option[];
   languages: LanguageOption[];
+  emailTemplates: EventEmailTemplateOption[];
+  emailBatches: EventEmailBatchRecord[];
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1276,6 +1285,14 @@ export function InvitationManagement({
             />
           </div>
         </div>
+
+        <EventEmailPanel
+          eventId={eventId}
+          templates={emailTemplates}
+          batches={emailBatches}
+          invitations={invitations}
+          selectedInvitationIds={selectedInvitationIds}
+        />
 
         <div className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-end justify-between gap-3">

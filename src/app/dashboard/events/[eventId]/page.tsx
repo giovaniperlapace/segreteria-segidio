@@ -101,6 +101,8 @@ export default async function EventDetailPage({
     referencesResult,
     languagesResult,
     responseCountsResult,
+    emailTemplatesResult,
+    emailBatchesResult,
   ] =
     await Promise.all([
       invitationsQuery
@@ -137,6 +139,19 @@ export default async function EventDetailPage({
         .order("sort_order")
         .order("name"),
       supabase.rpc("event_invitation_response_counts", { p_event_id: eventId }).maybeSingle(),
+      supabase
+        .from("email_templates")
+        .select("id,name,subject")
+        .eq("active", true)
+        .order("name"),
+      supabase
+        .from("email_batches")
+        .select(
+          "id,status,target_kind,recipient_count,sent_count,failed_count,skipped_count,last_error,created_at,email_templates(name),email_batch_attachments(email_attachments(file_name,file_size_bytes))",
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false })
+        .limit(8),
     ]);
 
   if (invitationsError) throw invitationsError;
@@ -146,6 +161,8 @@ export default async function EventDetailPage({
     if (result.error) throw result.error;
   }
   if (responseCountsResult.error) throw responseCountsResult.error;
+  if (emailTemplatesResult.error) throw emailTemplatesResult.error;
+  if (emailBatchesResult.error) throw emailBatchesResult.error;
 
   const invitationProfileIds = [
     ...new Set(
@@ -456,6 +473,39 @@ export default async function EventDetailPage({
             name: String(language.name),
             active: Boolean(language.active),
           }))}
+          emailTemplates={(emailTemplatesResult.data ?? []).map((template) => ({
+            id: Number(template.id),
+            name: String(template.name),
+            subject: String(template.subject),
+          }))}
+          emailBatches={(emailBatchesResult.data ?? []).map((batch) => {
+            const template = Array.isArray(batch.email_templates)
+              ? batch.email_templates[0]
+              : batch.email_templates;
+            const attachments = (batch.email_batch_attachments ?? []).flatMap((link) => {
+              const attachment = Array.isArray(link.email_attachments)
+                ? link.email_attachments[0]
+                : link.email_attachments;
+              if (!attachment) return [];
+              return [{
+                file_name: String(attachment.file_name),
+                file_size_bytes: Number(attachment.file_size_bytes),
+              }];
+            });
+            return {
+              id: Number(batch.id),
+              status: batch.status,
+              target_kind: batch.target_kind,
+              recipient_count: Number(batch.recipient_count),
+              sent_count: Number(batch.sent_count),
+              failed_count: Number(batch.failed_count),
+              skipped_count: Number(batch.skipped_count),
+              last_error: batch.last_error,
+              created_at: String(batch.created_at),
+              template_name: template?.name ? String(template.name) : "Template non disponibile",
+              attachments,
+            };
+          })}
         />
 
         {totalPages > 1 ? (

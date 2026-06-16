@@ -6,8 +6,8 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 ## Stato attuale
 
-- Il progetto ha completato le Milestone 1-11: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access, costruzione avanzata delle liste invitati e gestione manuale di inviti/risposte.
-- La prossima milestone operativa e' la Milestone 12: dashboard MVP.
+- Il progetto ha completato le Milestone 1-14: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access, costruzione avanzata delle liste invitati, gestione manuale di inviti/risposte, dashboard MVP, export/stampe base e hardening con deploy.
+- Il prossimo blocco operativo e' post-MVP: Milestone 15, email robuste e template, da progettare con particolare cautela perche' l'MVP e' gia' in produzione e usato operativamente.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -20,6 +20,9 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - I referenti approvano o escludono le proposte da `/dashboard/proposals`. Le proposte non entrano nei conteggi invitati finche' il manager non le converte esplicitamente.
 - La lista evento mostra insieme inviti effettivi e proposte pendenti, distinguendo gli stati `Da invitare`, `Invitato` e `Da approvare`. Il manager puo' cambiare stato massivamente anche alle proposte, registrare approvazioni ricevute fuori dall'app e annullare l'ultima modifica massiva.
 - La Milestone 11 rende coerente il ciclo manuale invito/risposta: le risposte sono registrabili solo per lo stato `Invitato`; sono disponibili modifica singola e massiva, note risposta, accompagnatori sulla risposta singola, autore/data, undo, filtri e conteggi completi `Partecipa`/`Non partecipa`/`Forse`/`Nessuna risposta`. La lista evento offre viste a schede e tabella, ordinamento separato per nome/cognome/carica, colonne operative nascondibili con ripristino e note risposta visibili in entrambe le viste. Il conteggio `Partecipa` conta i partecipanti attesi, includendo eventuali accompagnatori.
+- La Milestone 12 ha sostituito la dashboard iniziale con un cruscotto operativo manager e una vista sintetica per i referenti: eventi futuri/attivi, conteggi inviti/risposte/proposte, contatti attivi/non attivi, dati mancanti, proposte pendenti e collegamenti diretti alle aree operative.
+- La Milestone 13 ha introdotto export e stampe base in PDF/XLSX per contatti e liste evento, inclusi contatti con dati mancanti, etichette, invitati, risposte, partecipanti, follow-up, non invitati e proposte. Gli export rispettano i filtri e i permessi del ruolo corrente.
+- La Milestone 14 e' stata chiusa il 2026-06-16 con hardening e deploy produzione: lint, TypeScript, build locale e build Vercel puliti; controllo bundle senza segreti server-side; smoke test locale non invasivi; test RLS read-only in transazione con rollback su manager/referente/anonimo; deploy Vercel Production `dpl_9nJLftFTXK4fHQkFVGTGgZdcAnMu` pronto e alias attivo su `https://archivio-segreteria.segidio.org`.
 - Esiste `PIANO_DI_LAVORO.md`, creato a partire dai tre transcript vocali presenti nella root.
 - Esiste `.env.example` con le variabili Supabase previste.
 - Esiste `.env.local` locale con valori reali Supabase, ma e' gitignored e non va stampato o committato.
@@ -106,15 +109,15 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe avviare la Milestone 12:
+La prossima sessione dovrebbe avviare la Milestone 15 post-MVP solo dopo avere definito bene requisiti e rischio operativo:
 
 1. verificare `git status` e rivedere `PIANO_DI_LAVORO.md`;
-2. definire le metriche prioritarie della dashboard manager e della vista referente;
-3. riusare i conteggi evento introdotti nelle Milestone 10-11;
-4. evidenziare eventi futuri/attivi, risposte mancanti e dati contatto incompleti;
-5. verificare coerenza e prestazioni dei conteggi su dati reali.
+2. chiarire provider email, template, canale mittente, limiti di invio, logging e processo di errore/reinvio;
+3. progettare invio a batch e retry senza impattare i flussi manuali gia' usati in produzione;
+4. mantenere l'invio automatico separato dalla gestione manuale attuale, cosi' l'utente principale puo' continuare a lavorare anche se la nuova funzione viene disabilitata;
+5. testare prima in ambiente non produttivo con indirizzi controllati, evitando email di prova a `segreteriagenerale@santegidio.org`.
 
-Restano inoltre da rivedere i valori paese legacy non normalizzati (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`).
+Restano inoltre da rivedere i valori paese legacy non normalizzati (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`) e le decisioni GDPR/data retention.
 
 ## Regole operative importanti
 
@@ -188,6 +191,11 @@ Migration MVP creata:
 - `supabase/migrations/20260606170000_events_legacy_history.sql`
 - `supabase/migrations/20260607120000_invitation_proposals_and_bulk_selection.sql`
 - `supabase/migrations/20260607160000_manager_proposal_override.sql`
+- `supabase/migrations/20260608120000_export_contact_position.sql`
+- `supabase/migrations/20260613100000_contact_position_copy_mode.sql`
+- `supabase/migrations/20260613113000_missing_required_email_2.sql`
+- `supabase/migrations/20260613150000_dashboard_performance_rpc.sql`
+- `supabase/migrations/20260613170000_multi_reference_contact_filter.sql`
 - `supabase/migrations/20260613190000_manual_invitation_responses.sql`
 - `supabase/migrations/20260613203000_invitation_companions.sql`
 
@@ -205,6 +213,9 @@ Include:
 - campi legacy eventi e storico inviti, flag operativo per-evento e indici per import idempotente.
 - tabella `invitation_proposals`, stati pending/approved/excluded, audit e policy RLS per manager e referente assegnato.
 - override controllato per consentire al manager di registrare decisioni sulle proposte ricevute verbalmente o via email.
+- funzioni RPC e indici per dashboard, ricerca contatti paginata e selezione candidati evento su dataset reale.
+- funzioni per esportare carica/istituzione da un contatto a un nuovo record, con modalita' trasferimento o copia.
+- `email_2` incluso tra i campi richiesti/monitorati per i dati mancanti.
 - metadati manuali di stato/risposta sugli inviti, nota risposta, attribuzione audit e funzione di conteggio completa per evento.
 - accompagnatori per risposta singola, con conteggio partecipanti derivato da invitato piu' accompagnatori.
 

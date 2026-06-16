@@ -25,7 +25,7 @@ Regole di lavoro consigliate con Codex:
 - preferire implementazioni semplici ma solide;
 - mantenere guardrails su privacy, sicurezza, ruoli e accesso ai dati.
 
-Le Milestone 1-11 sono completate. Il prossimo blocco operativo deve partire dalla Milestone 12 sulla dashboard MVP.
+Le Milestone 1-14 sono completate. L'MVP e' gia' in produzione su `https://archivio-segreteria.segidio.org` ed e' usato operativamente per gestire i contatti; i blocchi successivi sono post-MVP e vanno introdotti con particolare attenzione a compatibilita', rollback e continuita' del flusso manuale esistente.
 
 ## 2. Sintesi della visione dell'app
 
@@ -307,33 +307,45 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 12 - Dashboard MVP
 
+- **Stato**: completata il 2026-06-16.
 - **Obiettivo**: dare visione operativa immediata.
 - **Scope**: eventi attivi/futuri, conteggi inviti/risposte, dati mancanti, non attivi.
 - **Output atteso**: dashboard manager e vista sintetica riferimento.
 - **Criteri di accettazione**: numeri coerenti con le liste.
 - **Verifiche tecniche**: test query e casi vuoti.
 - **Rischi**: dashboard troppo ricca per MVP.
-- **Decisioni aperte**: metriche prioritarie.
+- **Decisioni adottate**: dashboard sintetica e operativa, non analitica. Il manager vede metriche globali su contatti attivi/non attivi, dati mancanti, eventi futuri/attivi, proposte pendenti e risposte da seguire; i referenti vedono solo una sintesi dei propri contatti e delle proposte assegnate.
+- **Esito**: introdotto cruscotto manager con eventi prossimi, conteggi inviti/risposte/proposte e collegamenti diretti alle aree operative; introdotta vista referente con contatti assegnati, dati mancanti e proposte imminenti. Aggiunti indici e RPC per mantenere prestazioni accettabili su dati reali (`20260613150000_dashboard_performance_rpc.sql`, poi adattati da `20260613170000_multi_reference_contact_filter.sql` per filtri multi-referente).
+- **Verifica conclusiva**: TypeScript, lint e build superati; query progettate per paginazione e conteggi su dataset reale; dashboard protetta dai controlli ruolo esistenti.
 
 ### Milestone 13 - Export e stampe base
 
+- **Stato**: completata il 2026-06-16.
 - **Obiettivo**: supportare lavoro offline e condivisione liste.
 - **Scope**: export CSV/PDF o stampa browser di contatti, liste evento, risposte.
 - **Output atteso**: liste con nome, cognome, carica, gruppo, riferimento, email presente/mancante, telefono presente/mancante.
 - **Criteri di accettazione**: export leggibile e filtrato correttamente.
 - **Verifiche tecniche**: test su categorie, riferimenti e risposte.
 - **Rischi**: formato stampa non adatto agli usi reali.
-- **Decisioni aperte**: PDF, CSV, Excel o stampa HTML come priorita'.
+- **Decisioni adottate**: priorita' a PDF e XLSX invece di CSV/stampa browser, per produrre file immediatamente condivisibili e leggibili. Gli export sono generati server-side con route dedicate e `Cache-Control: no-store`.
+- **Esito**: aggiunti export contatti filtrati in PDF/XLSX, export contatti con dati mancanti, etichette contatti, liste evento, liste per gruppo, risposte, partecipanti con accompagnatori, follow-up, contatti non ancora invitati, proposte e etichette invitati. Gli export contatti sono accessibili anche ai referenti nel perimetro dati consentito da RLS; gli export evento sono riservati al manager.
+- **Evoluzione collegata**: aggiunta anche la funzione operativa di export/copia carica-istituzione da un contatto a un nuovo record (`20260608120000_export_contact_position.sql` e `20260613100000_contact_position_copy_mode.sql`), utile nei casi legacy in cui cariche e persone devono essere separate senza perdere contesto.
+- **Verifica conclusiva**: TypeScript, lint e build superati; export collegati alle UI contatti/evento; filtri e formati validati nel flusso applicativo.
 
 ### Milestone 14 - Hardening, test, build, deploy
 
+- **Stato**: completata il 2026-06-16.
 - **Obiettivo**: rendere l'MVP usabile in modo affidabile.
 - **Scope**: test, error handling, permessi, build, deploy Vercel, checklist privacy.
 - **Output atteso**: MVP deployato e verificato.
 - **Criteri di accettazione**: build pulita, RLS testata, flussi principali funzionanti.
 - **Verifiche tecniche**: TypeScript, lint, build, test manuali, test RLS, controllo bundle.
 - **Rischi**: differenze tra locale e produzione.
-- **Decisioni aperte**: dominio e ambiente di staging.
+- **Decisioni adottate**: hardening non invasivo, senza migration, senza modifiche dati e senza email di prova verso utenti reali, perche' l'MVP era gia' in uso in produzione. Deploy Production eseguito solo dopo build e controlli locali.
+- **Esito verifiche locali**: `npm run lint` superato; `npx tsc --noEmit` superato dopo pulizia di artefatti `.next` duplicati; `npm run build` superato; controllo bundle completato senza trovare valori server-only nei bundle statici/app; smoke test locale su porta alternativa `3001` con `/login`, redirect protetto `/dashboard` -> `/login` e blocco `403` per magic link richiesto da email non autorizzata.
+- **Esito RLS**: test anonimo con anon key confermato bloccato sulle tabelle sensibili; test read-only in transazione con rollback sul database self-hosted ha verificato che un referente autenticato vede un contatto assegnato, non vede un contatto non assegnato e non vede audit, mentre il manager vede contatti e audit.
+- **Esito deploy**: `npx vercel link --yes --project segreteria-segidio --scope giovaniperlapaces-projects` confermato; `npx vercel deploy --prod -y --scope giovaniperlapaces-projects` completato con build remota pulita. Deployment Production `dpl_9nJLftFTXK4fHQkFVGTGgZdcAnMu`, URL `https://segreteria-segidio-ehy2uc3v0-giovaniperlapaces-projects.vercel.app`, alias attivi inclusi `https://archivio-segreteria.segidio.org` e `https://segreteria-segidio.vercel.app`.
+- **Verifica conclusiva**: MVP production ready confermato senza cambiare dati applicativi; working tree pulito prima della documentazione finale; nessun segreto committato.
 
 ### Milestone 15 - Post-MVP email robuste e template
 
@@ -447,14 +459,15 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Prossimo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe avviare la **Milestone 12: Dashboard MVP**.
+Il prossimo blocco operativo dovrebbe avviare la **Milestone 15: Post-MVP email robuste e template**, solo dopo una breve fase di specifica operativa.
 
 Prima di iniziare conviene definire:
 
-- le metriche prioritarie per manager e riferimenti interni;
-- quali eventi futuri o attivi devono essere messi in evidenza;
-- come presentare risposte mancanti, contatti non attivi e dati incompleti;
-- quali conteggi della pagina evento riusare senza duplicare logica;
-- i limiti di query e paginazione necessari sui dati reali.
+- provider email e canale mittente effettivo;
+- template minimi, variabili e anteprima;
+- limiti di invio, batch, retry, log errori e reinvio;
+- separazione tra invio automatico post-MVP e flusso manuale gia' usato in produzione;
+- ambiente e indirizzi di test, evitando email di prova a `segreteriagenerale@santegidio.org`;
+- criteri di rollback o disattivazione rapida della funzione email se crea problemi operativi.
 
-Output atteso del prossimo blocco: dashboard operative sintetiche, con numeri coerenti con le liste evento e collegamenti diretti alle attività che richiedono attenzione.
+Output atteso del prossimo blocco: invio email progettato e poi implementato in modo controllato, con logging sufficiente a capire cosa e' stato inviato, a chi, quando e con quale esito, senza compromettere l'uso manuale dell'MVP.

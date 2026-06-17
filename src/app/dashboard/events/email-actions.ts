@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/auth/profile";
 import { sendSmtpEmail } from "@/lib/email/gmail";
+import {
+  appendPublicResponseLink,
+  createPublicResponseToken,
+  hashPublicResponseToken,
+  publicResponseUrl,
+} from "@/lib/email/public-response-links";
 import { plainTextToHtml, renderEmailTemplate, type EmailTemplateContext } from "@/lib/email/templates";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import type { ArchiveActionState } from "../archive-actions";
@@ -22,6 +28,19 @@ type InvitationEmailRow = {
   invitation_status: "selected" | "invited";
   response_status: "no_response" | "attending" | "declined" | "maybe";
   contacts: EmailTemplateContext["contact"] | EmailTemplateContext["contact"][] | null;
+};
+
+type EmailLogToSend = {
+  id: number;
+  invitation_id: number;
+  contact_id: number;
+  to_email: string;
+  subject: string;
+  rendered_text: string;
+  rendered_html: string | null;
+  attempt_count: number | null;
+  response_token_id: number | null;
+  response_url: string | null;
 };
 
 function text(formData: FormData, key: string) {
@@ -113,6 +132,55 @@ async function refreshBatchCounters(batchId: number) {
     })
     .eq("id", batchId);
   if (updateError) throw updateError;
+}
+
+async function ensurePublicResponseLink(input: {
+  supabase: ReturnType<typeof createSupabaseServiceClient>;
+  log: EmailLogToSend;
+  eventId: number;
+  profileId: string;
+}) {
+  if (input.log.response_url) {
+    return {
+      text: input.log.rendered_text,
+      html: input.log.rendered_html,
+    };
+  }
+
+  const rawToken = createPublicResponseToken();
+  const responseUrl = publicResponseUrl(rawToken);
+  const { data: tokenRow, error: tokenError } = await input.supabase
+    .from("invitation_response_tokens")
+    .insert({
+      invitation_id: input.log.invitation_id,
+      event_id: input.eventId,
+      contact_id: input.log.contact_id,
+      token_hash: hashPublicResponseToken(rawToken),
+      token_prefix: rawToken.slice(0, 8),
+      created_by_profile_id: input.profileId,
+    })
+    .select("id")
+    .single();
+  if (tokenError) throw tokenError;
+
+  const rendered = appendPublicResponseLink({
+    text: input.log.rendered_text,
+    html: input.log.rendered_html,
+    responseUrl,
+  });
+
+  const { error: logError } = await input.supabase
+    .from("email_logs")
+    .update({
+      rendered_text: rendered.text,
+      rendered_html: rendered.html,
+      response_token_id: Number(tokenRow.id),
+      response_url: responseUrl,
+    })
+    .eq("id", input.log.id);
+  if (logError) throw logError;
+
+  return rendered;
 }
 
 async function readAttachments(formData: FormData) {
@@ -336,7 +404,7 @@ export async function sendEmailBatchAction(
     const statuses = includeFailed ? ["queued", "failed"] : ["queued"];
     const { data: logs, error: logsError } = await supabase
       .from("email_logs")
-      .select("id,invitation_id,to_email,subject,rendered_text,rendered_html,attempt_count")
+      .select("id,invitation_id,contact_id,to_email,subject,rendered_text,rendered_html,attempt_count,response_token_id,response_url")
       .eq("batch_id", batchId)
       .in("status", statuses)
       .neq("to_email", "email-mancante")
@@ -366,11 +434,17 @@ export async function sendEmailBatchAction(
         .eq("id", log.id);
 
       try {
+        const rendered = await ensurePublicResponseLink({
+          supabase,
+          log: log as EmailLogToSend,
+          eventId,
+          profileId: profile.id,
+        });
         const info = await sendSmtpEmail({
           to: log.to_email,
           subject: log.subject,
-          text: log.rendered_text,
-          html: log.rendered_html,
+          text: rendered.text,
+          html: rendered.html,
           attachments,
         });
         const sentAt = new Date().toISOString();

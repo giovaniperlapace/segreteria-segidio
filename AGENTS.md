@@ -8,6 +8,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 
 - Il progetto ha completato le Milestone 1-14: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access, costruzione avanzata delle liste invitati, gestione manuale di inviti/risposte, dashboard MVP, export/stampe base e hardening con deploy.
 - La Milestone 15 post-MVP e' stata avviata il 2026-06-16: template email riutilizzabili, invio inviti da scheda evento, batch controllati, retry, log invii e allegati per batch. Il provider scelto e' lo stesso SMTP Gmail gia' usato per i magic link, con lo stesso account.
+- La Milestone 16 post-MVP e' stata implementata il 2026-06-17: le email invito includono un link pubblico personale, `/risposta/[token]` registra `Partecipo`/`Non partecipo`/`Probabilmente partecipo`, il valore corrente distingue origine admin o partecipante, lo storico mantiene tutti gli inserimenti e i manager attivi ricevono notifica email.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -109,13 +110,15 @@ Post-MVP:
 
 ## Prossimo lavoro consigliato
 
-La prossima sessione dovrebbe collaudare la Milestone 15 con un evento di prova o controllato:
+La prossima sessione dovrebbe collaudare Milestone 15 + Milestone 16 con un evento di prova o controllato:
 
 1. verificare `git status` e rivedere `PIANO_DI_LAVORO.md`;
 2. controllare e adattare il template base da `/dashboard/email-templates`;
 3. preparare un batch da una scheda evento con pochi destinatari controllati e allegato piccolo;
-4. inviare un solo blocco, verificando log, stato invito e retry su eventuali errori;
-5. evitare email di prova a `segreteriagenerale@santegidio.org`: usare indirizzi controllati.
+4. inviare un solo blocco, verificando log, stato invito, link pubblico nella mail e retry su eventuali errori;
+5. registrare una risposta dal link pubblico, verificando risposta corrente, origine `Ricevuta dal partecipante`, storico e notifica email ai manager;
+6. modificare poi la stessa risposta da admin, verificando che l'ultimo valore faccia fede e che lo storico conservi entrambe le righe;
+7. evitare email di prova a `segreteriagenerale@santegidio.org`: usare indirizzi controllati.
 
 Restano inoltre da rivedere i valori paese legacy non normalizzati (`UE`, `SMOM`, `OLP`, `ONU`, `Jugoslavia`, `Polisario`) e le decisioni GDPR/data retention.
 
@@ -199,6 +202,7 @@ Migration MVP creata:
 - `supabase/migrations/20260613190000_manual_invitation_responses.sql`
 - `supabase/migrations/20260613203000_invitation_companions.sql`
 - `supabase/migrations/20260616160000_email_templates_batches.sql`
+- `supabase/migrations/20260617100000_public_invitation_responses.sql`
 
 Include:
 
@@ -220,6 +224,7 @@ Include:
 - metadati manuali di stato/risposta sugli inviti, nota risposta, attribuzione audit e funzione di conteggio completa per evento.
 - accompagnatori per risposta singola, con conteggio partecipanti derivato da invitato piu' accompagnatori.
 - template email, batch invio evento, allegati conservati per batch, log consegne e retry manuale a blocchi.
+- token pubblici hashati per risposte invito, pagina pubblica `/risposta/[token]`, origine corrente della risposta e storico `invitation_responses`.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 

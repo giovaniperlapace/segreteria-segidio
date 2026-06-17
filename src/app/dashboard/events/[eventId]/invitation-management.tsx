@@ -37,6 +37,7 @@ export type EventInvitationRecord = {
   row_type: "invitation" | "proposal";
   invitation_status: "pending_approval" | "draft" | "proposed" | "selected" | "invited" | "excluded";
   response_status: "no_response" | "attending" | "declined" | "maybe";
+  response_source: "admin" | "public_link" | null;
   attendance_status: "unknown" | "attended" | "absent";
   attention_flag: boolean;
   attention_note: string | null;
@@ -48,6 +49,14 @@ export type EventInvitationRecord = {
   response_recorded_at: string | null;
   response_recorded_by_profile_id: string | null;
   response_recorded_by_name: string | null;
+  response_history: Array<{
+    id: number;
+    response_status: "no_response" | "attending" | "declined" | "maybe";
+    source: "admin" | "public_link";
+    recorded_at: string;
+    actor_name: string | null;
+    response_note: string | null;
+  }>;
   invitation_status_updated_at: string | null;
   invitation_status_updated_by_profile_id: string | null;
   invitation_status_updated_by_name: string | null;
@@ -69,6 +78,7 @@ type BulkUndoItem = {
   status: EventInvitationRecord["invitation_status"];
   proposalIds: number[];
   responseStatus: EventInvitationRecord["response_status"];
+  responseSource: EventInvitationRecord["response_source"];
   attendanceStatus: EventInvitationRecord["attendance_status"];
   responseNote: string | null;
   companionCount: number;
@@ -134,6 +144,11 @@ const RESPONSE_LABELS: Record<EventInvitationRecord["response_status"], string> 
   attending: "Partecipa",
   declined: "Non partecipa",
   maybe: "Forse",
+};
+
+const RESPONSE_SOURCE_LABELS: Record<NonNullable<EventInvitationRecord["response_source"]>, string> = {
+  admin: "Inserita dall'admin",
+  public_link: "Ricevuta dal partecipante",
 };
 
 const INVITATION_STATUS_LABELS: Record<EventInvitationRecord["invitation_status"], string> = {
@@ -437,12 +452,38 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
             <dt className="font-semibold text-slate-700">Risposta registrata</dt>
             <dd className="mt-1">
               {formatOperationalDate(invitation.response_recorded_at)}
+              {invitation.response_source
+                ? ` - ${RESPONSE_SOURCE_LABELS[invitation.response_source]}`
+                : ""}
               {invitation.response_recorded_by_name
-                ? ` · ${invitation.response_recorded_by_name}`
+                ? ` - ${invitation.response_recorded_by_name}`
                 : ""}
             </dd>
           </div>
         </dl>
+        {invitation.response_history.length > 0 ? (
+          <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-600 md:col-span-2">
+            <h3 className="font-semibold text-slate-800">Storico risposte</h3>
+            <ol className="mt-2 space-y-2">
+              {invitation.response_history.slice(0, 6).map((history) => (
+                <li key={history.id} className="rounded-md bg-white px-3 py-2">
+                  <div className="font-semibold text-slate-800">
+                    {RESPONSE_LABELS[history.response_status]} - {RESPONSE_SOURCE_LABELS[history.source]}
+                  </div>
+                  <div className="mt-0.5 text-slate-500">
+                    {formatOperationalDate(history.recorded_at)}
+                    {history.actor_name ? ` - ${history.actor_name}` : ""}
+                  </div>
+                  {history.response_note ? (
+                    <div className="mt-1 whitespace-pre-wrap break-words text-slate-600">
+                      {history.response_note}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
         {invitation.legacy_invited_raw || invitation.legacy_viene_raw || invitation.legacy_presence_raw ? (
           <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 md:col-span-2">
             Access: Invitato={invitation.legacy_invited_raw || "-"} · Viene={invitation.legacy_viene_raw || "-"} · Presenza={invitation.legacy_presence_raw || "-"}
@@ -507,6 +548,11 @@ function InvitationBadges({ invitation }: { invitation: EventInvitationRecord })
       {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">
           {participantCount} partecipanti
+        </span>
+      ) : null}
+      {invitation.response_source ? (
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
+          {RESPONSE_SOURCE_LABELS[invitation.response_source]}
         </span>
       ) : null}
     </div>
@@ -838,6 +884,11 @@ function InvitationsTable({
                 {hiddenColumnKeys.has("response") ? null : (
                   <td className="px-4 py-3 text-slate-700">
                     <div>{responseLabel(invitation)}</div>
+                    {invitation.response_source ? (
+                      <div className="mt-1 text-xs font-semibold text-slate-500">
+                        {RESPONSE_SOURCE_LABELS[invitation.response_source]}
+                      </div>
+                    ) : null}
                     {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
                       <div className="mt-1 text-xs font-semibold text-emerald-800">
                         {1 + invitation.companion_count} partecipanti
@@ -1441,6 +1492,7 @@ export function InvitationManagement({
                     status: invitation.invitation_status,
                     proposalIds: invitation.proposal_ids,
                     responseStatus: invitation.response_status,
+                    responseSource: invitation.response_source,
                     attendanceStatus: invitation.attendance_status,
                     responseNote: invitation.response_note,
                     companionCount: invitation.companion_count,
@@ -1533,6 +1585,7 @@ export function InvitationManagement({
                   status: invitation.invitation_status,
                   proposalIds: invitation.proposal_ids,
                   responseStatus: invitation.response_status,
+                  responseSource: invitation.response_source,
                   attendanceStatus: invitation.attendance_status,
                   responseNote: invitation.response_note,
                   companionCount: invitation.companion_count,

@@ -80,7 +80,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -164,14 +164,26 @@ export default async function EventDetailPage({
   if (emailTemplatesResult.error) throw emailTemplatesResult.error;
   if (emailBatchesResult.error) throw emailBatchesResult.error;
 
+  const visibleInvitationIds = (invitations ?? []).map((invitation) => Number(invitation.id));
+  const { data: responseHistoryRows, error: responseHistoryError } =
+    visibleInvitationIds.length > 0
+      ? await supabase
+          .from("invitation_responses")
+          .select("id,invitation_id,response_status,source,actor_profile_id,response_note,recorded_at")
+          .in("invitation_id", visibleInvitationIds)
+          .order("recorded_at", { ascending: false })
+      : { data: [], error: null };
+  if (responseHistoryError) throw responseHistoryError;
+
   const invitationProfileIds = [
     ...new Set(
-      (invitations ?? [])
-        .flatMap((invitation) => [
+      [
+        ...(invitations ?? []).flatMap((invitation) => [
           invitation.invitation_status_updated_by_profile_id,
           invitation.response_recorded_by_profile_id,
-        ])
-        .filter((id): id is string => Boolean(id)),
+        ]),
+        ...(responseHistoryRows ?? []).map((history) => history.actor_profile_id),
+      ].filter((id): id is string => Boolean(id)),
     ),
   ];
   const { data: invitationProfiles, error: invitationProfilesError } =
@@ -188,6 +200,33 @@ export default async function EventDetailPage({
       profile.full_name || profile.email || "Utente senza nome",
     ]),
   );
+  const responseHistoryByInvitation = new Map<
+    number,
+    Array<{
+      id: number;
+      response_status: "no_response" | "attending" | "declined" | "maybe";
+      source: "admin" | "public_link";
+      recorded_at: string;
+      actor_name: string | null;
+      response_note: string | null;
+    }>
+  >();
+  for (const history of responseHistoryRows ?? []) {
+    const invitationId = Number(history.invitation_id);
+    responseHistoryByInvitation.set(invitationId, [
+      ...(responseHistoryByInvitation.get(invitationId) ?? []),
+      {
+        id: Number(history.id),
+        response_status: history.response_status,
+        source: history.source,
+        recorded_at: history.recorded_at,
+        actor_name: history.actor_profile_id
+          ? invitationProfilesById.get(history.actor_profile_id) ?? "Utente non disponibile"
+          : null,
+        response_note: history.response_note,
+      },
+    ]);
+  }
 
   const proposalContactIds = new Set(
     (proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)),
@@ -304,6 +343,7 @@ export default async function EventDetailPage({
       row_type: "invitation",
       invitation_status: invitation.invitation_status,
       response_status: invitation.response_status,
+      response_source: invitation.response_source,
       attendance_status: invitation.attendance_status,
       attention_flag: Boolean(invitation.attention_flag),
       attention_note: invitation.attention_note,
@@ -317,6 +357,7 @@ export default async function EventDetailPage({
       response_recorded_by_name: invitation.response_recorded_by_profile_id
         ? invitationProfilesById.get(invitation.response_recorded_by_profile_id) ?? "Utente non disponibile"
         : null,
+      response_history: responseHistoryByInvitation.get(Number(invitation.id)) ?? [],
       invitation_status_updated_at: invitation.invitation_status_updated_at,
       invitation_status_updated_by_profile_id: invitation.invitation_status_updated_by_profile_id,
       invitation_status_updated_by_name: invitation.invitation_status_updated_by_profile_id
@@ -359,6 +400,7 @@ export default async function EventDetailPage({
       row_type: "proposal",
       invitation_status: "pending_approval",
       response_status: "no_response",
+      response_source: null,
       attendance_status: "unknown",
       attention_flag: false,
       attention_note: null,
@@ -370,6 +412,7 @@ export default async function EventDetailPage({
       response_recorded_at: null,
       response_recorded_by_profile_id: null,
       response_recorded_by_name: null,
+      response_history: [],
       invitation_status_updated_at: null,
       invitation_status_updated_by_profile_id: null,
       invitation_status_updated_by_name: null,

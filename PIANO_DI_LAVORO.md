@@ -362,13 +362,14 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 16 - Post-MVP risposte via link pubblico
 
+- **Stato 2026-06-17**: implementata e migration applicata al database self-hosted.
 - **Obiettivo**: registrare risposte direttamente dal destinatario.
-- **Scope**: token sicuri, pagina pubblica, scadenza, storico risposte.
-- **Output atteso**: click email aggiorna database.
-- **Criteri di accettazione**: risposta corretta, token non riusabile impropriamente, modifica gestita.
-- **Verifiche tecniche**: test sicurezza link e casi scaduti.
-- **Rischi**: privacy e link inoltrati.
-- **Decisioni adottate per il nucleo risposta**: mantenere `Partecipa`, `Non partecipa`, `Forse` e `Nessuna risposta`; gli accompagnatori sono gia' gestiti nella risposta singola MVP; restano da progettare segmenti e modifica tramite link pubblico.
+- **Scope**: token sicuri, pagina pubblica, storico risposte, origine del valore corrente, notifica email ai manager.
+- **Output atteso**: il link inserito nelle email invito apre un form pubblico con `Partecipo`, `Non partecipo` e `Probabilmente partecipo`; l'invio aggiorna la risposta dell'invito e notifica gli admin.
+- **Criteri di accettazione**: l'ultimo inserimento fa fede sia se arriva dall'admin sia se arriva dal partecipante; la scheda evento distingue il valore corrente inserito dall'admin da quello ricevuto via link; lo storico mostra i valori precedenti con fonte e autore quando disponibile.
+- **Verifiche tecniche**: dry-run migration con rollback, applicazione migration, verifica read-only tabelle/colonne/policy, lint, TypeScript e build.
+- **Rischi**: privacy e link inoltrati; il link e' personale ma chi lo possiede puo' aggiornare la risposta dell'invito.
+- **Decisioni adottate**: generare il token al momento dell'invio email, salvando nel database solo hash e prefisso; riusare il link gia' associato al log email nei retry; usare la rotta pubblica `/risposta/[token]`; notificare tutti i manager attivi con email valida; non gestire accompagnatori o segmenti dal link pubblico in questa milestone.
 
 ### Milestone 17 - Post-MVP workflow riferimenti
 
@@ -462,16 +463,18 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 
 ## 12. Prossimo blocco operativo consigliato
 
-Il prossimo blocco operativo dovrebbe collaudare la **Milestone 15: Post-MVP email robuste e template** con un evento controllato.
+Il prossimo blocco operativo dovrebbe collaudare il flusso completo **Milestone 15 + Milestone 16** con un evento controllato.
 
 Prima di usarla su liste reali conviene verificare:
 
 - template base e variabili da usare per il primo invito reale;
 - invio di un batch piccolo con destinatari controllati;
 - allegati piccoli e formato accettato dal destinatario;
-- log errori, retry e aggiornamento automatico dello stato `Invitato`;
+- log errori, retry, aggiornamento automatico dello stato `Invitato` e presenza del link pubblico nella mail ricevuta;
+- invio di una risposta dal link pubblico e verifica di risposta corrente, origine `Ricevuta dal partecipante`, storico e notifica email ai manager;
+- modifica successiva della stessa risposta da admin e verifica che l'ultimo valore faccia fede mantenendo lo storico;
 - separazione tra invio automatico post-MVP e flusso manuale gia' usato in produzione;
 - indirizzi di test, evitando email di prova a `segreteriagenerale@santegidio.org`;
 - criteri di rollback o disattivazione rapida della funzione email se crea problemi operativi.
 
-Output atteso del prossimo blocco: conferma operativa che l'invio SMTP, gli allegati, i log e il retry funzionano su un caso reale controllato, senza compromettere l'uso manuale dell'MVP.
+Output atteso del prossimo blocco: conferma operativa che invio SMTP, allegati, log, retry, link pubblico, registrazione risposta, notifica admin e storico funzionano su un caso reale controllato, senza compromettere l'uso manuale dell'MVP.

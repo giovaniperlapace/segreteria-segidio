@@ -361,7 +361,7 @@ export async function updateInvitationAction(
     const supabase = createSupabaseServiceClient();
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
-      .select("invitation_status,response_status,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id")
+      .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id")
       .eq("id", invitationId)
       .maybeSingle();
     if (currentError) throw currentError;
@@ -404,6 +404,12 @@ export async function updateInvitationAction(
             : responseDetailsChanged
               ? profile.id
               : currentInvitation.response_recorded_by_profile_id,
+        response_source:
+          response === "no_response"
+            ? null
+            : responseDetailsChanged
+              ? "admin"
+              : currentInvitation.response_source,
         invited_at: isInvited ? currentInvitation.invited_at ?? now : null,
         selected_by_profile_id: statusChanged ? profile.id : undefined,
         invitation_status_updated_at: statusChanged ? now : undefined,
@@ -412,6 +418,22 @@ export async function updateInvitationAction(
       })
       .eq("id", invitationId);
     if (error) throw error;
+
+    if (isInvited && responseDetailsChanged) {
+      const { error: historyError } = await supabase.from("invitation_responses").insert({
+        invitation_id: invitationId,
+        event_id: eventId,
+        contact_id: Number(currentInvitation.contact_id),
+        response_status: response,
+        source: "admin",
+        actor_profile_id: profile.id,
+        previous_response_status: currentInvitation.response_status,
+        response_note: response === "no_response" ? null : optionalText(formData, "responseNote"),
+        companion_count: companionCount,
+        companion_names: companionNames,
+      });
+      if (historyError) throw historyError;
+    }
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return { status: "success", message: "Invito aggiornato." };
@@ -488,6 +510,7 @@ export async function bulkUpdateInvitationStatusAction(
             updated_by_profile_id: profile.id,
             invited_at: isInvited ? row.invited_at ?? now : null,
             response_status: isInvited ? undefined : "no_response",
+            response_source: isInvited ? undefined : null,
             response_note: isInvited ? undefined : null,
             companion_count: isInvited ? undefined : 0,
             companion_names: isInvited ? undefined : null,
@@ -573,7 +596,7 @@ export async function bulkUpdateInvitationResponseAction(
     const supabase = createSupabaseServiceClient();
     const { data: rows, error: rowsError } = await supabase
       .from("event_invitations")
-      .select("id,invitation_status")
+      .select("id,invitation_status,contact_id,response_status")
       .eq("event_id", eventId)
       .in("id", invitationIds);
     if (rowsError) throw rowsError;
@@ -591,6 +614,7 @@ export async function bulkUpdateInvitationResponseAction(
       .from("event_invitations")
       .update({
         response_status: response,
+        response_source: response === "no_response" ? null : "admin",
         response_note: optionalText(formData, "responseNote"),
         companion_count: 0,
         companion_names: null,
@@ -601,6 +625,23 @@ export async function bulkUpdateInvitationResponseAction(
       .eq("event_id", eventId)
       .in("id", invitationIds);
     if (error) throw error;
+
+    const historyRows = (rows ?? []).map((row) => ({
+      invitation_id: Number(row.id),
+      event_id: eventId,
+      contact_id: Number(row.contact_id),
+      response_status: response,
+      source: "admin",
+      actor_profile_id: profile.id,
+      previous_response_status: row.response_status,
+      response_note: response === "no_response" ? null : optionalText(formData, "responseNote"),
+      companion_count: 0,
+      companion_names: null,
+    }));
+    const { error: historyError } = await supabase
+      .from("invitation_responses")
+      .insert(historyRows);
+    if (historyError) throw historyError;
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/events");
@@ -629,6 +670,7 @@ export async function undoBulkInvitationStatusAction(
     status: (typeof INVITATION_STATUSES)[number] | "pending_approval";
     proposalIds: number[];
     responseStatus: (typeof RESPONSE_STATUSES)[number];
+    responseSource: "admin" | "public_link" | null;
     attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
     responseNote: string | null;
     companionCount: number;
@@ -656,6 +698,10 @@ export async function undoBulkInvitationStatusAction(
               .filter((id: number) => Number.isSafeInteger(id) && id > 0)
             : [],
           responseStatus: responseStatus(String(item?.responseStatus ?? "")) ?? "no_response",
+          responseSource:
+            item?.responseSource === "admin" || item?.responseSource === "public_link"
+              ? item.responseSource
+              : null,
           attendanceStatus: attendanceStatus(String(item?.attendanceStatus ?? "")) ?? "unknown",
           responseNote:
             typeof item?.responseNote === "string" && item.responseNote.trim()
@@ -687,6 +733,7 @@ export async function undoBulkInvitationStatusAction(
             status: (typeof INVITATION_STATUSES)[number] | "pending_approval";
             proposalIds: number[];
             responseStatus: (typeof RESPONSE_STATUSES)[number];
+            responseSource: "admin" | "public_link" | null;
             attendanceStatus: (typeof ATTENDANCE_STATUSES)[number];
             responseNote: string | null;
             companionCount: number;
@@ -746,6 +793,7 @@ export async function undoBulkInvitationStatusAction(
           updated_by_profile_id: profile.id,
           invited_at: item.invitedAt,
           response_status: item.responseStatus,
+          response_source: item.responseSource,
           attendance_status: item.attendanceStatus,
           response_note: item.responseNote,
           companion_count: item.companionCount,

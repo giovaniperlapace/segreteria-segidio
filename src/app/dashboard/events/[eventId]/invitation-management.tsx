@@ -614,6 +614,70 @@ function InvitationBadges({ invitation }: { invitation: EventInvitationRecord })
   );
 }
 
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+    </svg>
+  );
+}
+
+function SingleRemoveInvitationButton({ invitation }: { invitation: EventInvitationRecord }) {
+  const router = useRouter();
+  const [state, action, pending] = useArchiveAction(bulkRemoveInvitationsAction);
+
+  useEffect(() => {
+    if (state.status === "success") {
+      router.refresh();
+      return;
+    }
+    if (state.status === "error") window.alert(state.message);
+  }, [router, state.message, state.status]);
+
+  const disabledTitle = invitation.has_sent_email
+    ? "Non puoi rimuovere un contatto a cui è già stata inviata l'email di invito"
+    : undefined;
+
+  return (
+    <form
+      action={action}
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.stopPropagation();
+        if (!window.confirm(`Rimuovere ${invitation.contact_name} dalla lista evento?`)) {
+          event.preventDefault();
+        }
+      }}
+      className="inline-flex shrink-0"
+    >
+      <input type="hidden" name="eventId" value={invitation.event_id} />
+      {invitation.row_type === "invitation" ? (
+        <input type="hidden" name="invitationIds" value={invitation.id} />
+      ) : (
+        invitation.proposal_ids.map((proposalId) => (
+          <input key={proposalId} type="hidden" name="proposalIds" value={proposalId} />
+        ))
+      )}
+      <button
+        type="submit"
+        disabled={pending || invitation.has_sent_email}
+        title={disabledTitle ?? `Rimuovi ${invitation.contact_name} dalla lista`}
+        aria-label={disabledTitle ?? `Rimuovi ${invitation.contact_name} dalla lista`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+      >
+        {pending ? <PendingSpinner className="h-3.5 w-3.5" /> : <TrashIcon />}
+      </button>
+    </form>
+  );
+}
+
 function InvitationCard({
   invitation,
   selected,
@@ -637,13 +701,16 @@ function InvitationCard({
     >
       <div>
         <div className="flex items-start justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => onOpenContact(invitation.contact)}
-            className="text-left font-semibold text-[#1b3272] hover:underline"
-          >
-            {invitation.contact_name}
-          </button>
+          <div className="flex min-w-0 items-start gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenContact(invitation.contact)}
+              className="min-w-0 text-left font-semibold text-[#1b3272] hover:underline"
+            >
+              {invitation.contact_name}
+            </button>
+            <SingleRemoveInvitationButton invitation={invitation} />
+          </div>
           <input
             type="checkbox"
             checked={selected}
@@ -907,16 +974,19 @@ function InvitationsTable({
                   />
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpenContact(invitation.contact);
-                    }}
-                    className="text-left font-semibold text-[#1b3272] hover:underline"
-                  >
-                    {invitation.contact_name}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpenContact(invitation.contact);
+                      }}
+                      className="text-left font-semibold text-[#1b3272] hover:underline"
+                    >
+                      {invitation.contact_name}
+                    </button>
+                    <SingleRemoveInvitationButton invitation={invitation} />
+                  </div>
                   {invitation.contact_email ? (
                     <div className="mt-1 text-xs text-slate-500">{invitation.contact_email}</div>
                   ) : null}
@@ -1386,54 +1456,6 @@ export function InvitationManagement({
           >
             Registra risposta ({selectedInvitedRows.length})
           </button>
-          <form
-            action={bulkRemoveAction}
-            onSubmit={(event) => {
-              if (!window.confirm(
-                `Rimuovere dalla lista ${selectedRows.length} ${
-                  selectedRows.length === 1 ? "contatto selezionato" : "contatti selezionati"
-                }?`,
-              )) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <input type="hidden" name="eventId" value={eventId} />
-            {selectedRows
-              .filter((invitation) => invitation.row_type === "invitation")
-              .map((invitation) => (
-                <input key={invitation.id} type="hidden" name="invitationIds" value={invitation.id} />
-              ))}
-            {selectedRows
-              .filter((invitation) => invitation.row_type === "proposal")
-              .flatMap((invitation) => invitation.proposal_ids)
-              .map((proposalId) => (
-                <input key={proposalId} type="hidden" name="proposalIds" value={proposalId} />
-              ))}
-            <button
-              type="submit"
-              disabled={
-                selectedRows.length === 0 ||
-                selectedRowsWithSentEmail.length > 0 ||
-                bulkRemovePending
-              }
-              title={
-                selectedRowsWithSentEmail.length > 0
-                  ? "Deseleziona i contatti a cui e' gia' stata inviata l'email di invito"
-                  : undefined
-              }
-              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {bulkRemovePending ? <PendingSpinner /> : null}
-              Rimuovi dalla lista ({selectedRows.length})
-            </button>
-          </form>
-          {selectedRowsWithSentEmail.length > 0 ? (
-            <span className="text-xs font-semibold text-red-700">
-              Deseleziona {selectedRowsWithSentEmail.length === 1 ? "il contatto" : "i contatti"} con
-              email già inviata per poter rimuovere gli altri.
-            </span>
-          ) : null}
           {undoPayload.length > 0 ? (
             <form action={undoAction}>
               <input type="hidden" name="eventId" value={eventId} />
@@ -1456,7 +1478,6 @@ export function InvitationManagement({
             <div className="space-y-2">
               <ActionMessage state={bulkState} />
               <ActionMessage state={bulkResponseState} />
-              <ActionMessage state={bulkRemoveState} />
               <ActionMessage state={undoState} />
             </div>
           </div>
@@ -1523,28 +1544,81 @@ export function InvitationManagement({
                 {visibleInvitations.length} di {invitations.length} contatti nella pagina
               </p>
             </div>
-            <div className="flex rounded-lg border border-slate-300 bg-white p-1 text-sm font-semibold">
-              <button
-                type="button"
-                onClick={() => changeViewMode("cards")}
-                aria-pressed={viewMode === "cards"}
-                className={`rounded-md px-3 py-2 ${
-                  viewMode === "cards" ? "bg-[#1b3272] text-white" : "text-[#1b3272] hover:bg-slate-50"
-                }`}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <form
+                action={bulkRemoveAction}
+                onSubmit={(event) => {
+                  if (!window.confirm(
+                    `Rimuovere dalla lista ${selectedRows.length} ${
+                      selectedRows.length === 1 ? "contatto selezionato" : "contatti selezionati"
+                    }?`,
+                  )) {
+                    event.preventDefault();
+                  }
+                }}
               >
-                Schede
-              </button>
-              <button
-                type="button"
-                onClick={() => changeViewMode("table")}
-                aria-pressed={viewMode === "table"}
-                className={`rounded-md px-3 py-2 ${
-                  viewMode === "table" ? "bg-[#1b3272] text-white" : "text-[#1b3272] hover:bg-slate-50"
-                }`}
-              >
-                Tabella
-              </button>
+                <input type="hidden" name="eventId" value={eventId} />
+                {selectedRows
+                  .filter((invitation) => invitation.row_type === "invitation")
+                  .map((invitation) => (
+                    <input key={invitation.id} type="hidden" name="invitationIds" value={invitation.id} />
+                  ))}
+                {selectedRows
+                  .filter((invitation) => invitation.row_type === "proposal")
+                  .flatMap((invitation) => invitation.proposal_ids)
+                  .map((proposalId) => (
+                    <input key={proposalId} type="hidden" name="proposalIds" value={proposalId} />
+                  ))}
+                <button
+                  type="submit"
+                  disabled={
+                    selectedRows.length === 0 ||
+                    selectedRowsWithSentEmail.length > 0 ||
+                    bulkRemovePending
+                  }
+                  title={
+                    selectedRowsWithSentEmail.length > 0
+                      ? "Deseleziona i contatti a cui è già stata inviata l'email di invito"
+                      : undefined
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {bulkRemovePending ? <PendingSpinner /> : <TrashIcon />}
+                  Rimuovi dalla lista ({selectedRows.length})
+                </button>
+              </form>
+              <div className="flex rounded-lg border border-slate-300 bg-white p-1 text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={() => changeViewMode("cards")}
+                  aria-pressed={viewMode === "cards"}
+                  className={`rounded-md px-3 py-2 ${
+                    viewMode === "cards" ? "bg-[#1b3272] text-white" : "text-[#1b3272] hover:bg-slate-50"
+                  }`}
+                >
+                  Schede
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeViewMode("table")}
+                  aria-pressed={viewMode === "table"}
+                  className={`rounded-md px-3 py-2 ${
+                    viewMode === "table" ? "bg-[#1b3272] text-white" : "text-[#1b3272] hover:bg-slate-50"
+                  }`}
+                >
+                  Tabella
+                </button>
+              </div>
             </div>
+          </div>
+          {selectedRowsWithSentEmail.length > 0 ? (
+            <p className="mt-3 text-xs font-semibold text-red-700">
+              Deseleziona {selectedRowsWithSentEmail.length === 1 ? "il contatto" : "i contatti"} con
+              email già inviata per poter rimuovere gli altri.
+            </p>
+          ) : null}
+          <div className="mt-3">
+            <ActionMessage state={bulkRemoveState} />
           </div>
           <div className="mt-4 grid gap-2 md:grid-cols-5 md:items-end">
             <label className="text-sm font-medium text-slate-700">

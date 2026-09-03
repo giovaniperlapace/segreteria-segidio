@@ -371,7 +371,18 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: privacy e link inoltrati; il link e' personale ma chi lo possiede puo' aggiornare la risposta dell'invito.
 - **Decisioni adottate**: generare il token al momento dell'invio email, salvando nel database solo hash e prefisso; riusare il link gia' associato al log email nei retry; usare la rotta pubblica `/risposta/[token]`; notificare tutti i manager attivi con email valida; non gestire accompagnatori o segmenti dal link pubblico in questa milestone.
 
-### Milestone 17 - Post-MVP workflow riferimenti
+### Milestone 17 - Post-MVP lettura risposte email
+
+- **Obiettivo**: intercettare le risposte arrivate via email normale, non tramite link pubblico, e portarle dentro il flusso operativo dell'app.
+- **Scope**: accesso controllato alla casella usata per gli inviti, controllo periodico dell'inbox, riconoscimento evento/invitato tramite codice invito e/o mittente, salvataggio dei messaggi ricevuti, evidenza nella lista evento.
+- **Output atteso**: gli invitati che rispondono via email vengono evidenziati nella scheda evento con data, mittente, anteprima del messaggio e stato operativo da gestire.
+- **Criteri di accettazione**: l'app importa solo messaggi nuovi, collega in modo affidabile le email a evento e invitato quando possibile, evita duplicati, mostra i casi ambigui come "da associare" e consente all'admin di trasformare una mail ricevuta in risposta ufficiale.
+- **Verifiche tecniche**: test con casella controllata, email con codice invito, email senza codice ma da mittente riconoscibile, duplicati/thread, messaggi ambigui, permessi e logging.
+- **Rischi**: privacy della casella, ambiguita' del testo libero, risposte inoltrate da altri indirizzi, limiti Gmail/API e interpretazioni automatiche errate.
+- **Decisioni aperte**: usare Gmail API o IMAP; frequenza del controllo; formato del codice invito; se proporre automaticamente `Partecipa`/`Non partecipa`/`Forse` o lasciare sempre conferma all'admin; retention dei messaggi importati.
+- **Decisione di principio**: non aggiornare automaticamente la risposta ufficiale quando il testo e' ambiguo; evidenziare la mail e lasciare all'admin la conferma.
+
+### Milestone 18 - Post-MVP workflow riferimenti
 
 - **Obiettivo**: sostituire verifica cartacea con flusso digitale.
 - **Scope**: liste proposte, conferma/esclusione, note, nuovi contatti, aggiornamenti dati.
@@ -381,7 +392,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: processo organizzativo non definito.
 - **Decisioni aperte**: stati proposta e responsabilita' finale.
 
-### Milestone 18 - Post-MVP segmenti, QR code e check-in
+### Milestone 19 - Post-MVP segmenti, QR code e check-in
 
 - **Obiettivo**: gestire eventi complessi e presenze reali.
 - **Scope**: segmenti, scelta segmento, QR code, scansione, check-in.
@@ -391,7 +402,7 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 - **Rischi**: gestione operativa all'ingresso.
 - **Decisioni aperte**: dispositivi e processo check-in.
 
-### Milestone 19 - Post-MVP alert, deduplica e reportistica avanzata
+### Milestone 20 - Post-MVP alert, deduplica e reportistica avanzata
 
 - **Obiettivo**: prevenire dimenticanze e migliorare qualita' dati.
 - **Scope**: contatti importanti, inviti ricorrenti, deduplica, report evoluti.
@@ -460,6 +471,7 @@ Ogni blocco deve avere una verifica proporzionata al rischio.
 - Il workflow dei riferimenti deve essere obbligatorio o facoltativo per ogni evento?
 - I riferimenti possono modificare direttamente i contatti o solo proporre modifiche da approvare?
 - I segmenti evento sono necessari subito per casi come la Festa della Comunita' o possono attendere il post-MVP?
+- Per la lettura delle risposte email conviene usare Gmail API o IMAP? Con quale frequenza controllare la casella e per quanto tempo conservare i messaggi importati?
 
 ## 12. Prossimo blocco operativo consigliato
 

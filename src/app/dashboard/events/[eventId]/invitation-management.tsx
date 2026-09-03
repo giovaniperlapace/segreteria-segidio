@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   addInvitationAction,
+  bulkRemoveInvitationsAction,
   bulkUpdateInvitationResponseAction,
   bulkUpdateInvitationStatusAction,
   removeInvitationAction,
@@ -31,6 +32,7 @@ export type EventInvitationRecord = {
   event_id: number;
   contact_id: number;
   row_type: "invitation" | "proposal";
+  has_sent_email: boolean;
   invitation_status: "pending_approval" | "draft" | "proposed" | "selected" | "invited" | "excluded";
   response_status: "no_response" | "attending" | "declined" | "maybe";
   response_source: "admin" | "public_link" | null;
@@ -93,6 +95,13 @@ type InvitationSummary = {
   attending: number;
   declined: number;
   maybe: number;
+};
+
+type SummaryFilter = {
+  label: string;
+  value: number;
+  status: string;
+  response: string;
 };
 
 type InvitationViewMode = "cards" | "table";
@@ -543,12 +552,22 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
         <input type="hidden" name="eventId" value={invitation.event_id} />
         <button
           type="submit"
-          disabled={deletePending}
-          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
+          disabled={deletePending || invitation.has_sent_email}
+          title={
+            invitation.has_sent_email
+              ? "Non puoi rimuovere un contatto a cui e' gia' stata inviata l'email di invito"
+              : undefined
+          }
+          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {deletePending ? <PendingSpinner /> : null}
           Rimuovi dalla lista
         </button>
+        {invitation.has_sent_email ? (
+          <span className="text-xs font-medium text-slate-600">
+            Email di invito già inviata: questo contatto non può essere rimosso.
+          </span>
+        ) : null}
         <ActionMessage state={deleteState} />
       </form>
     </div>
@@ -630,7 +649,7 @@ function InvitationCard({
             checked={selected}
             onChange={() => onToggleInvitation(invitation.id)}
             aria-label={`Seleziona ${invitation.contact_name}`}
-            title="Seleziona per modifica massiva"
+            title="Seleziona per le azioni massive"
             className="mt-0.5 h-4 w-4 shrink-0 accent-[#1b3272]"
           />
         </div>
@@ -883,7 +902,7 @@ function InvitationsTable({
                     checked={selectedInvitationIds.has(invitation.id)}
                     onChange={() => onToggleInvitation(invitation.id)}
                     aria-label={`Seleziona ${invitation.contact_name}`}
-                    title="Seleziona per modifica massiva"
+                    title="Seleziona per le azioni massive"
                     className="h-4 w-4 accent-[#1b3272]"
                   />
                 </td>
@@ -1034,6 +1053,9 @@ export function InvitationManagement({
   const [bulkResponseState, bulkResponseAction, bulkResponsePending] = useArchiveAction(
     bulkUpdateInvitationResponseAction,
   );
+  const [bulkRemoveState, bulkRemoveAction, bulkRemovePending] = useArchiveAction(
+    bulkRemoveInvitationsAction,
+  );
   const [undoState, undoAction, undoPending] = useArchiveAction(undoBulkInvitationStatusAction);
   const deferredSearch = useDeferredValue(search);
   const requestedSearchRef = useRef(pageSearch);
@@ -1101,6 +1123,15 @@ export function InvitationManagement({
     const next = new Set<InvitationTableColumnKey>();
     setHiddenTableColumns(next);
     storeHiddenTableColumns(next);
+  }
+
+  function applySummaryFilter(filter: SummaryFilter) {
+    setSearch("");
+    setStatusFilter(filter.status);
+    setResponseFilter(filter.response);
+    setAttendanceFilter("all");
+    setFlagFilter("all");
+    setSelectedInvitationIds(new Set());
   }
 
   function toggleInvitation(invitationId: number) {
@@ -1176,6 +1207,12 @@ export function InvitationManagement({
   }, [undoState.status]);
 
   useEffect(() => {
+    if (bulkRemoveState.status !== "success") return;
+    const timeout = window.setTimeout(() => setSelectedInvitationIds(new Set()), 0);
+    return () => window.clearTimeout(timeout);
+  }, [bulkRemoveState.status]);
+
+  useEffect(() => {
     const nextSearch = search.trim();
     if (nextSearch === requestedSearchRef.current) return;
 
@@ -1249,25 +1286,73 @@ export function InvitationManagement({
       invitation.row_type === "invitation" &&
       invitation.invitation_status === "invited",
   );
+  const selectedRows = invitations.filter((invitation) =>
+    selectedInvitationIds.has(invitation.id),
+  );
+  const selectedRowsWithSentEmail = selectedRows.filter(
+    (invitation) => invitation.has_sent_email,
+  );
+  const summaryFilters: SummaryFilter[] = [
+    { label: "Totale lista", value: summary.total, status: "all", response: "all" },
+    {
+      label: "Da approvare",
+      value: summary.pendingApproval,
+      status: "pending_approval",
+      response: "all",
+    },
+    { label: "Da invitare", value: summary.selected, status: "selected", response: "all" },
+    { label: "Invitati", value: summary.invited, status: "invited", response: "all" },
+    {
+      label: "Partecipa",
+      value: summary.attending,
+      status: "invited",
+      response: "attending",
+    },
+    {
+      label: "Non partecipa",
+      value: summary.declined,
+      status: "invited",
+      response: "declined",
+    },
+    { label: "Forse", value: summary.maybe, status: "invited", response: "maybe" },
+    {
+      label: "Nessuna risposta",
+      value: summary.noResponse,
+      status: "invited",
+      response: "no_response",
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8" aria-label="Riepilogo inviti e risposte">
-        {[
-          ["Totale lista", summary.total],
-          ["Da approvare", summary.pendingApproval],
-          ["Da invitare", summary.selected],
-          ["Invitati", summary.invited],
-          ["Partecipa", summary.attending],
-          ["Non partecipa", summary.declined],
-          ["Forse", summary.maybe],
-          ["Nessuna risposta", summary.noResponse],
-        ].map(([label, value]) => (
-          <div key={label} className="min-w-0 rounded-lg border border-[#d9e1f2] bg-white px-3 py-3 shadow-sm">
-            <div className="text-2xl font-semibold text-[#1b3272]">{value}</div>
-            <div className="mt-1 text-xs font-medium text-slate-600">{label}</div>
-          </div>
-        ))}
+        {summaryFilters.map((filter) => {
+          const active =
+            search === "" &&
+            statusFilter === filter.status &&
+            responseFilter === filter.response &&
+            attendanceFilter === "all" &&
+            flagFilter === "all";
+
+          return (
+            <button
+              key={filter.label}
+              type="button"
+              disabled={filter.value === 0}
+              aria-pressed={active}
+              aria-label={`${filter.label}: ${filter.value}. Filtra la lista`}
+              onClick={() => applySummaryFilter(filter)}
+              className={`min-w-0 rounded-lg border bg-white px-3 py-3 text-left shadow-sm transition ${
+                active
+                  ? "border-[#1b3272] ring-2 ring-[#1b3272]/20"
+                  : "border-[#d9e1f2] hover:border-[#1b3272] hover:bg-slate-50"
+              } disabled:cursor-default disabled:hover:border-[#d9e1f2] disabled:hover:bg-white`}
+            >
+              <span className="block text-2xl font-semibold text-[#1b3272]">{filter.value}</span>
+              <span className="mt-1 block text-xs font-medium text-slate-600">{filter.label}</span>
+            </button>
+          );
+        })}
       </section>
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -1301,6 +1386,54 @@ export function InvitationManagement({
           >
             Registra risposta ({selectedInvitedRows.length})
           </button>
+          <form
+            action={bulkRemoveAction}
+            onSubmit={(event) => {
+              if (!window.confirm(
+                `Rimuovere dalla lista ${selectedRows.length} ${
+                  selectedRows.length === 1 ? "contatto selezionato" : "contatti selezionati"
+                }?`,
+              )) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="eventId" value={eventId} />
+            {selectedRows
+              .filter((invitation) => invitation.row_type === "invitation")
+              .map((invitation) => (
+                <input key={invitation.id} type="hidden" name="invitationIds" value={invitation.id} />
+              ))}
+            {selectedRows
+              .filter((invitation) => invitation.row_type === "proposal")
+              .flatMap((invitation) => invitation.proposal_ids)
+              .map((proposalId) => (
+                <input key={proposalId} type="hidden" name="proposalIds" value={proposalId} />
+              ))}
+            <button
+              type="submit"
+              disabled={
+                selectedRows.length === 0 ||
+                selectedRowsWithSentEmail.length > 0 ||
+                bulkRemovePending
+              }
+              title={
+                selectedRowsWithSentEmail.length > 0
+                  ? "Deseleziona i contatti a cui e' gia' stata inviata l'email di invito"
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {bulkRemovePending ? <PendingSpinner /> : null}
+              Rimuovi dalla lista ({selectedRows.length})
+            </button>
+          </form>
+          {selectedRowsWithSentEmail.length > 0 ? (
+            <span className="text-xs font-semibold text-red-700">
+              Deseleziona {selectedRowsWithSentEmail.length === 1 ? "il contatto" : "i contatti"} con
+              email già inviata per poter rimuovere gli altri.
+            </span>
+          ) : null}
           {undoPayload.length > 0 ? (
             <form action={undoAction}>
               <input type="hidden" name="eventId" value={eventId} />
@@ -1323,6 +1456,7 @@ export function InvitationManagement({
             <div className="space-y-2">
               <ActionMessage state={bulkState} />
               <ActionMessage state={bulkResponseState} />
+              <ActionMessage state={bulkRemoveState} />
               <ActionMessage state={undoState} />
             </div>
           </div>

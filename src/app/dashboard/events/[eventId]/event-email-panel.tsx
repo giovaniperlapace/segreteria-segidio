@@ -71,43 +71,31 @@ function formatBytes(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function BatchSendForm({
+function BatchActions({
   eventId,
   batch,
   pendingCount,
+  canDelete,
 }: {
   eventId: number;
   batch: EventEmailBatchRecord;
   pendingCount: number;
+  canDelete: boolean;
 }) {
   const [state, action, pending] = useArchiveAction(sendEmailBatchAction);
   const canChangeResponseLink =
     batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
+  const canSend = pendingCount > 0 || batch.failed_count > 0;
+  const sendFormId = `email-batch-send-${batch.id}`;
 
   return (
-    <form action={action} className="space-y-2">
-      <input type="hidden" name="eventId" value={eventId} />
-      <input type="hidden" name="batchId" value={batch.id} />
-      {!canChangeResponseLink && !batch.include_public_response_link ? (
-        <input type="hidden" name="omitPublicResponseLink" value="on" />
-      ) : null}
-      <label className="flex max-w-sm items-start gap-2 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          name="omitPublicResponseLink"
-          defaultChecked={!batch.include_public_response_link}
-          disabled={!canChangeResponseLink || pending}
-          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#1b3272]"
-        />
-        <span>
-          Invia senza il pulsante per comunicare la partecipazione
-          {!canChangeResponseLink ? " (impostazione bloccata dopo il primo invio)" : ""}
-        </span>
-      </label>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col items-start gap-2 sm:items-end">
+      <div className="flex flex-wrap items-start gap-2 sm:justify-end">
+        <BatchPreviewButton eventId={eventId} batch={batch} />
         {pendingCount > 0 ? (
           <button
             type="submit"
+            form={sendFormId}
             disabled={pending}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
@@ -118,6 +106,7 @@ function BatchSendForm({
         {batch.failed_count > 0 ? (
           <button
             type="submit"
+            form={sendFormId}
             name="includeFailed"
             value="on"
             disabled={pending}
@@ -127,9 +116,32 @@ function BatchSendForm({
             Ritenta errori
           </button>
         ) : null}
+        {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
       </div>
-      <ActionMessage state={state} />
-    </form>
+      {canSend ? (
+        <form id={sendFormId} action={action} className="space-y-2">
+          <input type="hidden" name="eventId" value={eventId} />
+          <input type="hidden" name="batchId" value={batch.id} />
+          {!canChangeResponseLink && !batch.include_public_response_link ? (
+            <input type="hidden" name="omitPublicResponseLink" value="on" />
+          ) : null}
+          <label className="flex max-w-sm items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              name="omitPublicResponseLink"
+              defaultChecked={!batch.include_public_response_link}
+              disabled={!canChangeResponseLink || pending}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#1b3272]"
+            />
+            <span>
+              Invia senza il pulsante per comunicare la partecipazione
+              {!canChangeResponseLink ? " (impostazione bloccata dopo il primo invio)" : ""}
+            </span>
+          </label>
+          <ActionMessage state={state} />
+        </form>
+      ) : null}
+    </div>
   );
 }
 
@@ -429,13 +441,12 @@ export function EventEmailPanel({
                     </p>
                     {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
                   </div>
-                  <div className="flex flex-wrap items-start gap-2">
-                    <BatchPreviewButton eventId={eventId} batch={batch} />
-                    {pendingCount > 0 || batch.failed_count > 0 ? (
-                      <BatchSendForm eventId={eventId} batch={batch} pendingCount={pendingCount} />
-                    ) : null}
-                    {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
-                  </div>
+                  <BatchActions
+                    eventId={eventId}
+                    batch={batch}
+                    pendingCount={pendingCount}
+                    canDelete={canDelete}
+                  />
                 </div>
               </div>
             );

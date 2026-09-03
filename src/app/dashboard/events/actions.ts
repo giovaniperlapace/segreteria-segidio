@@ -1010,11 +1010,127 @@ export async function removeInvitationAction(
 
   try {
     const supabase = createSupabaseServiceClient();
-    const { error } = await supabase.from("event_invitations").delete().eq("id", invitationId);
+    const { data: sentEmail, error: sentEmailError } = await supabase
+      .from("email_logs")
+      .select("id")
+      .eq("event_id", eventId)
+      .eq("invitation_id", invitationId)
+      .eq("status", "sent")
+      .limit(1)
+      .maybeSingle();
+    if (sentEmailError) throw sentEmailError;
+    if (sentEmail) {
+      return {
+        status: "error",
+        message: "Non puoi rimuovere dalla lista un contatto a cui e' gia' stata inviata l'email di invito.",
+      };
+    }
+
+    const { data: deletedInvitation, error } = await supabase
+      .from("event_invitations")
+      .delete()
+      .eq("id", invitationId)
+      .eq("event_id", eventId)
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
+    if (!deletedInvitation) {
+      return { status: "error", message: "Invito non trovato in questo evento." };
+    }
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return { status: "success", message: "Invitato rimosso dall'evento." };
+  } catch (error) {
+    return { status: "error", message: friendlyError(error) };
+  }
+}
+
+export async function bulkRemoveInvitationsAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  await requireManager();
+  const eventId = numberField(formData, "eventId");
+  const invitationIds = numberFields(formData, "invitationIds");
+  const proposalIds = numberFields(formData, "proposalIds");
+
+  if (!eventId || (invitationIds.length === 0 && proposalIds.length === 0)) {
+    return { status: "error", message: "Seleziona almeno un contatto da rimuovere." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    let proposalContactCount = 0;
+
+    if (invitationIds.length > 0) {
+      const { data: invitationRows, error: invitationRowsError } = await supabase
+        .from("event_invitations")
+        .select("id")
+        .eq("event_id", eventId)
+        .in("id", invitationIds);
+      if (invitationRowsError) throw invitationRowsError;
+      if ((invitationRows ?? []).length !== invitationIds.length) {
+        return { status: "error", message: "Uno o piu' inviti non appartengono a questo evento." };
+      }
+
+      const { data: sentEmails, error: sentEmailsError } = await supabase
+        .from("email_logs")
+        .select("invitation_id")
+        .eq("event_id", eventId)
+        .eq("status", "sent")
+        .in("invitation_id", invitationIds);
+      if (sentEmailsError) throw sentEmailsError;
+      if ((sentEmails ?? []).length > 0) {
+        return {
+          status: "error",
+          message: "La selezione contiene almeno un contatto a cui e' gia' stata inviata l'email di invito.",
+        };
+      }
+    }
+
+    if (proposalIds.length > 0) {
+      const { data: proposalRows, error: proposalRowsError } = await supabase
+        .from("invitation_proposals")
+        .select("id,contact_id")
+        .eq("event_id", eventId)
+        .eq("status", "pending")
+        .in("id", proposalIds);
+      if (proposalRowsError) throw proposalRowsError;
+      if ((proposalRows ?? []).length !== proposalIds.length) {
+        return { status: "error", message: "Una o piu' proposte non sono piu' disponibili." };
+      }
+      proposalContactCount = new Set(
+        (proposalRows ?? []).map((proposal) => Number(proposal.contact_id)),
+      ).size;
+    }
+
+    if (invitationIds.length > 0) {
+      const { error } = await supabase
+        .from("event_invitations")
+        .delete()
+        .eq("event_id", eventId)
+        .in("id", invitationIds);
+      if (error) throw error;
+    }
+
+    if (proposalIds.length > 0) {
+      const { error } = await supabase
+        .from("invitation_proposals")
+        .delete()
+        .eq("event_id", eventId)
+        .eq("status", "pending")
+        .in("id", proposalIds);
+      if (error) throw error;
+    }
+
+    const removedCount = invitationIds.length + proposalContactCount;
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/events");
+    revalidatePath(`/dashboard/events/${eventId}`);
+    return {
+      status: "success",
+      message: `${removedCount} ${removedCount === 1 ? "contatto rimosso" : "contatti rimossi"} dalla lista.`,
+    };
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }

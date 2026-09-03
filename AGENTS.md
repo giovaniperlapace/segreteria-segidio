@@ -98,6 +98,7 @@ Post-MVP:
 
 - invio email robusto con batch, retry e logging;
 - risposta automatica via link pubblico;
+- lettura periodica della casella inviti per evidenziare risposte email non arrivate dal link pubblico;
 - template email avanzati e allegati;
 - workflow di validazione liste con riferimenti;
 - segmenti evento;
@@ -377,6 +378,7 @@ Se non si riesce ad accedere, non inventare credenziali o workaround. Dire chiar
 
 - Provider email.
 - Gestione allegati.
+- Lettura inbox inviti: Gmail API o IMAP, frequenza controllo, codice invito e retention messaggi.
 - Campi contatto obbligatori.
 - Separazione persona/carica/istituzione.
 - Livello di storico nel MVP.

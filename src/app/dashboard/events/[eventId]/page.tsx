@@ -155,15 +155,38 @@ export default async function EventDetailPage({
   if (emailBatchesResult.error) throw emailBatchesResult.error;
 
   const visibleInvitationIds = (invitations ?? []).map((invitation) => Number(invitation.id));
-  const { data: responseHistoryRows, error: responseHistoryError } =
-    visibleInvitationIds.length > 0
-      ? await supabase
-          .from("invitation_responses")
-          .select("id,invitation_id,response_status,source,actor_profile_id,response_note,recorded_at")
-          .in("invitation_id", visibleInvitationIds)
-          .order("recorded_at", { ascending: false })
-      : { data: [], error: null };
-  if (responseHistoryError) throw responseHistoryError;
+  let responseHistoryRows: Array<{
+    id: number;
+    invitation_id: number;
+    response_status: "no_response" | "attending" | "declined" | "maybe";
+    source: "admin" | "public_link";
+    actor_profile_id: string | null;
+    response_note: string | null;
+    recorded_at: string;
+  }> = [];
+  let sentEmailRows: Array<{ invitation_id: number }> = [];
+  if (visibleInvitationIds.length > 0) {
+    const [responseHistoryResult, sentEmailResult] = await Promise.all([
+      supabase
+        .from("invitation_responses")
+        .select("id,invitation_id,response_status,source,actor_profile_id,response_note,recorded_at")
+        .in("invitation_id", visibleInvitationIds)
+        .order("recorded_at", { ascending: false }),
+      supabase
+        .from("email_logs")
+        .select("invitation_id")
+        .eq("event_id", eventId)
+        .eq("status", "sent")
+        .in("invitation_id", visibleInvitationIds),
+    ]);
+    if (responseHistoryResult.error) throw responseHistoryResult.error;
+    if (sentEmailResult.error) throw sentEmailResult.error;
+    responseHistoryRows = (responseHistoryResult.data ?? []) as typeof responseHistoryRows;
+    sentEmailRows = (sentEmailResult.data ?? []) as typeof sentEmailRows;
+  }
+  const invitationIdsWithSentEmail = new Set(
+    sentEmailRows.map((row) => Number(row.invitation_id)),
+  );
 
   const invitationProfileIds = [
     ...new Set(
@@ -172,7 +195,7 @@ export default async function EventDetailPage({
           invitation.invitation_status_updated_by_profile_id,
           invitation.response_recorded_by_profile_id,
         ]),
-        ...(responseHistoryRows ?? []).map((history) => history.actor_profile_id),
+        ...responseHistoryRows.map((history) => history.actor_profile_id),
       ].filter((id): id is string => Boolean(id)),
     ),
   ];
@@ -201,7 +224,7 @@ export default async function EventDetailPage({
       response_note: string | null;
     }>
   >();
-  for (const history of responseHistoryRows ?? []) {
+  for (const history of responseHistoryRows) {
     const invitationId = Number(history.invitation_id);
     responseHistoryByInvitation.set(invitationId, [
       ...(responseHistoryByInvitation.get(invitationId) ?? []),
@@ -328,6 +351,7 @@ export default async function EventDetailPage({
       event_id: Number(invitation.event_id),
       contact_id: Number(invitation.contact_id),
       row_type: "invitation",
+      has_sent_email: invitationIdsWithSentEmail.has(Number(invitation.id)),
       invitation_status: invitation.invitation_status,
       response_status: invitation.response_status,
       response_source: invitation.response_source,
@@ -385,6 +409,7 @@ export default async function EventDetailPage({
       event_id: eventId,
       contact_id: contactId,
       row_type: "proposal",
+      has_sent_email: false,
       invitation_status: "pending_approval",
       response_status: "no_response",
       response_source: null,

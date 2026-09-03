@@ -484,12 +484,45 @@ export async function sendEmailBatchAction(
     const supabase = createSupabaseServiceClient();
     const { data: batch, error: batchError } = await supabase
       .from("email_batches")
-      .select("id,event_id,target_kind")
+      .select("id,event_id,target_kind,status,sent_count,failed_count,include_public_response_link")
       .eq("id", batchId)
       .eq("event_id", eventId)
       .maybeSingle();
     if (batchError) throw batchError;
     if (!batch) return { status: "error", message: "Batch email non trovato." };
+
+    const requestedIncludePublicResponseLink = formData.get("omitPublicResponseLink") !== "on";
+    const includePublicResponseLink = Boolean(batch.include_public_response_link);
+    if (requestedIncludePublicResponseLink !== includePublicResponseLink) {
+      const hasStarted =
+        batch.status === "sending" ||
+        Number(batch.sent_count) > 0 ||
+        Number(batch.failed_count) > 0;
+      if (hasStarted) {
+        return {
+          status: "error",
+          message: "L'impostazione del pulsante di risposta non puo' cambiare dopo l'inizio dell'invio.",
+        };
+      }
+
+      const { data: updatedPreference, error: preferenceError } = await supabase
+        .from("email_batches")
+        .update({ include_public_response_link: requestedIncludePublicResponseLink })
+        .eq("id", batchId)
+        .eq("event_id", eventId)
+        .neq("status", "sending")
+        .eq("sent_count", 0)
+        .eq("failed_count", 0)
+        .select("id")
+        .maybeSingle();
+      if (preferenceError) throw preferenceError;
+      if (!updatedPreference) {
+        return {
+          status: "error",
+          message: "Il batch e' cambiato mentre preparavi l'invio. Aggiorna la pagina e riprova.",
+        };
+      }
+    }
 
     const { data: attachmentLinks, error: attachmentError } = await supabase
       .from("email_batch_attachments")
@@ -550,12 +583,17 @@ export async function sendEmailBatchAction(
         .eq("id", log.id);
 
       try {
-        const rendered = await ensurePublicResponseLink({
-          supabase,
-          log: log as EmailLogToSend,
-          eventId,
-          profileId: profile.id,
-        });
+        const rendered = requestedIncludePublicResponseLink
+          ? await ensurePublicResponseLink({
+              supabase,
+              log: log as EmailLogToSend,
+              eventId,
+              profileId: profile.id,
+            })
+          : {
+              text: log.rendered_text,
+              html: log.rendered_html,
+            };
         const info = await sendSmtpEmail({
           to: log.to_email,
           subject: log.subject,

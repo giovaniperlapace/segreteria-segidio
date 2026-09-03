@@ -27,6 +27,7 @@ export type EventEmailBatchRecord = {
   sent_count: number;
   failed_count: number;
   skipped_count: number;
+  include_public_response_link: boolean;
   last_error: string | null;
   created_at: string;
   template_name: string;
@@ -73,27 +74,60 @@ function formatBytes(value: number) {
 function BatchSendForm({
   eventId,
   batch,
-  includeFailed,
+  pendingCount,
 }: {
   eventId: number;
   batch: EventEmailBatchRecord;
-  includeFailed?: boolean;
+  pendingCount: number;
 }) {
   const [state, action, pending] = useArchiveAction(sendEmailBatchAction);
+  const canChangeResponseLink =
+    batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
 
   return (
     <form action={action} className="space-y-2">
       <input type="hidden" name="eventId" value={eventId} />
       <input type="hidden" name="batchId" value={batch.id} />
-      {includeFailed ? <input type="hidden" name="includeFailed" value="on" /> : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
-      >
-        {pending ? <PendingSpinner /> : null}
-        {includeFailed ? "Ritenta errori" : "Invia prossimo blocco"}
-      </button>
+      {!canChangeResponseLink && !batch.include_public_response_link ? (
+        <input type="hidden" name="omitPublicResponseLink" value="on" />
+      ) : null}
+      <label className="flex max-w-sm items-start gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          name="omitPublicResponseLink"
+          defaultChecked={!batch.include_public_response_link}
+          disabled={!canChangeResponseLink || pending}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#1b3272]"
+        />
+        <span>
+          Invia senza il pulsante per comunicare la partecipazione
+          {!canChangeResponseLink ? " (impostazione bloccata dopo il primo invio)" : ""}
+        </span>
+      </label>
+      <div className="flex flex-wrap gap-2">
+        {pendingCount > 0 ? (
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
+          >
+            {pending ? <PendingSpinner /> : null}
+            Invia prossimo blocco
+          </button>
+        ) : null}
+        {batch.failed_count > 0 ? (
+          <button
+            type="submit"
+            name="includeFailed"
+            value="on"
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
+          >
+            {pending ? <PendingSpinner /> : null}
+            Ritenta errori
+          </button>
+        ) : null}
+      </div>
       <ActionMessage state={state} />
     </form>
   );
@@ -395,11 +429,10 @@ export function EventEmailPanel({
                     </p>
                     {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-start gap-2">
                     <BatchPreviewButton eventId={eventId} batch={batch} />
-                    {pendingCount > 0 ? <BatchSendForm eventId={eventId} batch={batch} /> : null}
-                    {batch.failed_count > 0 ? (
-                      <BatchSendForm eventId={eventId} batch={batch} includeFailed />
+                    {pendingCount > 0 || batch.failed_count > 0 ? (
+                      <BatchSendForm eventId={eventId} batch={batch} pendingCount={pendingCount} />
                     ) : null}
                     {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
                   </div>

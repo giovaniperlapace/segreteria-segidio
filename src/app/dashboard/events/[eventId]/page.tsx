@@ -138,7 +138,7 @@ export default async function EventDetailPage({
       supabase
         .from("email_batches")
         .select(
-          "id,status,target_kind,recipient_count,sent_count,failed_count,skipped_count,last_error,created_at,email_templates(name),email_batch_attachments(email_attachments(file_name,file_size_bytes))",
+          "id,status,target_kind,recipient_count,sent_count,failed_count,skipped_count,include_public_response_link,last_error,created_at,email_templates(name),email_batch_attachments(email_attachments(file_name,file_size_bytes))",
         )
         .eq("event_id", eventId)
         .order("created_at", { ascending: false })
@@ -513,6 +513,7 @@ export default async function EventDetailPage({
               sent_count: Number(batch.sent_count),
               failed_count: Number(batch.failed_count),
               skipped_count: Number(batch.skipped_count),
+              include_public_response_link: Boolean(batch.include_public_response_link),
               last_error: batch.last_error,
               created_at: String(batch.created_at),
               template_name: template?.name ? String(template.name) : "Template non disponibile",

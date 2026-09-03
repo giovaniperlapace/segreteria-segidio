@@ -142,7 +142,7 @@ export default async function EventDetailPage({
         )
         .eq("event_id", eventId)
         .order("created_at", { ascending: false })
-        .limit(8),
+        .limit(50),
     ]);
 
   if (invitationsError) throw invitationsError;

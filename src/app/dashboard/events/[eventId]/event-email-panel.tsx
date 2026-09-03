@@ -5,6 +5,7 @@ import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveActi
 import {
   getEmailBatchPreviewAction,
   type EmailBatchPreviewMessage,
+  type EmailDeliveryStatus,
 } from "../email-preview-actions";
 import {
   createEmailBatchAction,
@@ -180,6 +181,137 @@ function BatchDeleteForm({
   );
 }
 
+function BatchRecipientsButton({
+  eventId,
+  batch,
+  count,
+  label,
+  statuses,
+}: {
+  eventId: number;
+  batch: EventEmailBatchRecord;
+  count: number;
+  label: string;
+  statuses: EmailDeliveryStatus[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<EmailBatchPreviewMessage[]>([]);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  async function openRecipients() {
+    setOpen(true);
+    if (messages.length > 0 || loading) return;
+    setLoading(true);
+    setError("");
+    const result = await getEmailBatchPreviewAction(eventId, batch.id, statuses);
+    if (result.status === "error") {
+      setError(result.message);
+    } else {
+      setMessages(result.messages);
+      setTotal(result.total);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openRecipients}
+        className="rounded-sm underline decoration-slate-300 underline-offset-2 hover:text-[#1b3272] hover:decoration-[#1b3272] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+        aria-label={`${label}: mostra i destinatari`}
+      >
+        {count} {label}
+      </button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`email-batch-recipients-title-${batch.id}-${statuses.join("-")}`}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2
+                  id={`email-batch-recipients-title-${batch.id}-${statuses.join("-")}`}
+                  className="text-xl font-semibold text-[#1b3272]"
+                >
+                  {label.charAt(0).toUpperCase() + label.slice(1)} · blocco #{batch.id}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">{batch.template_name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            {loading ? (
+              <p className="mt-6 flex items-center gap-2 text-sm text-slate-600">
+                <PendingSpinner /> Caricamento destinatari...
+              </p>
+            ) : error ? (
+              <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </p>
+            ) : messages.length > 0 ? (
+              <div className="mt-5">
+                {total > messages.length ? (
+                  <p className="mb-3 text-xs text-amber-700">
+                    Sono mostrati i primi {messages.length} destinatari su {total}.
+                  </p>
+                ) : null}
+                <ul className="max-h-[60vh] divide-y divide-slate-200 overflow-y-auto rounded-xl border border-slate-200">
+                  {messages.map((message) => (
+                    <li key={message.id} className="p-3 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-900">{message.contact_name}</p>
+                          <p className="break-all text-slate-600">{message.to_email}</p>
+                          {message.institution ? (
+                            <p className="text-xs text-slate-500">{message.institution}</p>
+                          ) : null}
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                          {DELIVERY_STATUS_LABELS[message.status]}
+                        </span>
+                      </div>
+                      {message.error_message ? (
+                        <p className="mt-2 text-xs text-red-700">{message.error_message}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="mt-6 text-sm text-slate-600">Nessun destinatario in questo stato.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function BatchPreviewButton({
   eventId,
   batch,
@@ -321,6 +453,59 @@ function BatchPreviewButton({
   );
 }
 
+function BatchCard({
+  eventId,
+  batch,
+}: {
+  eventId: number;
+  batch: EventEmailBatchRecord;
+}) {
+  const pendingCount = Math.max(
+    0,
+    batch.recipient_count - batch.sent_count - batch.failed_count - batch.skipped_count,
+  );
+  const canDelete =
+    batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-900">
+            #{batch.id} · {batch.template_name}
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {TARGET_LABELS[batch.target_kind]} · {STATUS_LABELS[batch.status]} · {formatDate(batch.created_at)}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1 text-sm text-slate-600">
+            <BatchRecipientsButton eventId={eventId} batch={batch} count={batch.sent_count} label="inviate" statuses={["sent"]} />
+            <span aria-hidden="true">·</span>
+            <BatchRecipientsButton eventId={eventId} batch={batch} count={pendingCount} label="in coda" statuses={["queued", "sending"]} />
+            <span aria-hidden="true">·</span>
+            <BatchRecipientsButton eventId={eventId} batch={batch} count={batch.failed_count} label="errori" statuses={["failed"]} />
+            <span aria-hidden="true">·</span>
+            <BatchRecipientsButton eventId={eventId} batch={batch} count={batch.skipped_count} label="saltate" statuses={["skipped"]} />
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {batch.attachments.length > 0
+              ? `Allegati (${batch.attachments.length}): ${batch.attachments.map((attachment) =>
+                  `${attachment.file_name} (${formatBytes(attachment.file_size_bytes)})`,
+                ).join(", ")}`
+              : "Allegati: nessuno"}
+          </p>
+          {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
+        </div>
+        <BatchActions
+          eventId={eventId}
+          batch={batch}
+          pendingCount={pendingCount}
+          canDelete={canDelete}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function EventEmailPanel({
   eventId,
   templates,
@@ -335,6 +520,7 @@ export function EventEmailPanel({
   selectedInvitationIds: Set<number>;
 }) {
   const [createState, createAction, createPending] = useArchiveAction(createEmailBatchAction);
+  const [showCompletedBatches, setShowCompletedBatches] = useState(false);
   const selectedRows = useMemo(
     () =>
       invitations.filter(
@@ -352,6 +538,14 @@ export function EventEmailPanel({
     (invitation) =>
       invitation.invitation_status === "invited" && invitation.response_status === "no_response",
   ).length;
+  const activeBatches = batches.filter((batch) => {
+    const pendingCount = Math.max(
+      0,
+      batch.recipient_count - batch.sent_count - batch.failed_count - batch.skipped_count,
+    );
+    return pendingCount > 0 || batch.failed_count > 0 || batch.status === "draft" || batch.status === "sending";
+  });
+  const completedBatches = batches.filter((batch) => !activeBatches.includes(batch));
 
   return (
     <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
@@ -412,45 +606,35 @@ export function EventEmailPanel({
 
       {batches.length > 0 ? (
         <div className="mt-5 space-y-3">
-          {batches.map((batch) => {
-            const pendingCount = Math.max(
-              0,
-              batch.recipient_count - batch.sent_count - batch.failed_count - batch.skipped_count,
-            );
-            const canDelete =
-              batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
-            return (
-              <div key={batch.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">
-                      #{batch.id} · {batch.template_name}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {TARGET_LABELS[batch.target_kind]} · {STATUS_LABELS[batch.status]} · {formatDate(batch.created_at)}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {batch.sent_count} inviate · {pendingCount} in coda · {batch.failed_count} errori · {batch.skipped_count} saltate
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {batch.attachments.length > 0
-                        ? `Allegati (${batch.attachments.length}): ${batch.attachments.map((attachment) =>
-                            `${attachment.file_name} (${formatBytes(attachment.file_size_bytes)})`,
-                          ).join(", ")}`
-                        : "Allegati: nessuno"}
-                    </p>
-                    {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
-                  </div>
-                  <BatchActions
-                    eventId={eventId}
-                    batch={batch}
-                    pendingCount={pendingCount}
-                    canDelete={canDelete}
-                  />
-                </div>
-              </div>
-            );
-          })}
+          {activeBatches.map((batch) => (
+            <BatchCard key={batch.id} eventId={eventId} batch={batch} />
+          ))}
+          {activeBatches.length === 0 ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Nessun blocco ancora da inviare.
+            </p>
+          ) : null}
+          {completedBatches.length > 0 ? (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCompletedBatches((value) => !value)}
+                className="text-sm font-semibold text-[#1b3272] underline decoration-slate-300 underline-offset-4 hover:decoration-[#1b3272]"
+                aria-expanded={showCompletedBatches}
+              >
+                {showCompletedBatches
+                  ? "Nascondi gli invii conclusi"
+                  : `Altro… (${completedBatches.length} ${completedBatches.length === 1 ? "invio concluso" : "invii conclusi"})`}
+              </button>
+            </div>
+          ) : null}
+          {showCompletedBatches ? (
+            <div className="space-y-3 border-t border-slate-200 pt-3">
+              {completedBatches.map((batch) => (
+                <BatchCard key={batch.id} eventId={eventId} batch={batch} />
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

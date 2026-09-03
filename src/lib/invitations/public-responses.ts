@@ -69,10 +69,6 @@ export function formatPublicEventDate(value: string) {
   }).format(new Date(value));
 }
 
-export function publicContactName(contact: Pick<ContactRow, "first_name" | "last_name" | "institution">) {
-  return contactName(contact);
-}
-
 export async function readPublicResponseContext(rawToken: string) {
   const token = rawToken.trim();
   if (!token) return null;

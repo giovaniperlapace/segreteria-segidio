@@ -6,7 +6,6 @@ import {
 } from "@/lib/email/public-response-links";
 import {
   formatPublicEventDate,
-  publicContactName,
   readPublicResponseContext,
 } from "@/lib/invitations/public-responses";
 import { submitPublicInvitationResponse } from "./actions";
@@ -101,10 +100,7 @@ export default async function PublicInvitationResponsePage({
           ) : null}
 
           <div className="mt-7">
-            <p className="text-sm font-semibold uppercase tracking-wide text-[#d43c2f]">
-              {publicContactName(context.contact)}
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-[#1b3272]">
+            <h1 className="text-3xl font-semibold text-[#1b3272]">
               {context.event.title}
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">

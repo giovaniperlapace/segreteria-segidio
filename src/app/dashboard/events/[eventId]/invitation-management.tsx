@@ -702,6 +702,7 @@ function InvitationCard({
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
+            <SingleRemoveInvitationButton invitation={invitation} />
             <button
               type="button"
               onClick={() => onOpenContact(invitation.contact)}
@@ -709,7 +710,6 @@ function InvitationCard({
             >
               {invitation.contact_name}
             </button>
-            <SingleRemoveInvitationButton invitation={invitation} />
           </div>
           <input
             type="checkbox"
@@ -975,6 +975,7 @@ function InvitationsTable({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
+                    <SingleRemoveInvitationButton invitation={invitation} />
                     <button
                       type="button"
                       onClick={(event) => {
@@ -985,7 +986,6 @@ function InvitationsTable({
                     >
                       {invitation.contact_name}
                     </button>
-                    <SingleRemoveInvitationButton invitation={invitation} />
                   </div>
                   {invitation.contact_email ? (
                     <div className="mt-1 text-xs text-slate-500">{invitation.contact_email}</div>

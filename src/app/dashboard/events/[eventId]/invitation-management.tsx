@@ -1014,7 +1014,8 @@ export function InvitationManagement({
   emailTemplates: EventEmailTemplateOption[];
   emailBatches: EventEmailBatchRecord[];
 }) {
-  const [search, setSearch] = useState("");
+  const router = useRouter();
+  const [search, setSearch] = useState(pageSearch);
   const [statusFilter, setStatusFilter] = useState("all");
   const [responseFilter, setResponseFilter] = useState("all");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
@@ -1035,6 +1036,7 @@ export function InvitationManagement({
   );
   const [undoState, undoAction, undoPending] = useArchiveAction(undoBulkInvitationStatusAction);
   const deferredSearch = useDeferredValue(search);
+  const requestedSearchRef = useRef(pageSearch);
   const viewPreferenceKey = `event-invitations-view:${eventId}`;
   const tableColumnsPreferenceKey = `${viewPreferenceKey}:table-columns:hidden`;
   const [hiddenTableColumns, setHiddenTableColumns] = useState<
@@ -1060,7 +1062,7 @@ export function InvitationManagement({
 
   function exportUrl(type: string, format: "pdf" | "xlsx") {
     const params = new URLSearchParams();
-    if (pageSearch.trim()) params.set("q", pageSearch.trim());
+    if (search.trim()) params.set("q", search.trim());
     params.set("type", type);
     params.set("format", format);
     return `/api/exports/events/${eventId}?${params.toString()}`;
@@ -1173,21 +1175,39 @@ export function InvitationManagement({
     return () => window.clearTimeout(timeout);
   }, [undoState.status]);
 
+  useEffect(() => {
+    const nextSearch = search.trim();
+    if (nextSearch === requestedSearchRef.current) return;
+
+    const timeout = window.setTimeout(() => {
+      requestedSearchRef.current = nextSearch;
+      const params = new URLSearchParams();
+      if (nextSearch) params.set("q", nextSearch);
+      const query = params.toString();
+      router.replace(`/dashboard/events/${eventId}${query ? `?${query}` : ""}`, {
+        scroll: false,
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [eventId, router, search]);
+
   const visibleInvitations = (() => {
-    const term = deferredSearch.trim().toLowerCase();
+    const term = normalizeContactSearch(deferredSearch.trim());
     const filtered = invitations.filter((invitation) => {
-      const haystack = [
-        invitation.contact_name,
-        invitation.contact_detail,
-        invitation.contact_email,
-        invitation.attention_note,
-        invitation.notes,
-        invitation.response_note,
-        invitation.approval_references.join(" "),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+      const haystack = normalizeContactSearch(
+        [
+          invitation.contact_name,
+          invitation.contact_detail,
+          invitation.contact_email,
+          invitation.attention_note,
+          invitation.notes,
+          invitation.response_note,
+          invitation.approval_references.join(" "),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
       return (
         (!term || haystack.includes(term)) &&
         (statusFilter === "all" || invitation.invitation_status === statusFilter) &&
@@ -1250,32 +1270,14 @@ export function InvitationManagement({
         ))}
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
-          <form className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <label className="text-sm font-medium text-slate-700">
-              Cerca tra gli invitati
-              <input
-                name="q"
-                type="search"
-                defaultValue={pageSearch}
-                placeholder="Nome, istituzione, carica o email"
-                className={inputClass}
-              />
-            </label>
-            <button className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#263f86]">
-              Filtra
-            </button>
-          </form>
-        </section>
-
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
         <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <AddInvitationForm eventId={eventId} resetToken={summary.total} />
         </section>
 
         <Link
           href={`/dashboard/events/${eventId}/build`}
-          className="inline-flex items-center justify-center self-end rounded-xl bg-[#d43c2f] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#bb3025] md:col-span-2 lg:col-span-1"
+          className="inline-flex items-center justify-center self-end rounded-xl bg-[#d43c2f] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#bb3025]"
         >
           Costruisci lista con filtri
         </Link>
@@ -1410,15 +1412,19 @@ export function InvitationManagement({
               </button>
             </div>
           </div>
-          <div className="mt-4 grid gap-2 md:grid-cols-5">
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Cerca nei risultati mostrati"
-              aria-label="Cerca negli invitati mostrati"
-              className={inputClass}
-            />
+          <div className="mt-4 grid gap-2 md:grid-cols-5 md:items-end">
+            <label className="text-sm font-medium text-slate-700">
+              Cerca tra gli invitati
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nome, istituzione, carica o email"
+                aria-label="Cerca tra gli invitati"
+                autoComplete="off"
+                className={inputClass}
+              />
+            </label>
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}

@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
+import {
+  getEmailBatchPreviewAction,
+  type EmailBatchPreviewMessage,
+} from "../email-preview-actions";
 import {
   createEmailBatchAction,
   deleteEmailBatchAction,
@@ -44,6 +48,14 @@ const STATUS_LABELS: Record<EventEmailBatchRecord["status"], string> = {
   sending: "Invio",
   completed: "Completato",
   completed_with_errors: "Con errori",
+};
+
+const DELIVERY_STATUS_LABELS: Record<EmailBatchPreviewMessage["status"], string> = {
+  queued: "Da inviare",
+  sending: "Invio in corso",
+  sent: "Inviata",
+  failed: "Errore",
+  skipped: "Saltata",
 };
 
 function formatDate(value: string) {
@@ -119,6 +131,147 @@ function BatchDeleteForm({
       </button>
       <ActionMessage state={state} />
     </form>
+  );
+}
+
+function BatchPreviewButton({
+  eventId,
+  batch,
+}: {
+  eventId: number;
+  batch: EventEmailBatchRecord;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<EmailBatchPreviewMessage[]>([]);
+  const [total, setTotal] = useState(0);
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const selectedMessage =
+    messages.find((message) => message.id === selectedMessageId) ?? messages[0] ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  async function openPreview() {
+    setOpen(true);
+    if (messages.length > 0 || loading) return;
+    setLoading(true);
+    setError("");
+    const result = await getEmailBatchPreviewAction(eventId, batch.id);
+    if (result.status === "error") {
+      setError(result.message);
+    } else {
+      setMessages(result.messages);
+      setTotal(result.total);
+      setSelectedMessageId(result.messages[0]?.id ?? null);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openPreview}
+        className="inline-flex items-center gap-2 rounded-xl border border-[#1b3272] bg-white px-3 py-2 text-sm font-semibold text-[#1b3272] hover:bg-slate-100"
+      >
+        Vedi testo
+      </button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`email-batch-preview-title-${batch.id}`}
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="w-full max-w-3xl rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id={`email-batch-preview-title-${batch.id}`} className="text-xl font-semibold text-[#1b3272]">
+                  Testo email · blocco #{batch.id}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {batch.sent_count > 0 ? "Messaggi preparati e già inviati" : "Messaggi preparati da inviare"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            {loading ? (
+              <p className="mt-6 flex items-center gap-2 text-sm text-slate-600">
+                <PendingSpinner /> Caricamento testo...
+              </p>
+            ) : error ? (
+              <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </p>
+            ) : selectedMessage ? (
+              <div className="mt-5 space-y-4">
+                {messages.length > 1 ? (
+                  <label className="block text-sm font-medium text-slate-700">
+                    Destinatario
+                    <select
+                      value={selectedMessage.id}
+                      onChange={(event) => setSelectedMessageId(Number(event.target.value))}
+                      className={inputClass}
+                    >
+                      {messages.map((message, index) => (
+                        <option key={message.id} value={message.id}>
+                          {index + 1}. {message.to_email} · {DELIVERY_STATUS_LABELS[message.status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {total > messages.length ? (
+                  <p className="text-xs text-amber-700">
+                    Sono mostrati i primi {messages.length} messaggi su {total}.
+                  </p>
+                ) : null}
+                <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-[8rem_1fr]">
+                  <dt className="font-semibold text-slate-700">Destinatario</dt>
+                  <dd className="break-all text-slate-900">{selectedMessage.to_email}</dd>
+                  <dt className="font-semibold text-slate-700">Stato</dt>
+                  <dd className="text-slate-900">
+                    {DELIVERY_STATUS_LABELS[selectedMessage.status]}
+                    {selectedMessage.sent_at ? ` · ${formatDate(selectedMessage.sent_at)}` : ""}
+                  </dd>
+                  <dt className="font-semibold text-slate-700">Oggetto</dt>
+                  <dd className="text-slate-900">{selectedMessage.subject}</dd>
+                </dl>
+                {selectedMessage.error_message ? (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {selectedMessage.error_message}
+                  </p>
+                ) : null}
+                <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-4 font-sans text-sm leading-6 text-slate-900">
+                  {selectedMessage.rendered_text}
+                </pre>
+              </div>
+            ) : (
+              <p className="mt-6 text-sm text-slate-600">Nessun messaggio presente in questo blocco.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -233,16 +386,17 @@ export function EventEmailPanel({
                     <p className="mt-1 text-sm text-slate-600">
                       {batch.sent_count} inviate · {pendingCount} in coda · {batch.failed_count} errori · {batch.skipped_count} saltate
                     </p>
-                    {batch.attachments.length > 0 ? (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Allegati: {batch.attachments.map((attachment) =>
-                          `${attachment.file_name} (${formatBytes(attachment.file_size_bytes)})`,
-                        ).join(", ")}
-                      </p>
-                    ) : null}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {batch.attachments.length > 0
+                        ? `Allegati (${batch.attachments.length}): ${batch.attachments.map((attachment) =>
+                            `${attachment.file_name} (${formatBytes(attachment.file_size_bytes)})`,
+                          ).join(", ")}`
+                        : "Allegati: nessuno"}
+                    </p>
                     {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <BatchPreviewButton eventId={eventId} batch={batch} />
                     {pendingCount > 0 ? <BatchSendForm eventId={eventId} batch={batch} /> : null}
                     {batch.failed_count > 0 ? (
                       <BatchSendForm eventId={eventId} batch={batch} includeFailed />

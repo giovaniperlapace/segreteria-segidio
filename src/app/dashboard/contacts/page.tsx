@@ -3,7 +3,11 @@ import { requireProfile } from "@/lib/auth/profile";
 import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
-import { ContactManagement, type ContactRecord } from "./contact-management";
+import {
+  ContactManagement,
+  type ContactRecord,
+  type ContactTableSortDirection,
+} from "./contact-management";
 import { CONTACT_COLUMNS } from "./contact-data";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +65,33 @@ function parseMatchMode(searchParams: ContactsSearchParams) {
 function parseDateFilter(searchParams: ContactsSearchParams, key: string) {
   const value = paramValue(searchParams, key);
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+const CONTACT_TABLE_SORT_KEYS = [
+  "name",
+  "lastName",
+  "institution",
+  "groups",
+  "references",
+  "country",
+  "createdAt",
+  "updatedAt",
+  "status",
+  "priority",
+  "missing",
+] as const;
+
+type ContactTableSortKey = (typeof CONTACT_TABLE_SORT_KEYS)[number];
+
+function parseSortKey(searchParams: ContactsSearchParams): ContactTableSortKey {
+  const value = paramValue(searchParams, "sort");
+  return CONTACT_TABLE_SORT_KEYS.includes(value as ContactTableSortKey)
+    ? (value as ContactTableSortKey)
+    : "lastName";
+}
+
+function parseSortDirection(searchParams: ContactsSearchParams): ContactTableSortDirection {
+  return paramValue(searchParams, "direction") === "desc" ? "desc" : "asc";
 }
 
 function buildContactRecord(
@@ -185,6 +216,8 @@ export default async function ContactsPage({
   const createdTo = parseDateFilter(params, "createdTo");
   const updatedFrom = parseDateFilter(params, "updatedFrom");
   const updatedTo = parseDateFilter(params, "updatedTo");
+  const sortKey = parseSortKey(params);
+  const sortDirection = parseSortDirection(params);
   const from = (page - 1) * CONTACT_PAGE_SIZE;
   const hasPriorityFilter = priority === "standard" || priority === "important" || priority === "critical";
   const hasMissingFilter = missing === "yes" || missing === "no";
@@ -208,6 +241,8 @@ export default async function ContactsPage({
       p_created_to: createdTo || null,
       p_updated_from: updatedFrom || null,
       p_updated_to: updatedTo || null,
+      p_sort_key: sortKey,
+      p_sort_direction: sortDirection,
       p_limit: CONTACT_PAGE_SIZE,
       p_offset: from,
     }),
@@ -308,6 +343,8 @@ export default async function ContactsPage({
           totalContacts={totalContacts}
           page={page}
           pageSize={CONTACT_PAGE_SIZE}
+          initialSortKey={sortKey}
+          initialSortDirection={sortDirection}
           initialFilters={{
             search,
             status,

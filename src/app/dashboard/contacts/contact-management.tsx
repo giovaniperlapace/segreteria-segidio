@@ -109,6 +109,7 @@ type ContactTableColumnKey =
   | "priority"
   | "missing";
 type ContactTableSortKey = ContactTableColumnKey | "lastName";
+export type ContactTableSortDirection = "asc" | "desc";
 
 const TABLE_COLUMN_KEYS: ContactTableColumnKey[] = [
   "name",
@@ -448,28 +449,6 @@ function contactDisplayName(contact: ContactRecord) {
   );
 }
 
-function contactFirstNameSortValue(contact: ContactRecord) {
-  return [
-    contact.first_name,
-    contact.last_name,
-    contact.institution,
-    contact.email,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function contactLastNameSortValue(contact: ContactRecord) {
-  return [
-    contact.last_name,
-    contact.first_name,
-    contact.institution,
-    contact.email,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
 function optionNames(ids: number[], options: Option[]) {
   const selected = new Set(ids);
   return options.filter((option) => selected.has(option.id)).map((option) => option.name);
@@ -523,15 +502,6 @@ function FilterSummary({
       </div>
     </div>
   );
-}
-
-function compareValues(a: string | number, b: string | number, direction: "asc" | "desc") {
-  const result =
-    typeof a === "number" && typeof b === "number"
-      ? a - b
-      : String(a).localeCompare(String(b), "it", { sensitivity: "base" });
-
-  return direction === "asc" ? result : -result;
 }
 
 function contactDate(value: string) {
@@ -2114,6 +2084,8 @@ export function ContactManagement({
   page,
   pageSize,
   initialFilters,
+  initialSortKey,
+  initialSortDirection,
 }: {
   contacts: ContactRecord[];
   initialSelectedContact: ContactRecord | null;
@@ -2126,6 +2098,8 @@ export function ContactManagement({
   totalContacts: number;
   page: number;
   pageSize: number;
+  initialSortKey: ContactTableSortKey;
+  initialSortDirection: ContactTableSortDirection;
   initialFilters: {
     search: string;
     status: string;
@@ -2151,8 +2125,8 @@ export function ContactManagement({
   const [createdTo, setCreatedTo] = useState(initialFilters.createdTo);
   const [updatedFrom, setUpdatedFrom] = useState(initialFilters.updatedFrom);
   const [updatedTo, setUpdatedTo] = useState(initialFilters.updatedTo);
-  const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>("lastName");
-  const [tableSortDirection, setTableSortDirection] = useState<"asc" | "desc">("asc");
+  const [tableSortKey, setTableSortKey] = useState<ContactTableSortKey>(initialSortKey);
+  const [tableSortDirection, setTableSortDirection] = useState<ContactTableSortDirection>(initialSortDirection);
   const [cardSortKey, setCardSortKey] = useState<ContactCardSortKey>("default");
   const tableColumnsPreferenceKey = `${viewPreferenceKey}:table-columns:hidden`;
   const [hiddenTableColumns, setHiddenTableColumns] = useState<Set<ContactTableColumnKey>>(
@@ -2195,8 +2169,10 @@ export function ContactManagement({
     });
 
     if (tableSortKey === columnKey || (columnKey === "name" && tableSortKey === "lastName")) {
-      setTableSortKey(columnKey === "name" ? "institution" : "lastName");
+      const fallbackSortKey = columnKey === "name" ? "institution" : "lastName";
+      setTableSortKey(fallbackSortKey);
       setTableSortDirection("asc");
+      window.location.href = contactsUrl(1, fallbackSortKey, "asc");
     }
   }
 
@@ -2207,16 +2183,17 @@ export function ContactManagement({
   }
 
   function toggleTableSort(nextKey: ContactTableSortKey) {
-    if (nextKey === tableSortKey) {
-      setTableSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-
+    const nextDirection = nextKey === tableSortKey && tableSortDirection === "asc" ? "desc" : "asc";
     setTableSortKey(nextKey);
-    setTableSortDirection("asc");
+    setTableSortDirection(nextDirection);
+    window.location.href = contactsUrl(1, nextKey, nextDirection);
   }
 
-  function contactsUrl(nextPage: number) {
+  function contactsUrl(
+    nextPage: number,
+    sortKey: ContactTableSortKey = tableSortKey,
+    sortDirection: ContactTableSortDirection = tableSortDirection,
+  ) {
     const params = new URLSearchParams();
     if (search.trim()) params.set("q", search.trim());
     if (status !== "active") params.set("status", status);
@@ -2229,6 +2206,8 @@ export function ContactManagement({
     if (createdTo) params.set("createdTo", createdTo);
     if (updatedFrom) params.set("updatedFrom", updatedFrom);
     if (updatedTo) params.set("updatedTo", updatedTo);
+    if (sortKey !== "lastName") params.set("sort", sortKey);
+    if (sortDirection !== "asc") params.set("direction", sortDirection);
     if (nextPage > 1) params.set("page", String(nextPage));
     const query = params.toString();
     return `/dashboard/contacts${query ? `?${query}` : ""}`;
@@ -2329,30 +2308,7 @@ export function ContactManagement({
     updatedTo,
   ]);
 
-  const tableContacts = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const aGroups = optionNames(a.group_ids, groups).join(", ");
-      const bGroups = optionNames(b.group_ids, groups).join(", ");
-      const aReferences = optionNames(a.reference_ids, references).join(", ");
-      const bReferences = optionNames(b.reference_ids, references).join(", ");
-      const sortValues: Record<ContactTableSortKey, [string | number, string | number]> = {
-        name: [contactFirstNameSortValue(a), contactFirstNameSortValue(b)],
-        lastName: [contactLastNameSortValue(a), contactLastNameSortValue(b)],
-        institution: [a.institution ?? "", b.institution ?? ""],
-        groups: [aGroups, bGroups],
-        references: [aReferences, bReferences],
-        country: [a.country ?? "", b.country ?? ""],
-        createdAt: [new Date(a.created_at).getTime(), new Date(b.created_at).getTime()],
-        updatedAt: [new Date(a.updated_at).getTime(), new Date(b.updated_at).getTime()],
-        status: [a.status, b.status],
-        priority: [a.priority, b.priority],
-        missing: [a.missing_fields.length, b.missing_fields.length],
-      };
-
-      const [aValue, bValue] = sortValues[tableSortKey];
-      return compareValues(aValue, bValue, tableSortDirection);
-    });
-  }, [filtered, groups, references, tableSortDirection, tableSortKey]);
+  const tableContacts = filtered;
   const cardContacts = useMemo(() => {
     if (cardSortKey === "default") return filtered;
 

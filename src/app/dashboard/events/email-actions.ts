@@ -360,6 +360,107 @@ export async function createEmailBatchAction(
   }
 }
 
+export async function deleteEmailBatchAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  await requireManager();
+  const batchId = numberField(formData, "batchId");
+  const eventId = numberField(formData, "eventId");
+
+  if (!batchId || !eventId) {
+    return { status: "error", message: "Blocco email non valido." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const [{ data: batch, error: batchError }, { data: logs, error: logsError }] =
+      await Promise.all([
+        supabase
+          .from("email_batches")
+          .select("id,event_id,status,sent_count,failed_count")
+          .eq("id", batchId)
+          .eq("event_id", eventId)
+          .maybeSingle(),
+        supabase
+          .from("email_logs")
+          .select("status,attempt_count")
+          .eq("batch_id", batchId),
+      ]);
+    if (batchError) throw batchError;
+    if (logsError) throw logsError;
+    if (!batch) return { status: "error", message: "Blocco email non trovato." };
+
+    const hasStarted =
+      batch.status === "sending" ||
+      Number(batch.sent_count) > 0 ||
+      Number(batch.failed_count) > 0 ||
+      (logs ?? []).some(
+        (log) =>
+          Number(log.attempt_count ?? 0) > 0 ||
+          ["sending", "sent", "failed"].includes(String(log.status)),
+      );
+    if (hasStarted) {
+      return {
+        status: "error",
+        message: "Non puoi eliminare un blocco per cui e' gia' iniziato un tentativo di invio.",
+      };
+    }
+
+    const { data: attachmentLinks, error: attachmentLinksError } = await supabase
+      .from("email_batch_attachments")
+      .select("attachment_id")
+      .eq("batch_id", batchId);
+    if (attachmentLinksError) throw attachmentLinksError;
+
+    const { data: deletedBatch, error: deleteError } = await supabase
+      .from("email_batches")
+      .delete()
+      .eq("id", batchId)
+      .eq("event_id", eventId)
+      .neq("status", "sending")
+      .eq("sent_count", 0)
+      .eq("failed_count", 0)
+      .select("id")
+      .maybeSingle();
+    if (deleteError) throw deleteError;
+    if (!deletedBatch) {
+      return {
+        status: "error",
+        message: "Il blocco non e' stato eliminato: nel frattempo potrebbe essere iniziato l'invio.",
+      };
+    }
+
+    const attachmentIds = (attachmentLinks ?? []).map((link) => Number(link.attachment_id));
+    if (attachmentIds.length > 0) {
+      const { data: remainingLinks, error: remainingLinksError } = await supabase
+        .from("email_batch_attachments")
+        .select("attachment_id")
+        .in("attachment_id", attachmentIds);
+      if (remainingLinksError) {
+        console.error("Could not check orphan email attachments", remainingLinksError);
+      } else {
+        const stillUsed = new Set((remainingLinks ?? []).map((link) => Number(link.attachment_id)));
+        const orphanIds = attachmentIds.filter((id) => !stillUsed.has(id));
+        if (orphanIds.length > 0) {
+          const { error: attachmentDeleteError } = await supabase
+            .from("email_attachments")
+            .delete()
+            .in("id", orphanIds);
+          if (attachmentDeleteError) {
+            console.error("Could not delete orphan email attachments", attachmentDeleteError);
+          }
+        }
+      }
+    }
+
+    revalidatePath(`/dashboard/events/${eventId}`);
+    return { status: "success", message: "Blocco email eliminato." };
+  } catch (error) {
+    return { status: "error", message: friendlyEmailError(error) };
+  }
+}
+
 export async function sendEmailBatchAction(
   _previousState: ArchiveActionState,
   formData: FormData,
@@ -417,7 +518,16 @@ export async function sendEmailBatchAction(
       return { status: "success", message: "Nessuna email in coda per questo batch." };
     }
 
-    await supabase.from("email_batches").update({ status: "sending", last_error: null }).eq("id", batchId);
+    const { data: sendingBatch, error: sendingBatchError } = await supabase
+      .from("email_batches")
+      .update({ status: "sending", last_error: null })
+      .eq("id", batchId)
+      .select("id")
+      .maybeSingle();
+    if (sendingBatchError) throw sendingBatchError;
+    if (!sendingBatch) {
+      return { status: "error", message: "Il blocco email non e' piu' disponibile." };
+    }
 
     let sent = 0;
     let failed = 0;

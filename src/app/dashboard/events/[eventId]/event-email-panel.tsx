@@ -2,7 +2,11 @@
 
 import { useMemo } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
-import { createEmailBatchAction, sendEmailBatchAction } from "../email-actions";
+import {
+  createEmailBatchAction,
+  deleteEmailBatchAction,
+  sendEmailBatchAction,
+} from "../email-actions";
 import type { EventInvitationRecord } from "./invitation-management";
 
 export type EventEmailTemplateOption = {
@@ -77,6 +81,41 @@ function BatchSendForm({
       >
         {pending ? <PendingSpinner /> : null}
         {includeFailed ? "Ritenta errori" : "Invia prossimo blocco"}
+      </button>
+      <ActionMessage state={state} />
+    </form>
+  );
+}
+
+function BatchDeleteForm({
+  eventId,
+  batch,
+}: {
+  eventId: number;
+  batch: EventEmailBatchRecord;
+}) {
+  const [state, action, pending] = useArchiveAction(deleteEmailBatchAction);
+
+  return (
+    <form
+      action={action}
+      className="space-y-2"
+      onSubmit={(event) => {
+        if (!window.confirm(`Eliminare il blocco email #${batch.id}?`)) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <input type="hidden" name="eventId" value={eventId} />
+      <input type="hidden" name="batchId" value={batch.id} />
+      <button
+        type="submit"
+        disabled={pending}
+        aria-busy={pending}
+        className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+      >
+        {pending ? <PendingSpinner /> : null}
+        {pending ? "Eliminazione..." : "Elimina blocco"}
       </button>
       <ActionMessage state={state} />
     </form>
@@ -179,6 +218,8 @@ export function EventEmailPanel({
               0,
               batch.recipient_count - batch.sent_count - batch.failed_count - batch.skipped_count,
             );
+            const canDelete =
+              batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
             return (
               <div key={batch.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -206,6 +247,7 @@ export function EventEmailPanel({
                     {batch.failed_count > 0 ? (
                       <BatchSendForm eventId={eventId} batch={batch} includeFailed />
                     ) : null}
+                    {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
                   </div>
                 </div>
               </div>

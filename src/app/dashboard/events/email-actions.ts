@@ -83,12 +83,18 @@ function friendlyEmailError(error: unknown) {
   return "Operazione email non riuscita. Controlla i dati e riprova.";
 }
 
-function extractRecipient(value: string | null) {
-  if (!value) return null;
-  const emails = value
-    .split(/[;,]/)
+function extractRecipients(...values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const emails = values
+    .flatMap((value) => value?.split(/[;,]/) ?? [])
     .map((item) => item.trim())
-    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item))
+    .filter((item) => {
+      const normalized = item.toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
   return emails.length > 0 ? emails.join(", ") : null;
 }
 
@@ -311,7 +317,7 @@ export async function createEmailBatchAction(
 
     const logRows = rows.map((row) => {
       const contact = contactFromRelation(row.contacts);
-      const recipient = extractRecipient(contact?.email ?? null) ?? extractRecipient(contact?.email_2 ?? null);
+      const recipient = extractRecipients(contact?.email, contact?.email_2);
       if (!contact || !recipient) {
         return {
           batch_id: batchId,

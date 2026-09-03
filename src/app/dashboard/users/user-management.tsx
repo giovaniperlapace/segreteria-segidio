@@ -17,9 +17,16 @@ type ManagedUser = {
   email: string;
   role: "manager" | "reference";
   active: boolean;
+  receives_response_notifications: boolean;
 };
 
-type SortKey = "first_name" | "last_name" | "email" | "role" | "active";
+type SortKey =
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "role"
+  | "active"
+  | "receives_response_notifications";
 type SortDirection = "asc" | "desc";
 
 function ActionMessage({ state }: { state: UserActionState }) {
@@ -93,6 +100,7 @@ function SubmitButton({
 
 function CreateUserForm() {
   const [role, setRole] = useState<ManagedUser["role"]>("reference");
+  const [receivesResponseNotifications, setReceivesResponseNotifications] = useState(false);
   const [state, action, pending] = useActionState(createUserAction, INITIAL_STATE);
 
   return (
@@ -131,7 +139,11 @@ function CreateUserForm() {
           <select
             name="role"
             value={role}
-            onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
+            onChange={(event) => {
+              const nextRole = event.target.value as ManagedUser["role"];
+              setRole(nextRole);
+              if (nextRole !== "manager") setReceivesResponseNotifications(false);
+            }}
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5"
           >
             <option value="reference">Referente</option>
@@ -139,6 +151,20 @@ function CreateUserForm() {
           </select>
         </label>
       </div>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input
+          name="receivesResponseNotifications"
+          type="checkbox"
+          checked={receivesResponseNotifications}
+          disabled={role !== "manager"}
+          onChange={(event) => setReceivesResponseNotifications(event.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-[#1b3272] disabled:opacity-50"
+        />
+        <span>
+          Riceve le notifiche delle risposte agli inviti
+          {role !== "manager" ? " (disponibile solo per i manager)" : ""}
+        </span>
+      </label>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton pending={pending}>Crea utente autorizzato</SubmitButton>
         <ActionMessage state={state} />
@@ -155,6 +181,9 @@ function UserEditor({
   isCurrentUser: boolean;
 }) {
   const [role, setRole] = useState(user.role);
+  const [receivesResponseNotifications, setReceivesResponseNotifications] = useState(
+    user.receives_response_notifications,
+  );
   const [state, action, pending] = useActionState(updateUserAction, INITIAL_STATE);
   const formId = `user-${user.id}`;
 
@@ -193,13 +222,32 @@ function UserEditor({
             form={formId}
             name="role"
             value={role}
-            onChange={(event) => setRole(event.target.value as ManagedUser["role"])}
+            onChange={(event) => {
+              const nextRole = event.target.value as ManagedUser["role"];
+              setRole(nextRole);
+              if (nextRole !== "manager") setReceivesResponseNotifications(false);
+            }}
             aria-label={`Ruolo di ${user.first_name} ${user.last_name}`}
             className="min-w-36 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-[#d43c2f] focus:outline-none focus:ring-2 focus:ring-[#d43c2f]/20"
           >
             <option value="reference">Referente</option>
             <option value="manager">Manager</option>
           </select>
+        </td>
+        <td className="px-4 py-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              form={formId}
+              name="receivesResponseNotifications"
+              type="checkbox"
+              checked={receivesResponseNotifications}
+              disabled={role !== "manager"}
+              onChange={(event) => setReceivesResponseNotifications(event.target.checked)}
+              aria-label={`Notifiche risposte inviti per ${user.first_name} ${user.last_name}`}
+              className="h-4 w-4 accent-[#1b3272] disabled:opacity-40"
+            />
+            <span className="sr-only">Riceve notifiche risposte inviti</span>
+          </label>
         </td>
         <td className="px-4 py-3">
           <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -221,7 +269,7 @@ function UserEditor({
       </tr>
       {state.status !== "idle" ? (
         <tr className="border-t border-slate-100">
-          <td colSpan={6} className="px-4 py-2">
+          <td colSpan={7} className="px-4 py-2">
             <ActionMessage state={state} />
           </td>
         </tr>
@@ -266,12 +314,12 @@ export function UserManagement({
       })
       .sort((a, b) => {
         const aValue =
-          sortKey === "active"
-            ? Number(a.active)
+          sortKey === "active" || sortKey === "receives_response_notifications"
+            ? Number(a[sortKey])
             : String(a[sortKey] ?? "").toLowerCase();
         const bValue =
-          sortKey === "active"
-            ? Number(b.active)
+          sortKey === "active" || sortKey === "receives_response_notifications"
+            ? Number(b[sortKey])
             : String(b[sortKey] ?? "").toLowerCase();
 
         if (aValue < bValue) return -1 * direction;
@@ -344,7 +392,7 @@ export function UserManagement({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1180px] border-collapse text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-4 py-3">
@@ -368,6 +416,14 @@ export function UserManagement({
                   </button>
                 </th>
                 <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("receives_response_notifications")}
+                  >
+                    Notifiche risposte{sortLabel("receives_response_notifications")}
+                  </button>
+                </th>
+                <th className="px-4 py-3">
                   <button type="button" onClick={() => toggleSort("active")}>
                     Attivo{sortLabel("active")}
                   </button>
@@ -380,7 +436,7 @@ export function UserManagement({
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                     Nessun utente trovato con i filtri selezionati.
                   </td>
                 </tr>

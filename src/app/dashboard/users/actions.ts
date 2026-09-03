@@ -54,6 +54,7 @@ async function manageProfile(input: {
   lastName: string;
   role: AppRole;
   active: boolean;
+  receivesResponseNotifications: boolean;
 }) {
   const service = createSupabaseServiceClient();
   const { error } = await service.rpc("admin_manage_profile", {
@@ -65,6 +66,7 @@ async function manageProfile(input: {
     target_role: input.role,
     target_active: input.active,
     target_reference_id: null,
+    target_receives_response_notifications: input.receivesResponseNotifications,
   });
 
   if (error) {
@@ -81,6 +83,8 @@ export async function createUserAction(
   const lastName = getRequiredString(formData, "lastName");
   const email = getRequiredString(formData, "email").toLowerCase();
   const role = parseRole(formData);
+  const receivesResponseNotifications =
+    role === "manager" && formData.get("receivesResponseNotifications") === "on";
 
   if (!firstName || !lastName || !EMAIL_PATTERN.test(email) || !role) {
     return {
@@ -123,6 +127,7 @@ export async function createUserAction(
       lastName,
       role,
       active: true,
+      receivesResponseNotifications,
     });
 
     revalidatePath("/dashboard");
@@ -148,6 +153,8 @@ export async function updateUserAction(
   const lastName = getRequiredString(formData, "lastName");
   const role = parseRole(formData);
   const active = formData.get("active") === "on";
+  const receivesResponseNotifications =
+    role === "manager" && formData.get("receivesResponseNotifications") === "on";
 
   if (!profileId || !firstName || !lastName || !role) {
     return { status: "error", message: "Nome, cognome e ruolo sono obbligatori." };
@@ -174,6 +181,7 @@ export async function updateUserAction(
       lastName,
       role,
       active,
+      receivesResponseNotifications,
     });
 
     revalidatePath("/dashboard");

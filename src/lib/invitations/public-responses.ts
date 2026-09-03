@@ -125,13 +125,17 @@ export async function readPublicResponseContext(rawToken: string) {
   } satisfies PublicResponseContext;
 }
 
-async function notifyManagers(context: PublicResponseContext, response: PublicResponseStatus) {
+async function notifySelectedManagers(
+  context: PublicResponseContext,
+  response: PublicResponseStatus,
+) {
   const supabase = createSupabaseServiceClient();
   const { data: managers, error } = await supabase
     .from("profiles")
     .select("email,full_name")
     .eq("role", "manager")
     .eq("active", true)
+    .eq("receives_response_notifications", true)
     .not("email", "is", null);
   if (error) throw error;
 
@@ -229,7 +233,7 @@ export async function recordPublicInvitationResponse(rawToken: string, response:
   if (tokenError) throw tokenError;
 
   try {
-    await notifyManagers(context, response);
+    await notifySelectedManagers(context, response);
   } catch (error) {
     console.error("Public response notification failed", error);
   }

@@ -9,7 +9,7 @@ export default async function UsersPage() {
 
   const { data: profiles, error: profilesError } = await service
     .from("profiles")
-    .select("id,first_name,last_name,email,role,active")
+    .select("id,first_name,last_name,email,role,active,receives_response_notifications")
     .order("active", { ascending: false })
     .order("last_name")
     .order("first_name");
@@ -31,7 +31,8 @@ export default async function UsersPage() {
               Utenti e ruoli
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Crea gli utenti autorizzati, assegna il ruolo e gestisci gli accessi.
+              Crea gli utenti autorizzati, assegna il ruolo, gestisci gli accessi e scegli
+              quali manager ricevono le notifiche delle risposte agli inviti.
             </p>
           </div>
         </header>

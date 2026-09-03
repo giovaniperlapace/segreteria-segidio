@@ -1086,6 +1086,7 @@ export async function convertReferenceToUserAction(
       target_role: "reference",
       target_active: true,
       target_reference_id: referenceId,
+      target_receives_response_notifications: false,
     });
 
     if (error) throw error;

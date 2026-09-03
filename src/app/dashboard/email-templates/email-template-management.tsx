@@ -22,6 +22,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("it-IT", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "Europe/Rome",
   }).format(new Date(value));
 }
 

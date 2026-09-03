@@ -1,6 +1,14 @@
 "use client";
 
-import { Fragment, useActionState, useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  startTransition,
+  useActionState,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { INTERACTION_FINISHED_EVENT } from "@/app/pending-interaction-feedback";
 import {
   createUserAction,
@@ -187,11 +195,20 @@ function UserEditor({
   const [state, action, pending] = useActionState(updateUserAction, INITIAL_STATE);
   const formId = `user-${user.id}`;
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    startTransition(() => {
+      action(formData);
+    });
+  }
+
   return (
     <Fragment>
       <tr className="border-t border-slate-200 align-top">
         <td className="px-4 py-3">
-          <form id={formId} action={action}>
+          <form id={formId} onSubmit={handleSubmit}>
             <input type="hidden" name="profileId" value={user.id} />
           </form>
           <input

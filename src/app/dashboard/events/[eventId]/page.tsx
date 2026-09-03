@@ -96,7 +96,6 @@ export default async function EventDetailPage({
   const [
     { data: invitations, error: invitationsError, count },
     proposalsResult,
-    { data: contacts, error: contactsError },
     groupsResult,
     referencesResult,
     languagesResult,
@@ -117,14 +116,6 @@ export default async function EventDetailPage({
         )
         .eq("event_id", eventId)
         .eq("status", "pending"),
-      supabase
-        .from("contacts")
-        .select("id,first_name,last_name,institution,institutional_role,email,status")
-        .is("deleted_at", null)
-        .eq("status", "active")
-        .order("last_name")
-        .order("first_name")
-        .limit(800),
       supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
       supabase
         .from("internal_references")
@@ -156,7 +147,6 @@ export default async function EventDetailPage({
 
   if (invitationsError) throw invitationsError;
   if (proposalsResult.error) throw proposalsResult.error;
-  if (contactsError) throw contactsError;
   for (const result of [groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
   }
@@ -228,9 +218,6 @@ export default async function EventDetailPage({
     ]);
   }
 
-  const proposalContactIds = new Set(
-    (proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)),
-  );
   const invitedIdsFromQuery = new Set((invitations ?? []).map((invitation) => Number(invitation.contact_id)));
   const visibleProposals = (proposalsResult.data ?? []).filter(
     (proposal) => !invitedIdsFromQuery.has(Number(proposal.contact_id)),
@@ -431,22 +418,6 @@ export default async function EventDetailPage({
     a.contact_name.localeCompare(b.contact_name, "it", { sensitivity: "base" }),
   );
 
-  const invitedContactIds = new Set([
-    ...invitationRows.map((invitation) => invitation.contact_id),
-    ...proposalContactIds,
-  ]);
-  const contactOptions = (contacts ?? [])
-    .filter(
-      (contact) =>
-        contact.status === "active" &&
-        !invitedContactIds.has(Number(contact.id)),
-    )
-    .map((contact) => ({
-      id: Number(contact.id),
-      name: contactName(contact),
-      detail: [contact.institutional_role, contact.institution, contact.email].filter(Boolean).join(" · "),
-    }));
-
   const total = (count ?? invitationRows.length) + proposalRows.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const responseCounts = (responseCountsResult.data ?? {
@@ -500,7 +471,6 @@ export default async function EventDetailPage({
             declined: Number(responseCounts.declined_count),
             maybe: Number(responseCounts.maybe_count),
           }}
-          contactOptions={contactOptions}
           groups={(groupsResult.data ?? []).map((group) => ({
             id: Number(group.id),
             name: String(group.name),

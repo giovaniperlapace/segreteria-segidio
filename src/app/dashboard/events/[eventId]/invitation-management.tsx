@@ -8,6 +8,8 @@ import {
   bulkUpdateInvitationResponseAction,
   bulkUpdateInvitationStatusAction,
   removeInvitationAction,
+  searchInvitationContactsAction,
+  type InvitationContactOption,
   undoBulkInvitationStatusAction,
   updateInvitationAction,
 } from "../actions";
@@ -23,12 +25,6 @@ import {
   type EventEmailBatchRecord,
   type EventEmailTemplateOption,
 } from "./event-email-panel";
-
-type ContactOption = {
-  id: number;
-  name: string;
-  detail: string;
-};
 
 export type EventInvitationRecord = {
   id: number;
@@ -188,23 +184,51 @@ function normalizeContactSearch(value: string) {
 }
 
 function SearchableContactSelect({
-  contacts,
+  eventId,
 }: {
-  contacts: ContactOption[];
+  eventId: number;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [contacts, setContacts] = useState<InvitationContactOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [completedTerm, setCompletedTerm] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
-  const deferredSearch = useDeferredValue(search);
-  const term = normalizeContactSearch(deferredSearch.trim());
+  const requestIdRef = useRef(0);
+  const deferredSearch = useDeferredValue(search.trim());
+  const term = normalizeContactSearch(deferredSearch);
   const selectedContact = contacts.find((contact) => contact.id === selectedId);
-  const visibleContacts = contacts
-    .filter((contact) => {
-      if (!term) return true;
-      return normalizeContactSearch(`${contact.name} ${contact.detail}`).includes(term);
-    })
-    .slice(0, 40);
+
+  useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    if (selectedId !== null || term.length < 2) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setSearchError(false);
+      searchInvitationContactsAction(eventId, deferredSearch)
+        .then((results) => {
+          if (requestId !== requestIdRef.current) return;
+          setContacts(results);
+          setCompletedTerm(term);
+        })
+        .catch(() => {
+          if (requestId !== requestIdRef.current) return;
+          setContacts([]);
+          setSearchError(true);
+          setCompletedTerm(term);
+        })
+        .finally(() => {
+          if (requestId === requestIdRef.current) setLoading(false);
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [deferredSearch, eventId, selectedId, term]);
 
   useEffect(() => {
     if (!open) return;
@@ -243,6 +267,7 @@ function SearchableContactSelect({
         aria-label="Cerca un contatto da aggiungere"
         role="combobox"
         aria-expanded={open}
+        aria-busy={selectedId === null && term.length >= 2 && (loading || completedTerm !== term)}
         aria-controls="add-invitation-contact-options"
         aria-autocomplete="list"
         autoComplete="off"
@@ -254,8 +279,18 @@ function SearchableContactSelect({
           role="listbox"
           className="absolute z-40 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg"
         >
-          {visibleContacts.length > 0 ? (
-            visibleContacts.map((contact) => (
+          {selectedId !== null ? (
+            <p className="px-3 py-3 text-sm text-slate-500">Contatto selezionato.</p>
+          ) : term.length < 2 ? (
+            <p className="px-3 py-3 text-sm text-slate-500">Digita almeno 2 caratteri.</p>
+          ) : loading || completedTerm !== term ? (
+            <p className="flex items-center gap-2 px-3 py-3 text-sm text-slate-500">
+              <PendingSpinner /> Ricerca nell&apos;archivio...
+            </p>
+          ) : searchError ? (
+            <p className="px-3 py-3 text-sm text-red-700">Ricerca non riuscita. Riprova.</p>
+          ) : contacts.length > 0 ? (
+            contacts.map((contact) => (
               <button
                 key={contact.id}
                 type="button"
@@ -285,18 +320,19 @@ function SearchableContactSelect({
 
 function AddInvitationForm({
   eventId,
-  contacts,
+  resetToken,
 }: {
   eventId: number;
-  contacts: ContactOption[];
+  resetToken: number;
 }) {
   const [state, action, pending] = useArchiveAction(addInvitationAction);
+
   return (
     <form action={action} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
       <input type="hidden" name="eventId" value={eventId} />
       <label className="text-sm font-medium text-slate-700">
         Aggiungi invitato
-        <SearchableContactSelect contacts={contacts} />
+        <SearchableContactSelect key={resetToken} eventId={eventId} />
       </label>
       <SubmitButton pending={pending}>Aggiungi</SubmitButton>
       <div className="md:col-span-2">
@@ -962,7 +998,6 @@ export function InvitationManagement({
   pageSearch,
   invitations,
   summary,
-  contactOptions,
   groups,
   references,
   languages,
@@ -973,7 +1008,6 @@ export function InvitationManagement({
   pageSearch: string;
   invitations: EventInvitationRecord[];
   summary: InvitationSummary;
-  contactOptions: ContactOption[];
   groups: Option[];
   references: Option[];
   languages: LanguageOption[];
@@ -1236,7 +1270,7 @@ export function InvitationManagement({
         </section>
 
         <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
-          <AddInvitationForm eventId={eventId} contacts={contactOptions} />
+          <AddInvitationForm eventId={eventId} resetToken={summary.total} />
         </section>
 
         <Link

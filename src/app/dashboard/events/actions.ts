@@ -10,6 +10,38 @@ const INVITATION_STATUSES = ["draft", "proposed", "selected", "invited", "exclud
 const RESPONSE_STATUSES = ["no_response", "attending", "declined", "maybe"] as const;
 const ATTENDANCE_STATUSES = ["unknown", "attended", "absent"] as const;
 
+export type InvitationContactOption = {
+  id: number;
+  name: string;
+  detail: string;
+};
+
+type InvitationContactSearchRow = {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  institution: string | null;
+  institutional_role: string | null;
+  institutional_role_english: string | null;
+  institutional_role_invitation: string | null;
+  email: string | null;
+  email_2: string | null;
+};
+
+const INVITATION_CONTACT_SEARCH_FIELDS = [
+  "first_name",
+  "last_name",
+  "institution",
+  "institutional_role",
+  "institutional_role_english",
+  "institutional_role_invitation",
+  "email",
+  "email_2",
+] as const;
+
+const INVITATION_CONTACT_SEARCH_COLUMNS =
+  "id,first_name,last_name,institution,institutional_role,institutional_role_english,institutional_role_invitation,email,email_2";
+
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
 }
@@ -77,6 +109,122 @@ function friendlyError(error: unknown) {
 
   console.error("Event operation failed", error);
   return "Operazione non riuscita. Controlla i dati e riprova.";
+}
+
+function normalizedSearchValue(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("it");
+}
+
+function contactSearchScore(contact: InvitationContactSearchRow, search: string) {
+  const term = normalizedSearchValue(search);
+  const nameFields = [contact.first_name, contact.last_name].map(normalizedSearchValue);
+  const detailFields = [
+    contact.institution,
+    contact.institutional_role,
+    contact.institutional_role_english,
+    contact.institutional_role_invitation,
+  ].map(normalizedSearchValue);
+  const emailFields = [contact.email, contact.email_2].map(normalizedSearchValue);
+  const startsWithWord = (value: string) =>
+    value.split(/[^\p{L}\p{N}]+/u).some((word) => word.startsWith(term));
+
+  if (nameFields.some((value) => value.startsWith(term))) return 0;
+  if (nameFields.some(startsWithWord)) return 1;
+  if (detailFields.some(startsWithWord)) return 2;
+  if (nameFields.some((value) => value.includes(term))) return 3;
+  if (detailFields.some((value) => value.includes(term))) return 4;
+  if (emailFields.some((value) => value.includes(term))) return 5;
+  return 6;
+}
+
+export async function searchInvitationContactsAction(
+  eventId: number,
+  rawSearch: string,
+): Promise<InvitationContactOption[]> {
+  await requireManager();
+
+  if (!Number.isSafeInteger(eventId) || eventId <= 0) return [];
+  const search = rawSearch
+    .trim()
+    .replace(/[%_*(),]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  if (search.length < 2) return [];
+
+  const supabase = createSupabaseServiceClient();
+  const pattern = `%${search}%`;
+  const searchFilter = INVITATION_CONTACT_SEARCH_FIELDS
+    .map((field) => `${field}.ilike.${pattern}`)
+    .join(",");
+  const searchResult = await supabase
+    .from("contacts")
+    .select(INVITATION_CONTACT_SEARCH_COLUMNS)
+    .is("deleted_at", null)
+    .eq("status", "active")
+    .or(searchFilter)
+    .limit(400);
+  if (searchResult.error) throw searchResult.error;
+
+  const contactsById = new Map<number, InvitationContactSearchRow>();
+  for (const contact of (searchResult.data ?? []) as InvitationContactSearchRow[]) {
+    contactsById.set(Number(contact.id), contact);
+  }
+
+  const rankedContacts = [...contactsById.values()].sort((left, right) => {
+    const scoreDifference = contactSearchScore(left, search) - contactSearchScore(right, search);
+    if (scoreDifference !== 0) return scoreDifference;
+
+    const leftName = [left.last_name, left.first_name, left.institution].filter(Boolean).join(" ");
+    const rightName = [right.last_name, right.first_name, right.institution].filter(Boolean).join(" ");
+    return leftName.localeCompare(rightName, "it", { sensitivity: "base" });
+  });
+  const candidateIds = rankedContacts.map((contact) => contact.id);
+  if (candidateIds.length === 0) return [];
+
+  const [invitationsResult, proposalsResult] = await Promise.all([
+    supabase
+      .from("event_invitations")
+      .select("contact_id")
+      .eq("event_id", eventId)
+      .in("contact_id", candidateIds),
+    supabase
+      .from("invitation_proposals")
+      .select("contact_id")
+      .eq("event_id", eventId)
+      .eq("status", "pending")
+      .in("contact_id", candidateIds),
+  ]);
+  if (invitationsResult.error) throw invitationsResult.error;
+  if (proposalsResult.error) throw proposalsResult.error;
+
+  const unavailableIds = new Set([
+    ...(invitationsResult.data ?? []).map((row) => Number(row.contact_id)),
+    ...(proposalsResult.data ?? []).map((row) => Number(row.contact_id)),
+  ]);
+
+  return rankedContacts
+    .filter((contact) => !unavailableIds.has(contact.id))
+    .slice(0, 40)
+    .map((contact) => {
+      const name =
+        [contact.first_name, contact.last_name].filter(Boolean).join(" ") ||
+        contact.institution ||
+        "Contatto senza nome";
+      const role =
+        contact.institutional_role_invitation ||
+        contact.institutional_role ||
+        contact.institutional_role_english;
+      return {
+        id: contact.id,
+        name,
+        detail: [role, contact.institution, contact.email ?? contact.email_2]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    });
 }
 
 export async function createEventAction(

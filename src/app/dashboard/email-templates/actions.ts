@@ -102,6 +102,45 @@ export async function updateEmailTemplateAction(
   }
 }
 
+export async function setEmailTemplateActiveAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  const profile = await requireManager();
+  const templateId = numberField(formData, "templateId");
+  const active = formData.get("active") === "on";
+
+  if (!templateId) {
+    return { status: "error", message: "Template non valido." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data, error } = await supabase
+      .from("email_templates")
+      .update({
+        active,
+        updated_by_profile_id: profile.id,
+      })
+      .eq("id", templateId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return { status: "error", message: "Il template non esiste più." };
+
+    revalidatePath("/dashboard/email-templates");
+    revalidatePath("/dashboard/events");
+    return {
+      status: "success",
+      message: active ? "Template attivato." : "Template disattivato.",
+    };
+  } catch (error) {
+    return { status: "error", message: friendlyTemplateError(error) };
+  }
+}
+
 export async function deleteEmailTemplateAction(
   _previousState: ArchiveActionState,
   formData: FormData,

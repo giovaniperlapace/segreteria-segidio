@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EMAIL_TEMPLATE_VARIABLES } from "@/lib/email/templates";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
 import {
   createEmailTemplateAction,
   deleteEmailTemplateAction,
+  setEmailTemplateActiveAction,
   updateEmailTemplateAction,
 } from "./actions";
 
@@ -121,6 +122,44 @@ function DeleteTemplateButton({ template }: { template: EmailTemplateRecord }) {
   );
 }
 
+function TemplateActiveToggle({ template }: { template: EmailTemplateRecord }) {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+  const [state, action, pending] = useArchiveAction(setEmailTemplateActiveAction);
+
+  useEffect(() => {
+    if (state.status === "error" && checkboxRef.current) {
+      checkboxRef.current.checked = template.active;
+    }
+  }, [state.message, state.status, template.active]);
+
+  return (
+    <form action={action}>
+      <input type="hidden" name="templateId" value={template.id} />
+      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
+        <input
+          ref={checkboxRef}
+          type="checkbox"
+          name="active"
+          defaultChecked={template.active}
+          disabled={pending}
+          aria-label={template.active ? "Disattiva template" : "Attiva template"}
+          onChange={(event) => {
+            const form = event.currentTarget.form;
+            form?.requestSubmit();
+          }}
+          className="h-4 w-4 cursor-pointer rounded border-slate-300 text-[#1b3272] disabled:cursor-wait disabled:opacity-60"
+        />
+        {pending ? "Aggiornamento..." : template.active ? "Attivo" : "Non attivo"}
+      </label>
+      {state.status === "error" ? (
+        <div className="mt-2 max-w-sm">
+          <ActionMessage state={state} />
+        </div>
+      ) : null}
+    </form>
+  );
+}
+
 export function EmailTemplateManagement({ templates }: { templates: EmailTemplateRecord[] }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [showInactive, setShowInactive] = useState(false);
@@ -212,16 +251,10 @@ export function EmailTemplateManagement({ templates }: { templates: EmailTemplat
                       <h3 className="font-semibold text-slate-900">{template.name}</h3>
                       <p className="mt-1 text-sm text-slate-600">{template.subject}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={template.active}
-                            disabled
-                            aria-label={template.active ? "Template attivo" : "Template non attivo"}
-                            className="h-4 w-4 rounded border-slate-300 text-[#1b3272] disabled:opacity-100"
-                          />
-                          {template.active ? "Attivo" : "Non attivo"}
-                        </label>
+                        <TemplateActiveToggle
+                          key={`${template.id}:${template.active}`}
+                          template={template}
+                        />
                         <span className="text-xs text-slate-500">
                           Aggiornato {formatDate(template.updated_at)}
                         </span>

@@ -134,6 +134,7 @@ export default async function EventDetailPage({
         .from("email_templates")
         .select("id,name,subject")
         .eq("active", true)
+        .is("deleted_at", null)
         .order("name"),
       supabase
         .from("email_batches")

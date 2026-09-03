@@ -246,6 +246,7 @@ export async function createEmailBatchAction(
           .from("email_templates")
           .select("id,subject,body_text,active")
           .eq("id", templateId)
+          .is("deleted_at", null)
           .maybeSingle(),
       ]);
     if (eventError) throw eventError;

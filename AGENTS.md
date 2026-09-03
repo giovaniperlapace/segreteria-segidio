@@ -204,6 +204,7 @@ Migration MVP creata:
 - `supabase/migrations/20260613203000_invitation_companions.sql`
 - `supabase/migrations/20260616160000_email_templates_batches.sql`
 - `supabase/migrations/20260617100000_public_invitation_responses.sql`
+- `supabase/migrations/20260903233000_email_templates_soft_delete.sql`
 
 Include:
 
@@ -226,6 +227,7 @@ Include:
 - accompagnatori per risposta singola, con conteggio partecipanti derivato da invitato piu' accompagnatori.
 - template email, batch invio evento, allegati conservati per batch, log consegne e retry manuale a blocchi.
 - token pubblici hashati per risposte invito, pagina pubblica `/risposta/[token]`, origine corrente della risposta e storico `invitation_responses`.
+- soft-delete dei template email, che li esclude dalla gestione e dai nuovi invii senza perdere i riferimenti nei batch e nei log storici.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 

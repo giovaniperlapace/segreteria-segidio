@@ -79,7 +79,7 @@ export async function updateEmailTemplateAction(
 
   try {
     const supabase = createSupabaseServiceClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("email_templates")
       .update({
         name,
@@ -88,8 +88,12 @@ export async function updateEmailTemplateAction(
         active: formData.get("active") === "on",
         updated_by_profile_id: profile.id,
       })
-      .eq("id", templateId);
+      .eq("id", templateId)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
+    if (!data) return { status: "error", message: "Il template non esiste più." };
     revalidatePath("/dashboard/email-templates");
     revalidatePath("/dashboard/events");
     return { status: "success", message: "Template email aggiornato." };
@@ -102,7 +106,7 @@ export async function deleteEmailTemplateAction(
   _previousState: ArchiveActionState,
   formData: FormData,
 ): Promise<ArchiveActionState> {
-  await requireManager();
+  const profile = await requireManager();
   const templateId = numberField(formData, "templateId");
 
   if (!templateId) {
@@ -113,8 +117,13 @@ export async function deleteEmailTemplateAction(
     const supabase = createSupabaseServiceClient();
     const { data, error } = await supabase
       .from("email_templates")
-      .delete()
+      .update({
+        active: false,
+        deleted_at: new Date().toISOString(),
+        deleted_by_profile_id: profile.id,
+      })
       .eq("id", templateId)
+      .is("deleted_at", null)
       .select("id")
       .maybeSingle();
 
@@ -127,19 +136,6 @@ export async function deleteEmailTemplateAction(
     revalidatePath("/dashboard/events");
     return { status: "success", message: "Template email eliminato." };
   } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String(error.code)
-        : "";
-
-    if (code === "23503") {
-      return {
-        status: "error",
-        message:
-          "Questo template è già stato usato in uno o più invii e non può essere eliminato. Puoi disattivarlo per nasconderlo dai template utilizzabili.",
-      };
-    }
-
     return { status: "error", message: friendlyTemplateError(error) };
   }
 }

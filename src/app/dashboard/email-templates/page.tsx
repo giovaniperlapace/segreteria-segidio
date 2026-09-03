@@ -11,6 +11,7 @@ export default async function EmailTemplatesPage() {
   const { data: templates, error } = await supabase
     .from("email_templates")
     .select("id,name,subject,body_text,active,updated_at")
+    .is("deleted_at", null)
     .order("active", { ascending: false })
     .order("name");
 

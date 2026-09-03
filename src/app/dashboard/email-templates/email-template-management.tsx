@@ -95,7 +95,9 @@ function DeleteTemplateButton({ template }: { template: EmailTemplateRecord }) {
       <form
         action={action}
         onSubmit={(event) => {
-          if (!window.confirm(`Eliminare definitivamente il template "${template.name}"?`)) {
+          if (!window.confirm(
+            `Eliminare il template "${template.name}"? Non sarà più visibile né utilizzabile per nuovi invii.`,
+          )) {
             event.preventDefault();
           }
         }}

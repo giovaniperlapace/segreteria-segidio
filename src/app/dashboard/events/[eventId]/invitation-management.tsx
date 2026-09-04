@@ -1362,6 +1362,9 @@ export function InvitationManagement({
           invitation.attention_note,
           invitation.notes,
           invitation.response_note,
+          invitation.delegate_first_name,
+          invitation.delegate_last_name,
+          invitation.delegate_email,
           invitation.approval_references.join(" "),
         ]
           .filter(Boolean)
@@ -1373,8 +1376,11 @@ export function InvitationManagement({
         (responseFilter === "all" ||
           (responseFilter === "not_applicable"
             ? invitation.invitation_status !== "invited"
-            : invitation.invitation_status === "invited" &&
-              invitation.response_status === responseFilter)) &&
+            : responseFilter === "participants"
+              ? invitation.invitation_status === "invited" &&
+                (invitation.response_status === "attending" || Boolean(invitation.delegate_email))
+              : invitation.invitation_status === "invited" &&
+                invitation.response_status === responseFilter)) &&
         (attendanceFilter === "all" || invitation.attendance_status === attendanceFilter) &&
         (flagFilter === "all" ||
           (flagFilter === "flagged" ? invitation.attention_flag : !invitation.attention_flag))
@@ -1428,7 +1434,7 @@ export function InvitationManagement({
       label: "Partecipa",
       value: summary.attending,
       status: "invited",
-      response: "attending",
+      response: "participants",
     },
     {
       label: "Non partecipa",
@@ -1708,6 +1714,7 @@ export function InvitationManagement({
               <option value="all">Tutte le risposte</option>
               <option value="not_applicable">N/A</option>
               <option value="no_response">Nessuna risposta</option>
+              <option value="participants">Partecipanti e delegati</option>
               <option value="attending">Partecipa</option>
               <option value="declined">Non partecipa</option>
               <option value="maybe">Forse</option>

@@ -80,7 +80,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -163,6 +163,9 @@ export default async function EventDetailPage({
     source: "admin" | "public_link";
     actor_profile_id: string | null;
     response_note: string | null;
+    delegate_first_name: string | null;
+    delegate_last_name: string | null;
+    delegate_email: string | null;
     recorded_at: string;
   }> = [];
   let sentEmailRows: Array<{ invitation_id: number }> = [];
@@ -170,7 +173,7 @@ export default async function EventDetailPage({
     const [responseHistoryResult, sentEmailResult] = await Promise.all([
       supabase
         .from("invitation_responses")
-        .select("id,invitation_id,response_status,source,actor_profile_id,response_note,recorded_at")
+        .select("id,invitation_id,response_status,source,actor_profile_id,response_note,delegate_first_name,delegate_last_name,delegate_email,recorded_at")
         .in("invitation_id", visibleInvitationIds)
         .order("recorded_at", { ascending: false }),
       supabase
@@ -223,6 +226,9 @@ export default async function EventDetailPage({
       recorded_at: string;
       actor_name: string | null;
       response_note: string | null;
+      delegate_first_name: string | null;
+      delegate_last_name: string | null;
+      delegate_email: string | null;
     }>
   >();
   for (const history of responseHistoryRows) {
@@ -238,6 +244,9 @@ export default async function EventDetailPage({
           ? invitationProfilesById.get(history.actor_profile_id) ?? "Utente non disponibile"
           : null,
         response_note: history.response_note,
+        delegate_first_name: history.delegate_first_name,
+        delegate_last_name: history.delegate_last_name,
+        delegate_email: history.delegate_email,
       },
     ]);
   }
@@ -363,6 +372,9 @@ export default async function EventDetailPage({
       response_note: invitation.response_note,
       companion_count: Number(invitation.companion_count ?? 0),
       companion_names: invitation.companion_names,
+      delegate_first_name: invitation.delegate_first_name,
+      delegate_last_name: invitation.delegate_last_name,
+      delegate_email: invitation.delegate_email,
       invited_at: invitation.invited_at,
       response_recorded_at: invitation.response_recorded_at,
       response_recorded_by_profile_id: invitation.response_recorded_by_profile_id,
@@ -421,6 +433,9 @@ export default async function EventDetailPage({
       response_note: null,
       companion_count: 0,
       companion_names: null,
+      delegate_first_name: null,
+      delegate_last_name: null,
+      delegate_email: null,
       invited_at: null,
       response_recorded_at: null,
       response_recorded_by_profile_id: null,

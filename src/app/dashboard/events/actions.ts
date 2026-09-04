@@ -509,7 +509,7 @@ export async function updateInvitationAction(
     const supabase = createSupabaseServiceClient();
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
-      .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,invited_at,response_recorded_at,response_recorded_by_profile_id")
+      .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,invited_at,response_recorded_at,response_recorded_by_profile_id")
       .eq("id", invitationId)
       .maybeSingle();
     if (currentError) throw currentError;
@@ -523,6 +523,11 @@ export async function updateInvitationAction(
     const response = isInvited ? requestedResponse : "no_response";
     const companionCount = isInvited && response === "attending" ? requestedCompanionCount : 0;
     const companionNames = companionCount > 0 ? requestedCompanionNames : null;
+    const preserveDelegate =
+      isInvited && response === "declined" && currentInvitation.response_status === "declined";
+    const delegateFirstName = preserveDelegate ? currentInvitation.delegate_first_name : null;
+    const delegateLastName = preserveDelegate ? currentInvitation.delegate_last_name : null;
+    const delegateEmail = preserveDelegate ? currentInvitation.delegate_email : null;
     const responseDetailsChanged =
       responseChanged ||
       companionCount !== Number(currentInvitation.companion_count ?? 0) ||
@@ -540,6 +545,9 @@ export async function updateInvitationAction(
         response_note: isInvited ? optionalText(formData, "responseNote") : null,
         companion_count: companionCount,
         companion_names: companionNames,
+        delegate_first_name: delegateFirstName,
+        delegate_last_name: delegateLastName,
+        delegate_email: delegateEmail,
         response_recorded_at:
           response === "no_response"
             ? null
@@ -579,6 +587,9 @@ export async function updateInvitationAction(
         response_note: response === "no_response" ? null : optionalText(formData, "responseNote"),
         companion_count: companionCount,
         companion_names: companionNames,
+        delegate_first_name: delegateFirstName,
+        delegate_last_name: delegateLastName,
+        delegate_email: delegateEmail,
       });
       if (historyError) throw historyError;
     }
@@ -662,6 +673,9 @@ export async function bulkUpdateInvitationStatusAction(
             response_note: isInvited ? undefined : null,
             companion_count: isInvited ? undefined : 0,
             companion_names: isInvited ? undefined : null,
+            delegate_first_name: isInvited ? undefined : null,
+            delegate_last_name: isInvited ? undefined : null,
+            delegate_email: isInvited ? undefined : null,
             response_recorded_at: isInvited ? undefined : null,
             response_recorded_by_profile_id: isInvited ? undefined : null,
             attendance_status: isInvited ? undefined : "unknown",
@@ -766,6 +780,9 @@ export async function bulkUpdateInvitationResponseAction(
         response_note: optionalText(formData, "responseNote"),
         companion_count: 0,
         companion_names: null,
+        delegate_first_name: null,
+        delegate_last_name: null,
+        delegate_email: null,
         response_recorded_at: response === "no_response" ? null : new Date().toISOString(),
         response_recorded_by_profile_id: response === "no_response" ? null : profile.id,
         updated_by_profile_id: profile.id,
@@ -785,6 +802,9 @@ export async function bulkUpdateInvitationResponseAction(
       response_note: response === "no_response" ? null : optionalText(formData, "responseNote"),
       companion_count: 0,
       companion_names: null,
+      delegate_first_name: null,
+      delegate_last_name: null,
+      delegate_email: null,
     }));
     const { error: historyError } = await supabase
       .from("invitation_responses")
@@ -823,6 +843,9 @@ export async function undoBulkInvitationStatusAction(
     responseNote: string | null;
     companionCount: number;
     companionNames: string | null;
+    delegateFirstName: string | null;
+    delegateLastName: string | null;
+    delegateEmail: string | null;
     invitedAt: string | null;
     responseRecordedAt: string | null;
     responseRecordedByProfileId: string | null;
@@ -863,6 +886,18 @@ export async function undoBulkInvitationStatusAction(
             typeof item?.companionNames === "string" && item.companionNames.trim()
               ? item.companionNames.trim()
               : null,
+          delegateFirstName:
+            typeof item?.delegateFirstName === "string" && item.delegateFirstName.trim()
+              ? item.delegateFirstName.trim()
+              : null,
+          delegateLastName:
+            typeof item?.delegateLastName === "string" && item.delegateLastName.trim()
+              ? item.delegateLastName.trim()
+              : null,
+          delegateEmail:
+            typeof item?.delegateEmail === "string" && item.delegateEmail.trim()
+              ? item.delegateEmail.trim()
+              : null,
           invitedAt: typeof item?.invitedAt === "string" ? item.invitedAt : null,
           responseRecordedAt:
             typeof item?.responseRecordedAt === "string" ? item.responseRecordedAt : null,
@@ -886,6 +921,9 @@ export async function undoBulkInvitationStatusAction(
             responseNote: string | null;
             companionCount: number;
             companionNames: string | null;
+            delegateFirstName: string | null;
+            delegateLastName: string | null;
+            delegateEmail: string | null;
             invitedAt: string | null;
             responseRecordedAt: string | null;
             responseRecordedByProfileId: string | null;
@@ -946,6 +984,9 @@ export async function undoBulkInvitationStatusAction(
           response_note: item.responseNote,
           companion_count: item.companionCount,
           companion_names: item.companionCount > 0 ? item.companionNames : null,
+          delegate_first_name: item.delegateFirstName,
+          delegate_last_name: item.delegateLastName,
+          delegate_email: item.delegateEmail,
           response_recorded_at: item.responseRecordedAt,
           response_recorded_by_profile_id: item.responseRecordedByProfileId,
         })

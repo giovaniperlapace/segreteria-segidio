@@ -1,14 +1,13 @@
 import Image from "next/image";
 import {
-  PUBLIC_RESPONSE_LABELS,
-  PUBLIC_RESPONSE_STATUSES,
-  type PublicResponseStatus,
+  PUBLIC_RESPONSE_CHOICE_LABELS,
+  type PublicResponseChoice,
 } from "@/lib/email/public-response-links";
 import {
   formatPublicEventDate,
   readPublicResponseContext,
 } from "@/lib/invitations/public-responses";
-import { submitPublicInvitationResponse } from "./actions";
+import { PublicResponseForm } from "./public-response-form";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +23,6 @@ const CURRENT_RESPONSE_LABELS: Record<string, string> = {
 function paramValue(searchParams: PublicResponseSearchParams, key: string) {
   const value = searchParams[key];
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
-
-function statusDescription(status: PublicResponseStatus) {
-  if (status === "attending") return "Confermo la mia presenza all'evento.";
-  if (status === "declined") return "Non potro' partecipare all'evento.";
-  return "Al momento penso di partecipare, ma non e' ancora definitivo.";
 }
 
 export default async function PublicInvitationResponsePage({
@@ -67,8 +60,11 @@ export default async function PublicInvitationResponsePage({
     );
   }
 
-  const currentResponse = CURRENT_RESPONSE_LABELS[context.invitation.response_status] ?? "Risposta registrata";
-  const submittedLabel = PUBLIC_RESPONSE_LABELS[selectedResponse as PublicResponseStatus];
+  const hasDelegate = Boolean(context.invitation.delegate_email);
+  const currentResponse = hasDelegate
+    ? `Non partecipo; delegato: ${context.invitation.delegate_first_name} ${context.invitation.delegate_last_name}`
+    : CURRENT_RESPONSE_LABELS[context.invitation.response_status] ?? "Risposta registrata";
+  const submittedLabel = PUBLIC_RESPONSE_CHOICE_LABELS[selectedResponse as PublicResponseChoice];
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-8 sm:px-6">
@@ -98,6 +94,11 @@ export default async function PublicInvitationResponsePage({
               Non e&apos; stato possibile registrare la risposta. Riprova oppure contatta la Segreteria.
             </div>
           ) : null}
+          {outcome === "dati-delegato" ? (
+            <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              Indichi nome, cognome e un indirizzo email valido per la persona delegata.
+            </div>
+          ) : null}
 
           <div className="mt-7">
             <h1 className="text-3xl font-semibold text-[#1b3272]">
@@ -112,43 +113,13 @@ export default async function PublicInvitationResponsePage({
             </p>
           </div>
 
-          <form action={submitPublicInvitationResponse} className="mt-7 space-y-4">
-            <input type="hidden" name="token" value={token} />
-            <fieldset className="space-y-3">
-              <legend className="text-base font-semibold text-slate-900">
-                Comunichi la sua risposta
-              </legend>
-              {PUBLIC_RESPONSE_STATUSES.map((status) => (
-                <label
-                  key={status}
-                  className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#1b3272]"
-                >
-                  <input
-                    type="radio"
-                    name="responseStatus"
-                    value={status}
-                    defaultChecked={context.invitation.response_status === status}
-                    className="mt-1 h-4 w-4 accent-[#1b3272]"
-                    required
-                  />
-                  <span>
-                    <span className="block font-semibold text-slate-900">
-                      {PUBLIC_RESPONSE_LABELS[status]}
-                    </span>
-                    <span className="mt-1 block text-sm leading-5 text-slate-600">
-                      {statusDescription(status)}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-[#1b3272] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#263f86]"
-            >
-              Invia risposta
-            </button>
-          </form>
+          <PublicResponseForm
+            token={token}
+            initialChoice={hasDelegate ? "delegated" : context.invitation.response_status === "no_response" ? null : context.invitation.response_status}
+            delegateFirstName={context.invitation.delegate_first_name ?? ""}
+            delegateLastName={context.invitation.delegate_last_name ?? ""}
+            delegateEmail={context.invitation.delegate_email ?? ""}
+          />
         </section>
       </div>
     </main>

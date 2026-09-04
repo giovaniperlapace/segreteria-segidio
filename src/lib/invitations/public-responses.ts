@@ -2,7 +2,8 @@ import { sendSmtpEmail } from "@/lib/email/gmail";
 import {
   appAbsoluteUrl,
   hashPublicResponseToken,
-  PUBLIC_RESPONSE_LABELS,
+  PUBLIC_RESPONSE_CHOICE_LABELS,
+  type PublicResponseChoice,
   type PublicResponseStatus,
 } from "@/lib/email/public-response-links";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
@@ -23,6 +24,9 @@ type InvitationRow = {
   contact_id: number;
   invitation_status: string;
   response_status: "no_response" | "attending" | "declined" | "maybe";
+  delegate_first_name: string | null;
+  delegate_last_name: string | null;
+  delegate_email: string | null;
 };
 
 type EventRow = {
@@ -90,7 +94,7 @@ export async function readPublicResponseContext(rawToken: string) {
     await Promise.all([
       supabase
         .from("event_invitations")
-        .select("id,event_id,contact_id,invitation_status,response_status")
+        .select("id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email")
         .eq("id", typedToken.invitation_id)
         .maybeSingle(),
       supabase
@@ -127,7 +131,8 @@ export async function readPublicResponseContext(rawToken: string) {
 
 async function notifySelectedManagers(
   context: PublicResponseContext,
-  response: PublicResponseStatus,
+  response: PublicResponseChoice,
+  delegate: PublicResponseDelegate | null,
 ) {
   const supabase = createSupabaseServiceClient();
   const { data: managers, error } = await supabase
@@ -150,7 +155,7 @@ async function notifySelectedManagers(
 
   const dashboardUrl = appAbsoluteUrl(`/dashboard/events/${context.event.id}`);
   const name = contactName(context.contact);
-  const responseLabel = PUBLIC_RESPONSE_LABELS[response];
+  const responseLabel = PUBLIC_RESPONSE_CHOICE_LABELS[response];
   const eventDate = formatPublicEventDate(context.event.starts_at);
   const subject = `Risposta invito - ${context.event.title}`;
   const text = [
@@ -161,6 +166,8 @@ async function notifySelectedManagers(
     `Evento: ${context.event.title}`,
     `Data: ${eventDate}`,
     context.event.location ? `Luogo: ${context.event.location}` : null,
+    delegate ? `Delegato: ${delegate.firstName} ${delegate.lastName}` : null,
+    delegate ? `Email delegato: ${delegate.email}` : null,
     "",
     `Apri la lista evento: ${dashboardUrl}`,
   ].filter(Boolean).join("\n");
@@ -176,6 +183,7 @@ async function notifySelectedManagers(
         <p>
           Evento: <strong>${escapeHtml(context.event.title)}</strong><br>
           Data: ${escapeHtml(eventDate)}${context.event.location ? `<br>Luogo: ${escapeHtml(context.event.location)}` : ""}
+          ${delegate ? `<br>Delegato: <strong>${escapeHtml(`${delegate.firstName} ${delegate.lastName}`)}</strong><br>Email delegato: ${escapeHtml(delegate.email)}` : ""}
         </p>
         <p style="margin: 22px 0;">
           <a href="${dashboardUrl}" style="background: #1b3272; color: #ffffff; padding: 11px 16px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 700;">
@@ -187,13 +195,46 @@ async function notifySelectedManagers(
   });
 }
 
-export async function recordPublicInvitationResponse(rawToken: string, response: PublicResponseStatus) {
+export type PublicResponseDelegate = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+function normalizedDelegate(delegate: PublicResponseDelegate | null) {
+  if (!delegate) return null;
+  const value = {
+    firstName: delegate.firstName.trim(),
+    lastName: delegate.lastName.trim(),
+    email: delegate.email.trim().toLowerCase(),
+  };
+  if (
+    !value.firstName ||
+    !value.lastName ||
+    value.firstName.length > 200 ||
+    value.lastName.length > 200 ||
+    value.email.length > 320 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)
+  ) {
+    throw new Error("Dati del delegato non validi.");
+  }
+  return value;
+}
+
+export async function recordPublicInvitationResponse(
+  rawToken: string,
+  choice: PublicResponseChoice,
+  rawDelegate: PublicResponseDelegate | null = null,
+) {
   const context = await readPublicResponseContext(rawToken);
   if (!context) return null;
 
   const supabase = createSupabaseServiceClient();
   const now = new Date().toISOString();
   const previousResponse = context.invitation.response_status;
+  const response: PublicResponseStatus = choice === "delegated" ? "declined" : choice;
+  const delegate = choice === "delegated" ? normalizedDelegate(rawDelegate) : null;
+  if (choice === "delegated" && !delegate) throw new Error("Dati del delegato mancanti.");
   const { error: updateError } = await supabase
     .from("event_invitations")
     .update({
@@ -204,6 +245,9 @@ export async function recordPublicInvitationResponse(rawToken: string, response:
       response_note: null,
       companion_count: 0,
       companion_names: null,
+      delegate_first_name: delegate?.firstName ?? null,
+      delegate_last_name: delegate?.lastName ?? null,
+      delegate_email: delegate?.email ?? null,
       response_recorded_at: now,
       response_recorded_by_profile_id: null,
       invited_at: context.invitation.invitation_status === "invited" ? undefined : now,
@@ -220,6 +264,9 @@ export async function recordPublicInvitationResponse(rawToken: string, response:
       source: "public_link",
       response_token_id: context.token.id,
       previous_response_status: previousResponse,
+      delegate_first_name: delegate?.firstName ?? null,
+      delegate_last_name: delegate?.lastName ?? null,
+      delegate_email: delegate?.email ?? null,
     }),
     supabase
       .from("invitation_response_tokens")
@@ -233,13 +280,13 @@ export async function recordPublicInvitationResponse(rawToken: string, response:
   if (tokenError) throw tokenError;
 
   try {
-    await notifySelectedManagers(context, response);
+    await notifySelectedManagers(context, choice, delegate);
   } catch (error) {
     console.error("Public response notification failed", error);
   }
 
   return {
     ...context,
-    selectedResponse: response,
+    selectedResponse: choice,
   };
 }

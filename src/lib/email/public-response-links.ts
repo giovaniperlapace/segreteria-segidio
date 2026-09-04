@@ -4,10 +4,19 @@ export const PUBLIC_RESPONSE_STATUSES = ["attending", "declined", "maybe"] as co
 
 export type PublicResponseStatus = (typeof PUBLIC_RESPONSE_STATUSES)[number];
 
+export const PUBLIC_RESPONSE_CHOICES = ["attending", "declined", "delegated", "maybe"] as const;
+
+export type PublicResponseChoice = (typeof PUBLIC_RESPONSE_CHOICES)[number];
+
 export const PUBLIC_RESPONSE_LABELS: Record<PublicResponseStatus, string> = {
   attending: "Partecipo",
   declined: "Non partecipo",
   maybe: "Probabilmente partecipo",
+};
+
+export const PUBLIC_RESPONSE_CHOICE_LABELS: Record<PublicResponseChoice, string> = {
+  ...PUBLIC_RESPONSE_LABELS,
+  delegated: "Non partecipo e delego una persona al mio posto",
 };
 
 export function appBaseUrl() {
@@ -39,6 +48,12 @@ export function appAbsoluteUrl(path: string) {
 export function publicResponseStatus(value: string): PublicResponseStatus | null {
   return PUBLIC_RESPONSE_STATUSES.includes(value as PublicResponseStatus)
     ? (value as PublicResponseStatus)
+    : null;
+}
+
+export function publicResponseChoice(value: string): PublicResponseChoice | null {
+  return PUBLIC_RESPONSE_CHOICES.includes(value as PublicResponseChoice)
+    ? (value as PublicResponseChoice)
     : null;
 }
 

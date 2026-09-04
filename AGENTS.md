@@ -9,6 +9,7 @@ Questo file serve come contesto operativo rapido per le sessioni Codex sul proge
 - Il progetto ha completato le Milestone 1-14: setup, ambiente, schema MVP, autenticazione, gestione utenti, CRUD archivio, import contatti Access, audit, gestione eventi con storico inviti Access, costruzione avanzata delle liste invitati, gestione manuale di inviti/risposte, dashboard MVP, export/stampe base e hardening con deploy.
 - La Milestone 15 post-MVP e' stata avviata il 2026-06-16: template email riutilizzabili, invio inviti da scheda evento, batch controllati, retry, log invii e allegati per batch. Il provider scelto e' lo stesso SMTP Gmail gia' usato per i magic link, con lo stesso account.
 - La Milestone 16 post-MVP e' stata implementata il 2026-06-17: le email invito includono un link pubblico personale, `/risposta/[token]` registra `Partecipo`/`Non partecipo`/`Probabilmente partecipo`, il valore corrente distingue origine admin o partecipante, lo storico mantiene tutti gli inserimenti e i manager attivi ricevono notifica email.
+- Dal 2026-09-04 il link pubblico consente anche all'invitato che non partecipa di indicare un delegato con nome, cognome ed email. Il delegato resta legato esclusivamente all'invito/evento, non viene creato nell'archivio contatti, compare nello storico, nelle viste operative, nelle notifiche e negli export partecipanti.
 - E' inizializzato come repository Git su branch `main`, con remote `origin` su GitHub.
 - L'app Next.js e' scaffoldata nella root con App Router, React 19, TypeScript, Tailwind CSS 4 ed ESLint.
 - Il codice applicativo include login magic link, callback, dashboard protetta e logout.
@@ -205,6 +206,7 @@ Migration MVP creata:
 - `supabase/migrations/20260616160000_email_templates_batches.sql`
 - `supabase/migrations/20260617100000_public_invitation_responses.sql`
 - `supabase/migrations/20260903233000_email_templates_soft_delete.sql`
+- `supabase/migrations/20260904100000_public_invitation_delegates.sql`
 
 Include:
 
@@ -228,6 +230,7 @@ Include:
 - template email, batch invio evento, allegati conservati per batch, log consegne e retry manuale a blocchi.
 - token pubblici hashati per risposte invito, pagina pubblica `/risposta/[token]`, origine corrente della risposta e storico `invitation_responses`.
 - soft-delete dei template email, che li esclude dalla gestione e dai nuovi invii senza perdere i riferimenti nei batch e nei log storici.
+- dati evento-specifici del delegato (`delegate_first_name`, `delegate_last_name`, `delegate_email`) sull'invito corrente e nello storico risposte, senza inserimento nella tabella `contacts`.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 

@@ -109,7 +109,12 @@ export function buildContactsTable(
 }
 
 function participantTotal(row: EventInvitationExportRow) {
+  if (row.delegateEmail) return 1;
   return row.responseStatus === "attending" ? 1 + row.companionCount : 0;
+}
+
+function delegateName(row: EventInvitationExportRow) {
+  return [row.delegateFirstName, row.delegateLastName].filter(Boolean).join(" ");
 }
 
 function invitationBaseColumns(options: { groups: ExportOption[]; references: ExportOption[] }): ExportColumn<EventInvitationExportRow>[] {
@@ -122,6 +127,8 @@ function invitationBaseColumns(options: { groups: ExportOption[]; references: Ex
     { key: "status", header: "Stato invito", width: 16, value: (row) => INVITATION_STATUS_LABELS[row.invitationStatus] },
     { key: "response", header: "Risposta", width: 18, value: (row) => row.invitationStatus === "invited" ? RESPONSE_LABELS[row.responseStatus] : "N/A" },
     { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionCount || "" },
+    { key: "delegate", header: "Delegato", width: 24, value: delegateName },
+    { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
     { key: "total", header: "Totale partecipanti", width: 14, value: participantTotal },
     { key: "flag", header: "Da seguire", width: 18, value: (row) => row.attentionFlag ? row.attentionNote || "Si" : "No" },
     { key: "note", header: "Note risposta", width: 30, value: (row) => row.responseNote },
@@ -153,7 +160,9 @@ export function buildEventTable(
   if (type === "responses") {
     filteredRows = rows.filter((row) => row.rowType === "invitation" && row.invitationStatus === "invited");
   } else if (type === "participants") {
-    filteredRows = rows.filter((row) => row.rowType === "invitation" && row.responseStatus === "attending");
+    filteredRows = rows.filter(
+      (row) => row.rowType === "invitation" && (row.responseStatus === "attending" || Boolean(row.delegateEmail)),
+    );
   } else if (type === "followup") {
     filteredRows = rows.filter(
       (row) =>
@@ -180,6 +189,8 @@ export function buildEventTable(
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
       { key: "response", header: "Risposta", width: 18, value: (row) => RESPONSE_LABELS[row.responseStatus] },
       { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionNames || row.companionCount || "" },
+      { key: "delegate", header: "Delegato", width: 24, value: delegateName },
+      { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "total", header: "Totale", width: 12, value: participantTotal },
       { key: "date", header: "Data risposta", width: 20, value: (row) => formatDateTime(row.responseRecordedAt) },
       { key: "author", header: "Autore", width: 22, value: (row) => row.responseRecordedByName },
@@ -188,7 +199,9 @@ export function buildEventTable(
     ];
   } else if (type === "participants") {
     columns = [
-      { key: "name", header: "Nome", width: 24, value: (row) => row.contactName },
+      { key: "name", header: "Partecipante", width: 24, value: (row) => delegateName(row) || row.contactName },
+      { key: "original_invitee", header: "Invitato originario", width: 24, value: (row) => row.delegateEmail ? row.contactName : "" },
+      { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "role", header: "Carica", width: 30, value: (row) => row.contact.institutional_role },
       { key: "institution", header: "Istituzione", width: 32, value: (row) => row.contact.institution },
       { key: "companions", header: "Accompagnatori", width: 26, value: (row) => row.companionNames || row.companionCount || "" },

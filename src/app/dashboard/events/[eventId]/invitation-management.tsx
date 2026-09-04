@@ -43,6 +43,9 @@ export type EventInvitationRecord = {
   response_note: string | null;
   companion_count: number;
   companion_names: string | null;
+  delegate_first_name: string | null;
+  delegate_last_name: string | null;
+  delegate_email: string | null;
   invited_at: string | null;
   response_recorded_at: string | null;
   response_recorded_by_profile_id: string | null;
@@ -54,6 +57,9 @@ export type EventInvitationRecord = {
     recorded_at: string;
     actor_name: string | null;
     response_note: string | null;
+    delegate_first_name: string | null;
+    delegate_last_name: string | null;
+    delegate_email: string | null;
   }>;
   invitation_status_updated_at: string | null;
   invitation_status_updated_by_profile_id: string | null;
@@ -81,6 +87,9 @@ type BulkUndoItem = {
   responseNote: string | null;
   companionCount: number;
   companionNames: string | null;
+  delegateFirstName: string | null;
+  delegateLastName: string | null;
+  delegateEmail: string | null;
   invitedAt: string | null;
   responseRecordedAt: string | null;
   responseRecordedByProfileId: string | null;
@@ -166,9 +175,14 @@ const INVITATION_STATUS_LABELS: Record<EventInvitationRecord["invitation_status"
 };
 
 function responseLabel(invitation: EventInvitationRecord) {
+  if (invitation.delegate_email) return "Non partecipa · delega";
   return invitation.invitation_status === "invited"
     ? RESPONSE_LABELS[invitation.response_status]
     : "N/A";
+}
+
+function delegateName(invitation: Pick<EventInvitationRecord, "delegate_first_name" | "delegate_last_name">) {
+  return [invitation.delegate_first_name, invitation.delegate_last_name].filter(Boolean).join(" ");
 }
 
 const ATTENDANCE_LABELS: Record<EventInvitationRecord["attendance_status"], string> = {
@@ -506,6 +520,16 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
             </dd>
           </div>
         </dl>
+        {invitation.delegate_email ? (
+          <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-3 text-sm text-violet-950 md:col-span-2">
+            <div className="font-semibold">Delegato per questo evento</div>
+            <div className="mt-1">{delegateName(invitation)}</div>
+            <div className="mt-0.5 break-all text-xs text-violet-800">{invitation.delegate_email}</div>
+            <div className="mt-2 text-xs text-violet-700">
+              Il delegato non è salvato nell&apos;archivio permanente dei contatti.
+            </div>
+          </div>
+        ) : null}
         {invitation.response_history.length > 0 ? (
           <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-600 md:col-span-2">
             <h3 className="font-semibold text-slate-800">Storico risposte</h3>
@@ -522,6 +546,11 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
                   {history.response_note ? (
                     <div className="mt-1 whitespace-pre-wrap break-words text-slate-600">
                       {history.response_note}
+                    </div>
+                  ) : null}
+                  {history.delegate_email ? (
+                    <div className="mt-1 text-violet-700">
+                      Delegato: {[history.delegate_first_name, history.delegate_last_name].filter(Boolean).join(" ")} · {history.delegate_email}
                     </div>
                   ) : null}
                 </li>
@@ -603,6 +632,11 @@ function InvitationBadges({ invitation }: { invitation: EventInvitationRecord })
       {invitation.response_status === "attending" && invitation.companion_count > 0 ? (
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">
           {participantCount} partecipanti
+        </span>
+      ) : null}
+      {invitation.delegate_email ? (
+        <span className="rounded-full bg-violet-100 px-2.5 py-1 text-violet-800">
+          Delegato: {delegateName(invitation)}
         </span>
       ) : null}
       {invitation.response_source ? (
@@ -758,6 +792,19 @@ function InvitationCard({
                 {invitation.companion_names}
               </p>
             ) : null}
+          </div>
+        ) : null}
+        {invitation.delegate_email ? (
+          <div className="mt-3 border-l-2 border-violet-300 pl-3">
+            <div className="text-[11px] font-semibold uppercase text-slate-500">
+              Delegato per l&apos;evento
+            </div>
+            <p className="mt-0.5 text-sm font-medium leading-5 text-slate-700">
+              {delegateName(invitation)}
+            </p>
+            <p className="mt-1 break-all text-sm leading-5 text-slate-600">
+              {invitation.delegate_email}
+            </p>
           </div>
         ) : null}
       </div>
@@ -1027,6 +1074,11 @@ function InvitationsTable({
                     {invitation.companion_names ? (
                       <div className="mt-1 max-w-64 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">
                         Accompagnatori: {invitation.companion_names}
+                      </div>
+                    ) : null}
+                    {invitation.delegate_email ? (
+                      <div className="mt-1 max-w-64 text-xs leading-5 text-violet-700">
+                        Delegato: {delegateName(invitation)} · {invitation.delegate_email}
                       </div>
                     ) : null}
                   </td>
@@ -1745,6 +1797,9 @@ export function InvitationManagement({
                     responseNote: invitation.response_note,
                     companionCount: invitation.companion_count,
                     companionNames: invitation.companion_names,
+                    delegateFirstName: invitation.delegate_first_name,
+                    delegateLastName: invitation.delegate_last_name,
+                    delegateEmail: invitation.delegate_email,
                     invitedAt: invitation.invited_at,
                     responseRecordedAt: invitation.response_recorded_at,
                     responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -1838,6 +1893,9 @@ export function InvitationManagement({
                   responseNote: invitation.response_note,
                   companionCount: invitation.companion_count,
                   companionNames: invitation.companion_names,
+                  delegateFirstName: invitation.delegate_first_name,
+                  delegateLastName: invitation.delegate_last_name,
+                  delegateEmail: invitation.delegate_email,
                   invitedAt: invitation.invited_at,
                   responseRecordedAt: invitation.response_recorded_at,
                   responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -1939,7 +1997,7 @@ export function InvitationManagement({
             </div>
             <div className="px-5 py-5">
               <InvitationEditor
-                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.notes ?? ""}`}
+                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.delegate_email ?? ""}:${selectedInvitation.notes ?? ""}`}
                 invitation={selectedInvitation}
               />
             </div>

@@ -12,6 +12,8 @@ export type ArchiveActionState = {
   message: string;
   contactId?: number;
   contact?: unknown;
+  batchId?: number;
+  remainingCount?: number;
 };
 
 export type ContactHistoryItem = {

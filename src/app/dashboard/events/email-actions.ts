@@ -138,6 +138,13 @@ async function refreshBatchCounters(batchId: number) {
     })
     .eq("id", batchId);
   if (updateError) throw updateError;
+
+  return {
+    ...counts,
+    recipientCount: total,
+    remainingCount: Math.max(0, total - processed),
+    status: nextStatus,
+  };
 }
 
 async function ensurePublicResponseLink(input: {
@@ -553,9 +560,14 @@ export async function sendEmailBatchAction(
       .limit(EMAIL_SEND_LIMIT);
     if (logsError) throw logsError;
     if (!logs || logs.length === 0) {
-      await refreshBatchCounters(batchId);
+      const counters = await refreshBatchCounters(batchId);
       revalidatePath(`/dashboard/events/${eventId}`);
-      return { status: "success", message: "Nessuna email in coda per questo batch." };
+      return {
+        status: "success",
+        message: "Nessuna email in coda per questo batch.",
+        batchId,
+        remainingCount: counters.remainingCount,
+      };
     }
 
     const { data: sendingBatch, error: sendingBatchError } = await supabase
@@ -643,13 +655,20 @@ export async function sendEmailBatchAction(
       }
     }
 
-    await refreshBatchCounters(batchId);
+    const counters = await refreshBatchCounters(batchId);
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return {
       status: failed > 0 ? "error" : "success",
-      message: `${sent} email inviate${failed > 0 ? `, ${failed} fallite` : ""}.`,
+      message:
+        failed > 0
+          ? `${sent} email inviate, ${failed} fallite. L'invio automatico si e' fermato per consentire il controllo degli errori.`
+          : counters.remainingCount > 0
+            ? `${sent} email inviate. Proseguo automaticamente con le ${counters.remainingCount} rimaste.`
+            : `${sent} email inviate. Invio completato.`,
+      batchId,
+      remainingCount: counters.remainingCount,
     };
   } catch (error) {
     return { status: "error", message: friendlyEmailError(error) };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
 import {
   getEmailBatchPreviewAction,
@@ -60,6 +60,8 @@ const DELIVERY_STATUS_LABELS: Record<EmailBatchPreviewMessage["status"], string>
   skipped: "Saltata",
 };
 
+const AUTO_CONTINUE_DELAY_MS = 5000;
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("it-IT", {
     dateStyle: "short",
@@ -84,10 +86,29 @@ function BatchActions({
   canDelete: boolean;
 }) {
   const [state, action, pending] = useArchiveAction(sendEmailBatchAction);
+  const [autoContinue, setAutoContinue] = useState(false);
+  const sendFormRef = useRef<HTMLFormElement>(null);
   const canChangeResponseLink =
     batch.status !== "sending" && batch.sent_count === 0 && batch.failed_count === 0;
   const canSend = pendingCount > 0 || batch.failed_count > 0;
   const sendFormId = `email-batch-send-${batch.id}`;
+
+  useEffect(() => {
+    if (!autoContinue || pending || state.status === "idle") return;
+    if (state.status === "error" || state.batchId !== batch.id) {
+      const timeoutId = window.setTimeout(() => setAutoContinue(false), 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+    if (!state.remainingCount) {
+      const timeoutId = window.setTimeout(() => setAutoContinue(false), 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      sendFormRef.current?.requestSubmit();
+    }, AUTO_CONTINUE_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [autoContinue, batch.id, pending, state]);
 
   return (
     <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -97,11 +118,12 @@ function BatchActions({
           <button
             type="submit"
             form={sendFormId}
-            disabled={pending}
+            disabled={pending || autoContinue}
+            aria-busy={pending || autoContinue}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
-            {pending ? <PendingSpinner /> : null}
-            Invia prossimo blocco
+            {pending || autoContinue ? <PendingSpinner /> : null}
+            {autoContinue ? "Invio automatico..." : "Invia tutte"}
           </button>
         ) : null}
         {batch.failed_count > 0 ? (
@@ -110,7 +132,7 @@ function BatchActions({
             form={sendFormId}
             name="includeFailed"
             value="on"
-            disabled={pending}
+            disabled={pending || autoContinue}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
             {pending ? <PendingSpinner /> : null}
@@ -120,7 +142,18 @@ function BatchActions({
         {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
       </div>
       {canSend ? (
-        <form id={sendFormId} action={action} className="space-y-2">
+        <form
+          ref={sendFormRef}
+          id={sendFormId}
+          action={action}
+          className="space-y-2"
+          onSubmit={(event) => {
+            const submitter = (event.nativeEvent as SubmitEvent).submitter;
+            if (!(submitter instanceof HTMLButtonElement) || submitter.name !== "includeFailed") {
+              setAutoContinue(true);
+            }
+          }}
+        >
           <input type="hidden" name="eventId" value={eventId} />
           <input type="hidden" name="batchId" value={batch.id} />
           {!canChangeResponseLink && !batch.include_public_response_link ? (

@@ -1,6 +1,7 @@
 "use server";
 
 import { requireManager } from "@/lib/auth/profile";
+import { removePublicResponseLink } from "@/lib/email/public-response-links";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 export type EmailBatchPreviewMessage = {
@@ -56,7 +57,7 @@ export async function getEmailBatchPreviewAction(
     let logsQuery = supabase
       .from("email_logs")
       .select(
-        "id,to_email,subject,rendered_text,status,sent_at,error_message,contacts(first_name,last_name,institution)",
+        "id,invitation_id,to_email,subject,rendered_text,response_url,status,sent_at,error_message,contacts(first_name,last_name,institution)",
         { count: "exact" },
       )
       .eq("batch_id", batchId)
@@ -66,6 +67,27 @@ export async function getEmailBatchPreviewAction(
     }
     const { data, error, count } = await logsQuery.order("id").limit(500);
     if (error) throw error;
+
+    const pendingInvitationIds = (data ?? [])
+      .filter((message) => ["queued", "failed"].includes(String(message.status)))
+      .map((message) => Number(message.invitation_id));
+    const { data: invitationResponses, error: invitationResponsesError } =
+      pendingInvitationIds.length > 0
+        ? await supabase
+            .from("event_invitations")
+            .select("id,response_status,delegate_email")
+            .eq("event_id", eventId)
+            .in("id", pendingInvitationIds)
+        : { data: [], error: null };
+    if (invitationResponsesError) throw invitationResponsesError;
+    const invitationsWithConfirmedParticipation = new Set(
+      (invitationResponses ?? [])
+        .filter(
+          (invitation) =>
+            invitation.response_status === "attending" || Boolean(invitation.delegate_email),
+        )
+        .map((invitation) => Number(invitation.id)),
+    );
 
     return {
       status: "success",
@@ -78,13 +100,22 @@ export async function getEmailBatchPreviewAction(
           .filter(Boolean)
           .join(" ")
           .trim();
+        const renderedText = invitationsWithConfirmedParticipation.has(
+          Number(message.invitation_id),
+        )
+          ? removePublicResponseLink({
+              text: String(message.rendered_text),
+              html: null,
+              responseUrl: message.response_url,
+            }).text
+          : String(message.rendered_text);
         return {
           id: Number(message.id),
           to_email: String(message.to_email),
           contact_name: contactName || "Contatto senza nome",
           institution: contact?.institution ? String(contact.institution) : null,
           subject: String(message.subject),
-          rendered_text: String(message.rendered_text),
+          rendered_text: renderedText,
           status: message.status as EmailBatchPreviewMessage["status"],
           sent_at: message.sent_at,
           error_message: message.error_message,

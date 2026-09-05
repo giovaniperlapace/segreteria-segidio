@@ -57,29 +57,58 @@ export function publicResponseChoice(value: string): PublicResponseChoice | null
     : null;
 }
 
-export function appendPublicResponseLink(input: {
-  text: string;
-  html: string | null;
-  responseUrl: string;
-}) {
+function publicResponseLinkBlocks(responseUrl: string) {
   const text = [
-    input.text.trimEnd(),
-    "",
     "Per comunicare la sua risposta puo' usare questo link personale:",
-    input.responseUrl,
+    responseUrl,
   ].join("\n");
-
-  const button = `
+  const html = `
     <div style="margin: 28px 0; padding: 20px; border: 1px solid #d9e1f2; border-radius: 12px; background: #f8fafc;">
       <p style="margin: 0 0 14px; color: #172033;">Per comunicare la sua risposta puo' usare questo link personale:</p>
-      <a href="${input.responseUrl}" style="background: #1b3272; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 700;">
+      <a href="${responseUrl}" style="background: #1b3272; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 700;">
         Comunica la risposta
       </a>
     </div>
   `;
 
+  return { text, html };
+}
+
+export function removePublicResponseLink(input: {
+  text: string;
+  html: string | null;
+  responseUrl: string | null;
+}) {
+  if (!input.responseUrl) return { text: input.text, html: input.html };
+
+  const blocks = publicResponseLinkBlocks(input.responseUrl);
+  const textSuffix = `\n\n${blocks.text}`;
+  const htmlSuffix = `\n${blocks.html}`;
+
+  return {
+    text: input.text.endsWith(textSuffix)
+      ? input.text.slice(0, -textSuffix.length)
+      : input.text,
+    html:
+      input.html === blocks.html
+        ? null
+        : input.html?.endsWith(htmlSuffix)
+          ? input.html.slice(0, -htmlSuffix.length)
+          : input.html,
+  };
+}
+
+export function appendPublicResponseLink(input: {
+  text: string;
+  html: string | null;
+  responseUrl: string;
+}) {
+  const base = removePublicResponseLink(input);
+  const blocks = publicResponseLinkBlocks(input.responseUrl);
+  const text = [base.text.trimEnd(), "", blocks.text].join("\n");
+
   return {
     text,
-    html: input.html ? `${input.html}\n${button}` : button,
+    html: base.html ? `${base.html}\n${blocks.html}` : blocks.html,
   };
 }

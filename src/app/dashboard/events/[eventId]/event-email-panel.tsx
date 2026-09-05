@@ -23,7 +23,12 @@ export type EventEmailTemplateOption = {
 export type EventEmailBatchRecord = {
   id: number;
   status: "draft" | "queued" | "sending" | "completed" | "completed_with_errors";
-  target_kind: "selected" | "selected_rows" | "invited_no_response";
+  target_kind:
+    | "selected"
+    | "selected_rows"
+    | "invited_no_response"
+    | "participants"
+    | "all_invited";
   recipient_count: number;
   sent_count: number;
   failed_count: number;
@@ -42,6 +47,8 @@ const TARGET_LABELS: Record<EventEmailBatchRecord["target_kind"], string> = {
   selected: "Da invitare",
   selected_rows: "Righe selezionate",
   invited_no_response: "Invitati senza risposta",
+  participants: "Partecipanti",
+  all_invited: "Tutti gli invitati",
 };
 
 const STATUS_LABELS: Record<EventEmailBatchRecord["status"], string> = {
@@ -618,6 +625,8 @@ export function EventEmailPanel({
             <option value="selected">Tutti i da invitare</option>
             <option value="selected_rows">Righe selezionate ({selectedRows.length})</option>
             <option value="invited_no_response">Invitati senza risposta</option>
+            <option value="participants">Tutti i partecipanti</option>
+            <option value="all_invited">Tutti gli invitati</option>
           </select>
         </label>
         <label className="text-sm font-medium text-slate-700 lg:col-span-2">

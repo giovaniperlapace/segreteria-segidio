@@ -8,16 +8,24 @@ import {
   createPublicResponseToken,
   hashPublicResponseToken,
   publicResponseUrl,
+  removePublicResponseLink,
 } from "@/lib/email/public-response-links";
 import { plainTextToHtml, renderEmailTemplate, type EmailTemplateContext } from "@/lib/email/templates";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import type { ArchiveActionState } from "../archive-actions";
 
 const EMAIL_SEND_LIMIT = 25;
+const EMAIL_RECIPIENT_QUERY_PAGE_SIZE = 1000;
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
-const TARGET_KINDS = ["selected", "selected_rows", "invited_no_response"] as const;
+const TARGET_KINDS = [
+  "selected",
+  "selected_rows",
+  "invited_no_response",
+  "participants",
+  "all_invited",
+] as const;
 
 type TargetKind = (typeof TARGET_KINDS)[number];
 
@@ -27,6 +35,7 @@ type InvitationEmailRow = {
   contact_id: number;
   invitation_status: "selected" | "invited";
   response_status: "no_response" | "attending" | "declined" | "maybe";
+  delegate_email: string | null;
   contacts: EmailTemplateContext["contact"] | EmailTemplateContext["contact"][] | null;
 };
 
@@ -102,6 +111,26 @@ function contactFromRelation(value: InvitationEmailRow["contacts"]) {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
+function invitationMatchesTarget(row: InvitationEmailRow, target: TargetKind) {
+  if (target === "selected") return row.invitation_status === "selected";
+  if (target === "selected_rows") {
+    return (
+      row.invitation_status === "selected" ||
+      (row.invitation_status === "invited" && row.response_status === "no_response")
+    );
+  }
+  if (target === "invited_no_response") {
+    return row.invitation_status === "invited" && row.response_status === "no_response";
+  }
+  if (target === "participants") {
+    return (
+      row.invitation_status === "invited" &&
+      (row.response_status === "attending" || Boolean(row.delegate_email))
+    );
+  }
+  return row.invitation_status === "invited";
+}
+
 async function refreshBatchCounters(batchId: number) {
   const supabase = createSupabaseServiceClient();
   const { data: rows, error } = await supabase
@@ -154,10 +183,25 @@ async function ensurePublicResponseLink(input: {
   profileId: string;
 }) {
   if (input.log.response_url) {
-    return {
+    const rendered = appendPublicResponseLink({
       text: input.log.rendered_text,
       html: input.log.rendered_html,
-    };
+      responseUrl: input.log.response_url,
+    });
+    if (
+      rendered.text !== input.log.rendered_text ||
+      rendered.html !== input.log.rendered_html
+    ) {
+      const { error: logError } = await input.supabase
+        .from("email_logs")
+        .update({
+          rendered_text: rendered.text,
+          rendered_html: rendered.html,
+        })
+        .eq("id", input.log.id);
+      if (logError) throw logError;
+    }
+    return rendered;
   }
 
   const rawToken = createPublicResponseToken();
@@ -261,27 +305,40 @@ export async function createEmailBatchAction(
     if (!event) return { status: "error", message: "Evento non trovato." };
     if (!template?.active) return { status: "error", message: "Template email non disponibile." };
 
-    let query = supabase
-      .from("event_invitations")
-      .select(
-        "id,event_id,contact_id,invitation_status,response_status,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
-      )
-      .eq("event_id", eventId);
+    const invitationRows: InvitationEmailRow[] = [];
+    for (let from = 0; ; from += EMAIL_RECIPIENT_QUERY_PAGE_SIZE) {
+      let query = supabase
+        .from("event_invitations")
+        .select(
+          "id,event_id,contact_id,invitation_status,response_status,delegate_email,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
+        )
+        .eq("event_id", eventId);
 
-    if (target === "selected") {
-      query = query.eq("invitation_status", "selected");
-    } else if (target === "selected_rows") {
-      query = query.in("id", selectedInvitationIds);
-    } else {
-      query = query.eq("invitation_status", "invited").eq("response_status", "no_response");
+      if (target === "selected") {
+        query = query.eq("invitation_status", "selected");
+      } else if (target === "selected_rows") {
+        query = query.in("id", selectedInvitationIds);
+      } else if (target === "invited_no_response") {
+        query = query.eq("invitation_status", "invited").eq("response_status", "no_response");
+      } else if (target === "participants") {
+        query = query
+          .eq("invitation_status", "invited")
+          .or("response_status.eq.attending,delegate_email.not.is.null");
+      } else {
+        query = query.eq("invitation_status", "invited");
+      }
+
+      const { data: invitations, error: invitationsError } = await query
+        .order("id")
+        .range(from, from + EMAIL_RECIPIENT_QUERY_PAGE_SIZE - 1);
+      if (invitationsError) throw invitationsError;
+      const page = (invitations ?? []) as InvitationEmailRow[];
+      invitationRows.push(...page);
+      if (page.length < EMAIL_RECIPIENT_QUERY_PAGE_SIZE) break;
     }
 
-    const { data: invitations, error: invitationsError } = await query.order("id");
-    if (invitationsError) throw invitationsError;
-    const rows = ((invitations ?? []) as InvitationEmailRow[]).filter(
-      (row) =>
-        row.invitation_status === "selected" ||
-        (row.invitation_status === "invited" && row.response_status === "no_response"),
+    const rows = invitationRows.filter((row) =>
+      invitationMatchesTarget(row, target),
     );
     if (rows.length === 0) {
       return { status: "error", message: "Nessun destinatario corrisponde alla selezione." };
@@ -570,6 +627,22 @@ export async function sendEmailBatchAction(
       };
     }
 
+    const invitationIds = logs.map((log) => Number(log.invitation_id));
+    const { data: invitationResponses, error: invitationResponsesError } = await supabase
+      .from("event_invitations")
+      .select("id,response_status,delegate_email")
+      .eq("event_id", eventId)
+      .in("id", invitationIds);
+    if (invitationResponsesError) throw invitationResponsesError;
+    const invitationsWithConfirmedParticipation = new Set(
+      (invitationResponses ?? [])
+        .filter(
+          (invitation) =>
+            invitation.response_status === "attending" || Boolean(invitation.delegate_email),
+        )
+        .map((invitation) => Number(invitation.id)),
+    );
+
     const { data: sendingBatch, error: sendingBatchError } = await supabase
       .from("email_batches")
       .update({ status: "sending", last_error: null })
@@ -596,17 +669,34 @@ export async function sendEmailBatchAction(
         .eq("id", log.id);
 
       try {
-        const rendered = requestedIncludePublicResponseLink
+        const shouldIncludePublicResponseLink =
+          requestedIncludePublicResponseLink &&
+          !invitationsWithConfirmedParticipation.has(Number(log.invitation_id));
+        const rendered = shouldIncludePublicResponseLink
           ? await ensurePublicResponseLink({
               supabase,
               log: log as EmailLogToSend,
               eventId,
               profileId: profile.id,
             })
-          : {
+          : removePublicResponseLink({
               text: log.rendered_text,
               html: log.rendered_html,
-            };
+              responseUrl: log.response_url,
+            });
+        if (
+          !shouldIncludePublicResponseLink &&
+          (rendered.text !== log.rendered_text || rendered.html !== log.rendered_html)
+        ) {
+          const { error: renderedUpdateError } = await supabase
+            .from("email_logs")
+            .update({
+              rendered_text: rendered.text,
+              rendered_html: rendered.html,
+            })
+            .eq("id", log.id);
+          if (renderedUpdateError) throw renderedUpdateError;
+        }
         const info = await sendSmtpEmail({
           to: log.to_email,
           subject: log.subject,

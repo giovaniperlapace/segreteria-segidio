@@ -209,6 +209,7 @@ Migration MVP creata:
 - `supabase/migrations/20260903233000_email_templates_soft_delete.sql`
 - `supabase/migrations/20260904100000_public_invitation_delegates.sql`
 - `supabase/migrations/20260905100000_delegate_role_and_admin_entry.sql`
+- `supabase/migrations/20260905120000_email_batch_recipient_targets.sql`
 
 Include:
 
@@ -234,6 +235,8 @@ Include:
 - soft-delete dei template email, che li esclude dalla gestione e dai nuovi invii senza perdere i riferimenti nei batch e nei log storici.
 - dati evento-specifici del delegato (`delegate_first_name`, `delegate_last_name`, `delegate_email`) sull'invito corrente e nello storico risposte, senza inserimento nella tabella `contacts`.
 - ruolo/carica facoltativo del delegato (`delegate_role`) e inserimento della delega dalla scheda invito manager.
+- destinatari email estesi a tutti i partecipanti (delegati inclusi) o a tutti gli invitati senza distinzione di risposta.
+- link pubblico di risposta omesso automaticamente dalle nuove email indirizzate a chi ha gia' confermato la propria partecipazione o quella di un delegato.
 
 Le migration sono state applicate con `psql` nel container `supabase-db-c13y7vgiy5k5gbs9r9edpgeu`. Dopo l'applicazione sono state verificate le tabelle core, RLS attiva sulle tabelle sensibili, nessuna foreign key senza indice e smoke test senza lasciare dati fittizi.
 

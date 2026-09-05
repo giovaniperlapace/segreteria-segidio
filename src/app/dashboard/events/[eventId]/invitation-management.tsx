@@ -46,6 +46,7 @@ export type EventInvitationRecord = {
   delegate_first_name: string | null;
   delegate_last_name: string | null;
   delegate_email: string | null;
+  delegate_role: string | null;
   invited_at: string | null;
   response_recorded_at: string | null;
   response_recorded_by_profile_id: string | null;
@@ -60,6 +61,7 @@ export type EventInvitationRecord = {
     delegate_first_name: string | null;
     delegate_last_name: string | null;
     delegate_email: string | null;
+    delegate_role: string | null;
   }>;
   invitation_status_updated_at: string | null;
   invitation_status_updated_by_profile_id: string | null;
@@ -90,6 +92,7 @@ type BulkUndoItem = {
   delegateFirstName: string | null;
   delegateLastName: string | null;
   delegateEmail: string | null;
+  delegateRole: string | null;
   invitedAt: string | null;
   responseRecordedAt: string | null;
   responseRecordedByProfileId: string | null;
@@ -114,6 +117,7 @@ type SummaryFilter = {
 };
 
 type InvitationViewMode = "cards" | "table";
+type AttendanceChoice = EventInvitationRecord["attendance_status"] | "delegated";
 type InvitationSortKey =
   | "firstName"
   | "lastName"
@@ -372,8 +376,12 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
   const [invitationStatus, setInvitationStatus] = useState(invitation.invitation_status);
   const [responseStatus, setResponseStatus] = useState(invitation.response_status);
   const [companionCount, setCompanionCount] = useState(invitation.companion_count);
+  const [attendanceChoice, setAttendanceChoice] = useState<AttendanceChoice>(
+    invitation.delegate_email ? "delegated" : invitation.attendance_status,
+  );
   const canEditResponse = invitationStatus === "invited";
   const canEditCompanions = canEditResponse && responseStatus === "attending";
+  const canEditDelegate = canEditResponse && attendanceChoice === "delegated";
 
   useEffect(() => {
     if (state.status !== "success") return;
@@ -390,11 +398,18 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
           <select
             name="invitationStatus"
             value={invitationStatus}
-            onChange={(event) =>
-              setInvitationStatus(
-                event.target.value as Exclude<EventInvitationRecord["invitation_status"], "pending_approval">,
-              )
-            }
+            onChange={(event) => {
+              const nextStatus = event.target.value as Exclude<
+                EventInvitationRecord["invitation_status"],
+                "pending_approval"
+              >;
+              setInvitationStatus(nextStatus);
+              if (nextStatus !== "invited") {
+                setResponseStatus("no_response");
+                setAttendanceChoice("unknown");
+                setCompanionCount(0);
+              }
+            }}
             className={inputClass}
           >
             <option value="draft">Bozza</option>
@@ -412,9 +427,13 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
           <select
             name={canEditResponse ? "responseStatus" : undefined}
             value={canEditResponse ? responseStatus : "no_response"}
-            onChange={(event) =>
-              setResponseStatus(event.target.value as EventInvitationRecord["response_status"])
-            }
+            onChange={(event) => {
+              const nextResponse = event.target.value as EventInvitationRecord["response_status"];
+              setResponseStatus(nextResponse);
+              if (nextResponse !== "declined" && attendanceChoice === "delegated") {
+                setAttendanceChoice("unknown");
+              }
+            }}
             disabled={!canEditResponse}
             className={inputClass}
           >
@@ -474,12 +493,75 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
         </label>
         <label className="text-sm font-medium text-slate-700">
           Presenza
-          <select name="attendanceStatus" defaultValue={invitation.attendance_status} className={inputClass}>
+          <select
+            name="attendanceStatus"
+            value={attendanceChoice}
+            onChange={(event) => {
+              const nextAttendance = event.target.value as AttendanceChoice;
+              setAttendanceChoice(nextAttendance);
+              if (nextAttendance === "delegated") {
+                setResponseStatus("declined");
+                setCompanionCount(0);
+              }
+            }}
+            className={inputClass}
+          >
             <option value="unknown">Non verificata</option>
             <option value="attended">Presente</option>
             <option value="absent">Assente</option>
+            <option value="delegated" disabled={!canEditResponse}>Delega</option>
           </select>
         </label>
+        {canEditDelegate ? (
+          <div className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 md:col-span-2 md:grid-cols-2">
+            <div className="text-sm font-semibold text-violet-950 md:col-span-2">
+              Delegato per questo evento
+            </div>
+            <label className="text-sm font-medium text-violet-950">
+              Nome
+              <input
+                name="delegateFirstName"
+                defaultValue={invitation.delegate_first_name ?? ""}
+                maxLength={200}
+                required
+                className={inputClass}
+              />
+            </label>
+            <label className="text-sm font-medium text-violet-950">
+              Cognome
+              <input
+                name="delegateLastName"
+                defaultValue={invitation.delegate_last_name ?? ""}
+                maxLength={200}
+                required
+                className={inputClass}
+              />
+            </label>
+            <label className="text-sm font-medium text-violet-950 md:col-span-2">
+              Ruolo/Carica <span className="font-normal text-violet-700">(facoltativo)</span>
+              <input
+                name="delegateRole"
+                defaultValue={invitation.delegate_role ?? ""}
+                maxLength={200}
+                className={inputClass}
+              />
+            </label>
+            <label className="text-sm font-medium text-violet-950 md:col-span-2">
+              Email
+              <input
+                name="delegateEmail"
+                type="email"
+                defaultValue={invitation.delegate_email ?? ""}
+                maxLength={320}
+                required
+                className={inputClass}
+              />
+            </label>
+            <p className="text-xs leading-5 text-violet-700 md:col-span-2">
+              Questi dati restano associati soltanto all&apos;evento e non creano un contatto in archivio.
+            </p>
+          </div>
+        ) : null}
         <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
           <input
             name="attentionFlag"
@@ -520,16 +602,6 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
             </dd>
           </div>
         </dl>
-        {invitation.delegate_email ? (
-          <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-3 text-sm text-violet-950 md:col-span-2">
-            <div className="font-semibold">Delegato per questo evento</div>
-            <div className="mt-1">{delegateName(invitation)}</div>
-            <div className="mt-0.5 break-all text-xs text-violet-800">{invitation.delegate_email}</div>
-            <div className="mt-2 text-xs text-violet-700">
-              Il delegato non è salvato nell&apos;archivio permanente dei contatti.
-            </div>
-          </div>
-        ) : null}
         {invitation.response_history.length > 0 ? (
           <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-600 md:col-span-2">
             <h3 className="font-semibold text-slate-800">Storico risposte</h3>
@@ -550,7 +622,8 @@ function InvitationEditor({ invitation }: { invitation: EventInvitationRecord })
                   ) : null}
                   {history.delegate_email ? (
                     <div className="mt-1 text-violet-700">
-                      Delegato: {[history.delegate_first_name, history.delegate_last_name].filter(Boolean).join(" ")} · {history.delegate_email}
+                      Delegato: {[history.delegate_first_name, history.delegate_last_name].filter(Boolean).join(" ")}
+                      {history.delegate_role ? ` · ${history.delegate_role}` : ""} · {history.delegate_email}
                     </div>
                   ) : null}
                 </li>
@@ -802,6 +875,9 @@ function InvitationCard({
             <p className="mt-0.5 text-sm font-medium leading-5 text-slate-700">
               {delegateName(invitation)}
             </p>
+            {invitation.delegate_role ? (
+              <p className="mt-1 text-sm leading-5 text-slate-600">{invitation.delegate_role}</p>
+            ) : null}
             <p className="mt-1 break-all text-sm leading-5 text-slate-600">
               {invitation.delegate_email}
             </p>
@@ -1078,7 +1154,8 @@ function InvitationsTable({
                     ) : null}
                     {invitation.delegate_email ? (
                       <div className="mt-1 max-w-64 text-xs leading-5 text-violet-700">
-                        Delegato: {delegateName(invitation)} · {invitation.delegate_email}
+                        Delegato: {delegateName(invitation)}
+                        {invitation.delegate_role ? ` · ${invitation.delegate_role}` : ""} · {invitation.delegate_email}
                       </div>
                     ) : null}
                   </td>
@@ -1365,6 +1442,7 @@ export function InvitationManagement({
           invitation.delegate_first_name,
           invitation.delegate_last_name,
           invitation.delegate_email,
+          invitation.delegate_role,
           invitation.approval_references.join(" "),
         ]
           .filter(Boolean)
@@ -1807,6 +1885,7 @@ export function InvitationManagement({
                     delegateFirstName: invitation.delegate_first_name,
                     delegateLastName: invitation.delegate_last_name,
                     delegateEmail: invitation.delegate_email,
+                    delegateRole: invitation.delegate_role,
                     invitedAt: invitation.invited_at,
                     responseRecordedAt: invitation.response_recorded_at,
                     responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -1903,6 +1982,7 @@ export function InvitationManagement({
                   delegateFirstName: invitation.delegate_first_name,
                   delegateLastName: invitation.delegate_last_name,
                   delegateEmail: invitation.delegate_email,
+                  delegateRole: invitation.delegate_role,
                   invitedAt: invitation.invited_at,
                   responseRecordedAt: invitation.response_recorded_at,
                   responseRecordedByProfileId: invitation.response_recorded_by_profile_id,
@@ -2004,7 +2084,7 @@ export function InvitationManagement({
             </div>
             <div className="px-5 py-5">
               <InvitationEditor
-                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.delegate_email ?? ""}:${selectedInvitation.notes ?? ""}`}
+                key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.delegate_email ?? ""}:${selectedInvitation.delegate_role ?? ""}:${selectedInvitation.notes ?? ""}`}
                 invitation={selectedInvitation}
               />
             </div>

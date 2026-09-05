@@ -119,6 +119,7 @@ export default async function PublicInvitationResponsePage({
             delegateFirstName={context.invitation.delegate_first_name ?? ""}
             delegateLastName={context.invitation.delegate_last_name ?? ""}
             delegateEmail={context.invitation.delegate_email ?? ""}
+            delegateRole={context.invitation.delegate_role ?? ""}
           />
         </section>
       </div>

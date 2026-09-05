@@ -22,6 +22,7 @@ export async function submitPublicInvitationResponse(formData: FormData) {
         firstName: formText(formData, "delegateFirstName"),
         lastName: formText(formData, "delegateLastName"),
         email: formText(formData, "delegateEmail"),
+        role: formText(formData, "delegateRole") || null,
       }
     : null;
 
@@ -32,6 +33,7 @@ export async function submitPublicInvitationResponse(formData: FormData) {
       delegate.firstName.length > 200 ||
       delegate.lastName.length > 200 ||
       delegate.email.length > 320 ||
+      (delegate.role?.length ?? 0) > 200 ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(delegate.email))
   ) {
     redirect(`${target}?esito=dati-delegato`);

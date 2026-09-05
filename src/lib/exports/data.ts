@@ -227,6 +227,7 @@ export type EventInvitationExportRow = {
   delegateFirstName: string | null;
   delegateLastName: string | null;
   delegateEmail: string | null;
+  delegateRole: string | null;
   invitedAt: string | null;
   responseRecordedAt: string | null;
   responseRecordedByName: string | null;
@@ -245,7 +246,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,invited_at,response_recorded_at,response_recorded_by_profile_id,contacts!inner(${CONTACT_COLUMNS})`,
+      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,contacts!inner(${CONTACT_COLUMNS})`,
     )
     .eq("event_id", eventId);
   const sanitizedSearch = sanitizeSearchTerm(search);
@@ -363,6 +364,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
       delegateFirstName: invitation.delegate_first_name,
       delegateLastName: invitation.delegate_last_name,
       delegateEmail: invitation.delegate_email,
+      delegateRole: invitation.delegate_role,
       invitedAt: invitation.invited_at,
       responseRecordedAt: invitation.response_recorded_at,
       responseRecordedByName: invitation.response_recorded_by_profile_id
@@ -412,6 +414,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
     delegateFirstName: null,
     delegateLastName: null,
     delegateEmail: null,
+    delegateRole: null,
     invitedAt: null,
     responseRecordedAt: null,
     responseRecordedByName: null,

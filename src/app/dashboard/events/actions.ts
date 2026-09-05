@@ -497,19 +497,41 @@ export async function updateInvitationAction(
   const eventId = numberField(formData, "eventId");
   const status = invitationStatus(text(formData, "invitationStatus"));
   const requestedResponse = responseStatus(text(formData, "responseStatus")) ?? "no_response";
-  const attendance = attendanceStatus(text(formData, "attendanceStatus"));
+  const requestedAttendance = text(formData, "attendanceStatus");
+  const delegationRequested = requestedAttendance === "delegated";
+  const attendance = delegationRequested ? "unknown" : attendanceStatus(requestedAttendance);
   const requestedCompanionCount = Math.min(nonNegativeNumberField(formData, "companionCount") ?? 0, 20);
   const requestedCompanionNames = optionalText(formData, "companionNames");
+  const requestedDelegateFirstName = optionalText(formData, "delegateFirstName");
+  const requestedDelegateLastName = optionalText(formData, "delegateLastName");
+  const requestedDelegateEmail = optionalText(formData, "delegateEmail")?.toLowerCase() ?? null;
+  const requestedDelegateRole = optionalText(formData, "delegateRole");
 
   if (!invitationId || !eventId || !status || !attendance) {
     return { status: "error", message: "Invito non valido." };
+  }
+  if (
+    delegationRequested &&
+    (!requestedDelegateFirstName ||
+      !requestedDelegateLastName ||
+      !requestedDelegateEmail ||
+      requestedDelegateFirstName.length > 200 ||
+      requestedDelegateLastName.length > 200 ||
+      requestedDelegateEmail.length > 320 ||
+      (requestedDelegateRole?.length ?? 0) > 200 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestedDelegateEmail))
+  ) {
+    return {
+      status: "error",
+      message: "Per la delega inserisci nome, cognome e un indirizzo email valido. Il ruolo è facoltativo.",
+    };
   }
 
   try {
     const supabase = createSupabaseServiceClient();
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
-      .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,invited_at,response_recorded_at,response_recorded_by_profile_id")
+      .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id")
       .eq("id", invitationId)
       .maybeSingle();
     if (currentError) throw currentError;
@@ -517,21 +539,27 @@ export async function updateInvitationAction(
       return { status: "error", message: "Invito non trovato." };
     }
     const attentionNote = optionalText(formData, "attentionNote");
-    const responseChanged = requestedResponse !== currentInvitation.response_status;
     const statusChanged = status !== currentInvitation.invitation_status;
     const isInvited = status === "invited";
-    const response = isInvited ? requestedResponse : "no_response";
+    if (delegationRequested && !isInvited) {
+      return { status: "error", message: "La delega può essere registrata solo per un contatto con stato Invitato." };
+    }
+    const response = isInvited ? (delegationRequested ? "declined" : requestedResponse) : "no_response";
+    const responseChanged = response !== currentInvitation.response_status;
     const companionCount = isInvited && response === "attending" ? requestedCompanionCount : 0;
     const companionNames = companionCount > 0 ? requestedCompanionNames : null;
-    const preserveDelegate =
-      isInvited && response === "declined" && currentInvitation.response_status === "declined";
-    const delegateFirstName = preserveDelegate ? currentInvitation.delegate_first_name : null;
-    const delegateLastName = preserveDelegate ? currentInvitation.delegate_last_name : null;
-    const delegateEmail = preserveDelegate ? currentInvitation.delegate_email : null;
+    const delegateFirstName = isInvited && delegationRequested ? requestedDelegateFirstName : null;
+    const delegateLastName = isInvited && delegationRequested ? requestedDelegateLastName : null;
+    const delegateEmail = isInvited && delegationRequested ? requestedDelegateEmail : null;
+    const delegateRole = isInvited && delegationRequested ? requestedDelegateRole : null;
     const responseDetailsChanged =
       responseChanged ||
       companionCount !== Number(currentInvitation.companion_count ?? 0) ||
-      companionNames !== (currentInvitation.companion_names ?? null);
+      companionNames !== (currentInvitation.companion_names ?? null) ||
+      delegateFirstName !== (currentInvitation.delegate_first_name ?? null) ||
+      delegateLastName !== (currentInvitation.delegate_last_name ?? null) ||
+      delegateEmail !== (currentInvitation.delegate_email ?? null) ||
+      delegateRole !== (currentInvitation.delegate_role ?? null);
     const now = new Date().toISOString();
     const { error } = await supabase
       .from("event_invitations")
@@ -548,6 +576,7 @@ export async function updateInvitationAction(
         delegate_first_name: delegateFirstName,
         delegate_last_name: delegateLastName,
         delegate_email: delegateEmail,
+        delegate_role: delegateRole,
         response_recorded_at:
           response === "no_response"
             ? null
@@ -590,6 +619,7 @@ export async function updateInvitationAction(
         delegate_first_name: delegateFirstName,
         delegate_last_name: delegateLastName,
         delegate_email: delegateEmail,
+        delegate_role: delegateRole,
       });
       if (historyError) throw historyError;
     }
@@ -676,6 +706,7 @@ export async function bulkUpdateInvitationStatusAction(
             delegate_first_name: isInvited ? undefined : null,
             delegate_last_name: isInvited ? undefined : null,
             delegate_email: isInvited ? undefined : null,
+            delegate_role: isInvited ? undefined : null,
             response_recorded_at: isInvited ? undefined : null,
             response_recorded_by_profile_id: isInvited ? undefined : null,
             attendance_status: isInvited ? undefined : "unknown",
@@ -783,6 +814,7 @@ export async function bulkUpdateInvitationResponseAction(
         delegate_first_name: null,
         delegate_last_name: null,
         delegate_email: null,
+        delegate_role: null,
         response_recorded_at: response === "no_response" ? null : new Date().toISOString(),
         response_recorded_by_profile_id: response === "no_response" ? null : profile.id,
         updated_by_profile_id: profile.id,
@@ -805,6 +837,7 @@ export async function bulkUpdateInvitationResponseAction(
       delegate_first_name: null,
       delegate_last_name: null,
       delegate_email: null,
+      delegate_role: null,
     }));
     const { error: historyError } = await supabase
       .from("invitation_responses")
@@ -846,6 +879,7 @@ export async function undoBulkInvitationStatusAction(
     delegateFirstName: string | null;
     delegateLastName: string | null;
     delegateEmail: string | null;
+    delegateRole: string | null;
     invitedAt: string | null;
     responseRecordedAt: string | null;
     responseRecordedByProfileId: string | null;
@@ -898,6 +932,10 @@ export async function undoBulkInvitationStatusAction(
             typeof item?.delegateEmail === "string" && item.delegateEmail.trim()
               ? item.delegateEmail.trim()
               : null,
+          delegateRole:
+            typeof item?.delegateRole === "string" && item.delegateRole.trim()
+              ? item.delegateRole.trim()
+              : null,
           invitedAt: typeof item?.invitedAt === "string" ? item.invitedAt : null,
           responseRecordedAt:
             typeof item?.responseRecordedAt === "string" ? item.responseRecordedAt : null,
@@ -924,6 +962,7 @@ export async function undoBulkInvitationStatusAction(
             delegateFirstName: string | null;
             delegateLastName: string | null;
             delegateEmail: string | null;
+            delegateRole: string | null;
             invitedAt: string | null;
             responseRecordedAt: string | null;
             responseRecordedByProfileId: string | null;
@@ -987,6 +1026,7 @@ export async function undoBulkInvitationStatusAction(
           delegate_first_name: item.delegateFirstName,
           delegate_last_name: item.delegateLastName,
           delegate_email: item.delegateEmail,
+          delegate_role: item.delegateRole,
           response_recorded_at: item.responseRecordedAt,
           response_recorded_by_profile_id: item.responseRecordedByProfileId,
         })

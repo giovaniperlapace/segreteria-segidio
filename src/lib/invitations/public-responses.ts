@@ -27,6 +27,7 @@ type InvitationRow = {
   delegate_first_name: string | null;
   delegate_last_name: string | null;
   delegate_email: string | null;
+  delegate_role: string | null;
 };
 
 type EventRow = {
@@ -94,7 +95,7 @@ export async function readPublicResponseContext(rawToken: string) {
     await Promise.all([
       supabase
         .from("event_invitations")
-        .select("id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email")
+        .select("id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email,delegate_role")
         .eq("id", typedToken.invitation_id)
         .maybeSingle(),
       supabase
@@ -167,6 +168,7 @@ async function notifySelectedManagers(
     `Data: ${eventDate}`,
     context.event.location ? `Luogo: ${context.event.location}` : null,
     delegate ? `Delegato: ${delegate.firstName} ${delegate.lastName}` : null,
+    delegate?.role ? `Ruolo/Carica delegato: ${delegate.role}` : null,
     delegate ? `Email delegato: ${delegate.email}` : null,
     "",
     `Apri la lista evento: ${dashboardUrl}`,
@@ -183,7 +185,7 @@ async function notifySelectedManagers(
         <p>
           Evento: <strong>${escapeHtml(context.event.title)}</strong><br>
           Data: ${escapeHtml(eventDate)}${context.event.location ? `<br>Luogo: ${escapeHtml(context.event.location)}` : ""}
-          ${delegate ? `<br>Delegato: <strong>${escapeHtml(`${delegate.firstName} ${delegate.lastName}`)}</strong><br>Email delegato: ${escapeHtml(delegate.email)}` : ""}
+          ${delegate ? `<br>Delegato: <strong>${escapeHtml(`${delegate.firstName} ${delegate.lastName}`)}</strong>${delegate.role ? `<br>Ruolo/Carica delegato: ${escapeHtml(delegate.role)}` : ""}<br>Email delegato: ${escapeHtml(delegate.email)}` : ""}
         </p>
         <p style="margin: 22px 0;">
           <a href="${dashboardUrl}" style="background: #1b3272; color: #ffffff; padding: 11px 16px; border-radius: 8px; text-decoration: none; display: inline-block; font-weight: 700;">
@@ -199,6 +201,7 @@ export type PublicResponseDelegate = {
   firstName: string;
   lastName: string;
   email: string;
+  role?: string | null;
 };
 
 function normalizedDelegate(delegate: PublicResponseDelegate | null) {
@@ -207,6 +210,7 @@ function normalizedDelegate(delegate: PublicResponseDelegate | null) {
     firstName: delegate.firstName.trim(),
     lastName: delegate.lastName.trim(),
     email: delegate.email.trim().toLowerCase(),
+    role: delegate.role?.trim() || null,
   };
   if (
     !value.firstName ||
@@ -214,6 +218,7 @@ function normalizedDelegate(delegate: PublicResponseDelegate | null) {
     value.firstName.length > 200 ||
     value.lastName.length > 200 ||
     value.email.length > 320 ||
+    (value.role?.length ?? 0) > 200 ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)
   ) {
     throw new Error("Dati del delegato non validi.");
@@ -248,6 +253,7 @@ export async function recordPublicInvitationResponse(
       delegate_first_name: delegate?.firstName ?? null,
       delegate_last_name: delegate?.lastName ?? null,
       delegate_email: delegate?.email ?? null,
+      delegate_role: delegate?.role ?? null,
       response_recorded_at: now,
       response_recorded_by_profile_id: null,
       invited_at: context.invitation.invitation_status === "invited" ? undefined : now,
@@ -267,6 +273,7 @@ export async function recordPublicInvitationResponse(
       delegate_first_name: delegate?.firstName ?? null,
       delegate_last_name: delegate?.lastName ?? null,
       delegate_email: delegate?.email ?? null,
+      delegate_role: delegate?.role ?? null,
     }),
     supabase
       .from("invitation_response_tokens")

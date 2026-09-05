@@ -23,12 +23,14 @@ export function PublicResponseForm({
   delegateFirstName,
   delegateLastName,
   delegateEmail,
+  delegateRole,
 }: {
   token: string;
   initialChoice: PublicResponseChoice | null;
   delegateFirstName: string;
   delegateLastName: string;
   delegateEmail: string;
+  delegateRole: string;
 }) {
   const [choice, setChoice] = useState<PublicResponseChoice | null>(initialChoice);
   const delegated = choice === "delegated";
@@ -85,6 +87,16 @@ export function PublicResponseForm({
                     maxLength={200}
                     autoComplete="family-name"
                     required
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+                  Ruolo/Carica del delegato <span className="font-normal text-slate-500">(facoltativo)</span>
+                  <input
+                    name="delegateRole"
+                    defaultValue={delegateRole}
+                    maxLength={200}
+                    autoComplete="organization-title"
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
                   />
                 </label>

@@ -118,6 +118,7 @@ const FIELD_LABELS: Record<string, string> = {
   delegate_first_name: "nome delegato",
   delegate_last_name: "cognome delegato",
   delegate_email: "email delegato",
+  delegate_role: "ruolo/carica delegato",
   invited_at: "data invito",
   response_recorded_at: "data risposta",
   response_recorded_by_profile_id: "autore risposta",

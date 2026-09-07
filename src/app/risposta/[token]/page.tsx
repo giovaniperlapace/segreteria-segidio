@@ -3,10 +3,7 @@ import {
   PUBLIC_RESPONSE_CHOICE_LABELS,
   type PublicResponseChoice,
 } from "@/lib/email/public-response-links";
-import {
-  formatPublicEventDate,
-  readPublicResponseContext,
-} from "@/lib/invitations/public-responses";
+import { readPublicResponseContext } from "@/lib/invitations/public-responses";
 import { PublicResponseForm } from "./public-response-form";
 
 export const dynamic = "force-dynamic";
@@ -104,10 +101,6 @@ export default async function PublicInvitationResponsePage({
             <h1 className="text-3xl font-semibold text-[#1b3272]">
               {context.event.title}
             </h1>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              {formatPublicEventDate(context.event.starts_at)}
-              {context.event.location ? ` - ${context.event.location}` : ""}
-            </p>
             {!context.event.parts.length && <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
               Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong>
             </p>}

@@ -30,7 +30,7 @@ export default async function EventsPage({
   let eventsQuery = supabase
     .from("events")
     .select(
-      "id,title,description,starts_at,ends_at,location,organizational_notes,status,legacy_access_id",
+      "parts,id,title,description,starts_at,ends_at,location,organizational_notes,status,legacy_access_id",
     )
     .order("starts_at", { ascending: false })
     .limit(120);

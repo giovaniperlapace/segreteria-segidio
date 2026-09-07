@@ -1,12 +1,14 @@
 "use client";
 
+import { PartResponsesFields } from "@/components/events/event-parts-fields";
+import type { EventPart, PartResponse } from "@/lib/invitations/event-parts";
 import { useState } from "react";
 import {
   PUBLIC_RESPONSE_CHOICES,
   PUBLIC_RESPONSE_CHOICE_LABELS,
   type PublicResponseChoice,
 } from "@/lib/email/public-response-links";
-import { submitPublicInvitationResponse } from "./actions";
+import { submitPublicInvitationResponse, submitPublicPartResponses } from "./actions";
 
 function statusDescription(status: PublicResponseChoice) {
   if (status === "attending") return "Confermo la mia presenza all'evento.";
@@ -18,6 +20,8 @@ function statusDescription(status: PublicResponseChoice) {
 }
 
 export function PublicResponseForm({
+  parts = [],
+  partResponses = [],
   token,
   initialChoice,
   delegateFirstName,
@@ -25,6 +29,8 @@ export function PublicResponseForm({
   delegateEmail,
   delegateRole,
 }: {
+  parts?: EventPart[];
+  partResponses?: PartResponse[];
   token: string;
   initialChoice: PublicResponseChoice | null;
   delegateFirstName: string;
@@ -35,6 +41,7 @@ export function PublicResponseForm({
   const [choice, setChoice] = useState<PublicResponseChoice | null>(initialChoice);
   const delegated = choice === "delegated";
 
+  if (parts.length) return <form action={submitPublicPartResponses} className="mt-7 space-y-4"><input type="hidden" name="token" value={token} /><PartResponsesFields parts={parts} initialResponses={partResponses} /><button type="submit" className="w-full rounded-xl bg-[#1b3272] px-4 py-3 font-semibold text-white">Invia risposte</button></form>;
   return (
     <form action={submitPublicInvitationResponse} className="mt-7 space-y-4">
       <input type="hidden" name="token" value={token} />

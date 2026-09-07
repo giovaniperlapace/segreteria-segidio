@@ -1,5 +1,8 @@
 "use client";
 
+import { CompositeInvitationEditor } from "./composite-invitation-editor";
+import { PartSelection } from "@/components/events/event-parts-fields";
+import { describeParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -28,6 +31,7 @@ import {
 } from "./event-email-panel";
 
 export type EventInvitationRecord = {
+  part_responses?: PartResponse[];
   id: number;
   event_id: number;
   contact_id: number;
@@ -52,6 +56,7 @@ export type EventInvitationRecord = {
   response_recorded_by_profile_id: string | null;
   response_recorded_by_name: string | null;
   response_history: Array<{
+    part_responses?: (PartResponse & { title?: string })[];
     id: number;
     response_status: "no_response" | "attending" | "declined" | "maybe";
     source: "admin" | "public_link";
@@ -346,11 +351,13 @@ function SearchableContactSelect({
 }
 
 function AddInvitationForm({
+  parts,
   eventId,
   resetToken,
 }: {
   eventId: number;
   resetToken: number;
+  parts: EventPart[];
 }) {
   const [state, action, pending] = useArchiveAction(addInvitationAction);
 
@@ -361,6 +368,7 @@ function AddInvitationForm({
         Aggiungi invitato
         <SearchableContactSelect key={resetToken} eventId={eventId} />
       </label>
+      <PartSelection parts={parts} />
       <SubmitButton pending={pending}>Aggiungi</SubmitButton>
       <div className="md:col-span-2">
         <ActionMessage state={state} />
@@ -1212,9 +1220,10 @@ function EventExportLinkGroup({
 }
 
 export function InvitationManagement({
+  parts,
   eventId,
   pageSearch,
-  invitations,
+  invitations: sourceInvitations,
   summary,
   groups,
   references,
@@ -1223,6 +1232,7 @@ export function InvitationManagement({
   emailBatches,
 }: {
   eventId: number;
+  parts: EventPart[];
   pageSearch: string;
   invitations: EventInvitationRecord[];
   summary: InvitationSummary;
@@ -1232,6 +1242,8 @@ export function InvitationManagement({
   emailTemplates: EventEmailTemplateOption[];
   emailBatches: EventEmailBatchRecord[];
 }) {
+  const [partFilter, setPartFilter] = useState("");
+  const invitations = useMemo(() => sourceInvitations.filter(invitation => !partFilter || invitation.part_responses?.some(r => r.id === partFilter)).map(invitation => parts.length && invitation.part_responses?.length ? { ...invitation, contact_detail: [invitation.contact_detail, describeParts(parts, invitation.part_responses)].filter(Boolean).join(" · ") } : invitation), [sourceInvitations, parts, partFilter]);
   const router = useRouter();
   const [search, setSearch] = useState(pageSearch);
   const [exportGroup, setExportGroup] = useState("");
@@ -1286,6 +1298,7 @@ export function InvitationManagement({
     const params = new URLSearchParams();
     if (search.trim()) params.set("q", search.trim());
     if (exportGroup) params.set("groups", exportGroup);
+    if (partFilter) params.set("part", partFilter);
     params.set("type", type);
     params.set("format", format);
     return `/api/exports/events/${eventId}?${params.toString()}`;
@@ -1433,6 +1446,8 @@ export function InvitationManagement({
   const visibleInvitations = (() => {
     const term = normalizeContactSearch(deferredSearch.trim());
     const filtered = invitations.filter((invitation) => {
+      const partResponse = invitation.part_responses?.find(r => r.id === partFilter);
+      const filteredResponse = partResponse ? (partResponse.response === "delegated" ? "attending" : partResponse.response) : invitation.response_status;
       const haystack = normalizeContactSearch(
         [
           invitation.contact_name,
@@ -1458,9 +1473,9 @@ export function InvitationManagement({
             ? invitation.invitation_status !== "invited"
             : responseFilter === "participants"
               ? invitation.invitation_status === "invited" &&
-                (invitation.response_status === "attending" || Boolean(invitation.delegate_email))
+                (filteredResponse === "attending" || Boolean(invitation.delegate_email))
               : invitation.invitation_status === "invited" &&
-                invitation.response_status === responseFilter)) &&
+                filteredResponse === responseFilter)) &&
         (attendanceFilter === "all" || invitation.attendance_status === attendanceFilter) &&
         (flagFilter === "all" ||
           (flagFilter === "flagged" ? invitation.attention_flag : !invitation.attention_flag))
@@ -1565,7 +1580,7 @@ export function InvitationManagement({
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
         <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
-          <AddInvitationForm eventId={eventId} resetToken={summary.total} />
+          <AddInvitationForm parts={parts} eventId={eventId} resetToken={summary.total} />
         </section>
 
         <Link
@@ -1588,13 +1603,14 @@ export function InvitationManagement({
           </button>
           <button
             type="button"
-            disabled={selectedInvitedRows.length === 0}
-            onClick={() => setBulkResponseModalOpen(true)}
+            disabled={selectedInvitedRows.length === 0 || parts.length > 0}
+                  title={parts.length ? "Apri un invito per registrare le risposte alle singole parti" : undefined}
+                  onClick={() => setBulkResponseModalOpen(true)}
             className="rounded-xl border border-[#1b3272] bg-white px-4 py-2.5 text-sm font-semibold text-[#1b3272] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Registra risposta ({selectedInvitedRows.length})
           </button>
-          {undoPayload.length > 0 ? (
+          {undoPayload.length > 0 && !parts.length ? (
             <form action={undoAction}>
               <input type="hidden" name="eventId" value={eventId} />
               <input type="hidden" name="previousStates" value={JSON.stringify(undoPayload)} />
@@ -1679,6 +1695,7 @@ export function InvitationManagement({
         </div>
 
         <EventEmailPanel
+          parts={parts}
           eventId={eventId}
           templates={emailTemplates}
           batches={emailBatches}
@@ -1770,6 +1787,7 @@ export function InvitationManagement({
           <div className="mt-3">
             <ActionMessage state={bulkRemoveState} />
           </div>
+          {parts.length > 0 && <label className="mt-4 block text-sm font-medium">Parte dell’evento<select className={inputClass} value={partFilter} onChange={e => setPartFilter(e.target.value)}><option value="">Tutte le parti</option>{parts.map(part => <option key={part.id} value={part.id}>{part.title}</option>)}</select></label>}
           <div className="mt-4 grid gap-2 md:grid-cols-5 md:items-end">
             <label className="text-sm font-medium text-slate-700">
               Cerca tra gli invitati
@@ -2097,10 +2115,10 @@ export function InvitationManagement({
               </button>
             </div>
             <div className="px-5 py-5">
-              <InvitationEditor
+              {parts.length > 0 ? <CompositeInvitationEditor key={`${selectedInvitation.id}:${JSON.stringify(selectedInvitation.part_responses)}`} invitation={selectedInvitation} parts={parts} /> : <InvitationEditor
                 key={`${selectedInvitation.id}:${selectedInvitation.invitation_status}:${selectedInvitation.response_status}:${selectedInvitation.attendance_status}:${selectedInvitation.attention_flag}:${selectedInvitation.attention_note ?? ""}:${selectedInvitation.response_note ?? ""}:${selectedInvitation.companion_count}:${selectedInvitation.companion_names ?? ""}:${selectedInvitation.delegate_email ?? ""}:${selectedInvitation.delegate_role ?? ""}:${selectedInvitation.notes ?? ""}`}
                 invitation={selectedInvitation}
-              />
+              />}
             </div>
           </div>
         </div>

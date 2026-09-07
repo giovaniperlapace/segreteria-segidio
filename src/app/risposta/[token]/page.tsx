@@ -109,11 +109,14 @@ export default async function PublicInvitationResponsePage({
               {context.event.location ? ` - ${context.event.location}` : ""}
             </p>
             <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong>
+              {context.event.parts.length ? "Può aggiornare le risposte delle singole parti qui sotto." : <>Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong></>}
             </p>
           </div>
 
           <PublicResponseForm
+            key={JSON.stringify(context.invitation.part_responses)}
+            parts={context.event.parts.filter(part => context.invitation.part_responses.some(row => row.id === part.id))}
+            partResponses={context.invitation.part_responses}
             token={token}
             initialChoice={hasDelegate ? "delegated" : context.invitation.response_status === "no_response" ? null : context.invitation.response_status}
             delegateFirstName={context.invitation.delegate_first_name ?? ""}

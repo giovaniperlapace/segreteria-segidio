@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { emailPartFilterIds, matchesInvitedParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { requireManager } from "@/lib/auth/profile";
 import { sendSmtpEmail } from "@/lib/email/gmail";
 import {
@@ -30,6 +31,7 @@ const TARGET_KINDS = [
 type TargetKind = (typeof TARGET_KINDS)[number];
 
 type InvitationEmailRow = {
+  part_responses: PartResponse[];
   id: number;
   event_id: number;
   contact_id: number;
@@ -84,6 +86,7 @@ function friendlyEmailError(error: unknown) {
         ? String(error.message)
         : String(error);
 
+  if (/Filtro parti|filtro\.|evento non ha parti|Puoi allegare|allegati superano|allegati supera/.test(message)) return message;
   if (message.includes("Missing GMAIL_USER")) return "Configurazione SMTP Gmail mancante.";
   if (message.includes("email_attachments_file_size_valid")) return "Uno degli allegati supera 8 MB.";
   if (message.includes("row-level security")) return "Non hai i permessi necessari per questa operazione.";
@@ -116,11 +119,11 @@ function invitationMatchesTarget(row: InvitationEmailRow, target: TargetKind) {
   if (target === "selected_rows") {
     return (
       row.invitation_status === "selected" ||
-      (row.invitation_status === "invited" && row.response_status === "no_response")
+      (row.invitation_status === "invited" && (row.response_status === "no_response" || row.part_responses.some(part => part.response === "no_response")))
     );
   }
   if (target === "invited_no_response") {
-    return row.invitation_status === "invited" && row.response_status === "no_response";
+    return row.invitation_status === "invited" && (row.response_status === "no_response" || row.part_responses.some(part => part.response === "no_response"));
   }
   if (target === "participants") {
     return (
@@ -290,7 +293,7 @@ export async function createEmailBatchAction(
       await Promise.all([
         supabase
           .from("events")
-          .select("id,title,starts_at,location")
+          .select("parts,id,title,starts_at,location")
           .eq("id", eventId)
           .maybeSingle(),
         supabase
@@ -305,12 +308,17 @@ export async function createEmailBatchAction(
     if (!event) return { status: "error", message: "Evento non trovato." };
     if (!template?.active) return { status: "error", message: "Template email non disponibile." };
 
+    const requiredPartIds = emailPartFilterIds(
+      text(formData, "emailPartFilter") || "any",
+      formData.getAll("emailPartIds").map(String),
+      event.parts as EventPart[],
+    );
     const invitationRows: InvitationEmailRow[] = [];
     for (let from = 0; ; from += EMAIL_RECIPIENT_QUERY_PAGE_SIZE) {
       let query = supabase
         .from("event_invitations")
         .select(
-          "id,event_id,contact_id,invitation_status,response_status,delegate_email,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
+          "part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_email,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
         )
         .eq("event_id", eventId);
 
@@ -319,7 +327,7 @@ export async function createEmailBatchAction(
       } else if (target === "selected_rows") {
         query = query.in("id", selectedInvitationIds);
       } else if (target === "invited_no_response") {
-        query = query.eq("invitation_status", "invited").eq("response_status", "no_response");
+        query = query.eq("invitation_status", "invited").or('response_status.eq.no_response,part_responses.cs.[{"response":"no_response"}]');
       } else if (target === "participants") {
         query = query
           .eq("invitation_status", "invited")
@@ -328,6 +336,9 @@ export async function createEmailBatchAction(
         query = query.eq("invitation_status", "invited");
       }
 
+      if (requiredPartIds.length) {
+        query = query.contains("part_responses", requiredPartIds.map(id => ({ id })));
+      }
       const { data: invitations, error: invitationsError } = await query
         .order("id")
         .range(from, from + EMAIL_RECIPIENT_QUERY_PAGE_SIZE - 1);
@@ -338,7 +349,7 @@ export async function createEmailBatchAction(
     }
 
     const rows = invitationRows.filter((row) =>
-      invitationMatchesTarget(row, target),
+      invitationMatchesTarget(row, target) && matchesInvitedParts(row.part_responses, requiredPartIds),
     );
     if (rows.length === 0) {
       return { status: "error", message: "Nessun destinatario corrisponde alla selezione." };
@@ -403,7 +414,8 @@ export async function createEmailBatchAction(
         contact,
       } satisfies EmailTemplateContext;
       const subject = renderEmailTemplate(template.subject, context);
-      const renderedText = renderEmailTemplate(template.body_text, context);
+      const invitedPartTitles = (event.parts as EventPart[]).filter(part => row.part_responses.some(r => r.id === part.id)).map(part => part.title);
+      const renderedText = [renderEmailTemplate(template.body_text, context), invitedPartTitles.length ? `L’invito comprende:\n${invitedPartTitles.map(title => `• ${title}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
       return {
         batch_id: batchId,
         event_id: eventId,
@@ -630,7 +642,7 @@ export async function sendEmailBatchAction(
     const invitationIds = logs.map((log) => Number(log.invitation_id));
     const { data: invitationResponses, error: invitationResponsesError } = await supabase
       .from("event_invitations")
-      .select("id,response_status,delegate_email")
+      .select("part_responses,id,response_status,delegate_email")
       .eq("event_id", eventId)
       .in("id", invitationIds);
     if (invitationResponsesError) throw invitationResponsesError;
@@ -638,7 +650,7 @@ export async function sendEmailBatchAction(
       (invitationResponses ?? [])
         .filter(
           (invitation) =>
-            invitation.response_status === "attending" || Boolean(invitation.delegate_email),
+            !invitation.part_responses?.length && (invitation.response_status === "attending" || Boolean(invitation.delegate_email)),
         )
         .map((invitation) => Number(invitation.id)),
     );

@@ -394,6 +394,8 @@ La sicurezza deve essere progettata dall'inizio, perche' l'app gestisce dati per
 
 ### Milestone 19 - Post-MVP segmenti, QR code e check-in
 
+- **Avanzamento 2026-09-07**: implementati in locale eventi compositi fino a cinque parti, selezione delle parti per invito, risposte e deleghe per parte, storico atomico, conteggi e integrazione email/export. Migration applicata al database condiviso dopo test isolati. Collaudo utente su localhost completato; richiesta di commit, push e deploy ricevuta. QR code e check-in restano fuori da questo blocco.
+
 - **Obiettivo**: gestire eventi complessi e presenze reali.
 - **Scope**: segmenti, scelta segmento, QR code, scansione, check-in.
 - **Output atteso**: presenza registrabile per segmento.

@@ -1,3 +1,4 @@
+import { describeParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { CONTACT_COLUMNS } from "@/app/dashboard/contacts/contact-data";
@@ -222,6 +223,8 @@ export type EventInvitationExportRow = {
   attentionNote: string | null;
   notes: string | null;
   responseNote: string | null;
+  partResponses?: PartResponse[];
+  partsSummary?: string;
   companionCount: number;
   companionNames: string | null;
   delegateFirstName: string | null;
@@ -237,7 +240,7 @@ export type EventInvitationExportRow = {
 export async function loadEventForExport(supabase: SupabaseClient, eventId: number, search = "") {
   const { data: event, error: eventError } = await supabase
     .from("events")
-    .select("id,title,starts_at,location,status,legacy_access_id")
+    .select("parts,id,title,starts_at,location,status,legacy_access_id")
     .eq("id", eventId)
     .maybeSingle();
   if (eventError) throw eventError;
@@ -246,7 +249,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,contacts!inner(${CONTACT_COLUMNS})`,
+      `part_responses,id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,contacts!inner(${CONTACT_COLUMNS})`,
     )
     .eq("event_id", eventId);
   const sanitizedSearch = sanitizeSearchTerm(search);
@@ -361,6 +364,8 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
       responseNote: invitation.response_note,
       companionCount: Number(invitation.companion_count ?? 0),
       companionNames: invitation.companion_names,
+      partResponses: invitation.part_responses,
+      partsSummary: describeParts(event.parts as EventPart[], invitation.part_responses as PartResponse[]),
       delegateFirstName: invitation.delegate_first_name,
       delegateLastName: invitation.delegate_last_name,
       delegateEmail: invitation.delegate_email,

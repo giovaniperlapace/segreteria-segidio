@@ -1,5 +1,7 @@
 "use client";
 
+import { EventPartsFields } from "@/components/events/event-parts-fields";
+import type { EventPart } from "@/lib/invitations/event-parts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
@@ -7,6 +9,7 @@ import { createEventAction, updateEventAction } from "./actions";
 import { ActionMessage, inputClass, SubmitButton, useArchiveAction } from "../archive-ui";
 
 export type EventRecord = {
+  parts: EventPart[];
   id: number;
   title: string;
   description: string | null;
@@ -105,6 +108,7 @@ function EventFields({ event }: { event?: EventRecord }) {
         Descrizione
         <textarea name="description" rows={2} defaultValue={event?.description ?? ""} className={inputClass} />
       </label>
+      <EventPartsFields initialParts={event?.parts ?? []} />
       <label className="text-sm font-medium text-slate-700 md:col-span-2">
         Note organizzative
         <textarea

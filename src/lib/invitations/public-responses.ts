@@ -1,3 +1,4 @@
+import { parsePartResponses, describeParts, type EventPart, type PartResponse } from "./event-parts";
 import { sendSmtpEmail } from "@/lib/email/gmail";
 import {
   appAbsoluteUrl,
@@ -19,6 +20,7 @@ type ResponseTokenRow = {
 };
 
 type InvitationRow = {
+  part_responses: PartResponse[];
   id: number;
   event_id: number;
   contact_id: number;
@@ -31,6 +33,7 @@ type InvitationRow = {
 };
 
 type EventRow = {
+  parts: EventPart[];
   id: number;
   title: string;
   starts_at: string;
@@ -95,12 +98,12 @@ export async function readPublicResponseContext(rawToken: string) {
     await Promise.all([
       supabase
         .from("event_invitations")
-        .select("id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email,delegate_role")
+        .select("part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email,delegate_role")
         .eq("id", typedToken.invitation_id)
         .maybeSingle(),
       supabase
         .from("events")
-        .select("id,title,starts_at,location")
+        .select("parts,id,title,starts_at,location")
         .eq("id", typedToken.event_id)
         .maybeSingle(),
       supabase
@@ -134,6 +137,7 @@ async function notifySelectedManagers(
   context: PublicResponseContext,
   response: PublicResponseChoice,
   delegate: PublicResponseDelegate | null,
+  partsDescription?: string,
 ) {
   const supabase = createSupabaseServiceClient();
   const { data: managers, error } = await supabase
@@ -164,6 +168,7 @@ async function notifySelectedManagers(
     "",
     `${name} ha risposto: ${responseLabel}.`,
     "",
+    partsDescription,
     `Evento: ${context.event.title}`,
     `Data: ${eventDate}`,
     context.event.location ? `Luogo: ${context.event.location}` : null,
@@ -182,6 +187,7 @@ async function notifySelectedManagers(
       <div style="font-family: Arial, sans-serif; color: #172033; line-height: 1.6;">
         <h1 style="font-size: 20px; margin: 0 0 14px;">Nuova risposta ricevuta</h1>
         <p><strong>${escapeHtml(name)}</strong> ha risposto: <strong>${escapeHtml(responseLabel)}</strong>.</p>
+        ${partsDescription ? `<p style="white-space: pre-line">${escapeHtml(partsDescription)}</p>` : ""}
         <p>
           Evento: <strong>${escapeHtml(context.event.title)}</strong><br>
           Data: ${escapeHtml(eventDate)}${context.event.location ? `<br>Luogo: ${escapeHtml(context.event.location)}` : ""}
@@ -232,7 +238,7 @@ export async function recordPublicInvitationResponse(
   rawDelegate: PublicResponseDelegate | null = null,
 ) {
   const context = await readPublicResponseContext(rawToken);
-  if (!context) return null;
+  if (!context || context.event.parts.length) return null;
 
   const supabase = createSupabaseServiceClient();
   const now = new Date().toISOString();
@@ -296,4 +302,19 @@ export async function recordPublicInvitationResponse(
     ...context,
     selectedResponse: choice,
   };
+}
+
+export async function recordPublicPartResponses(rawToken: string, value: string) {
+  const context = await readPublicResponseContext(rawToken);
+  if (!context || !context.event.parts.length) return false;
+  const invitedParts = context.event.parts.filter(part => context.invitation.part_responses.some(row => row.id === part.id));
+  const responses = parsePartResponses(value, invitedParts, true);
+  if (responses.length !== invitedParts.length) throw new Error('Rispondi a tutte le parti invitate.');
+  const supabase = createSupabaseServiceClient();
+  const { data, error } = await supabase.rpc('record_public_part_responses', { p_token_hash: hashPublicResponseToken(rawToken), p_responses: responses });
+  if (error) throw error;
+  if (!data) return false;
+  try { await notifySelectedManagers(context, responses.some(r => r.response === 'attending' || r.response === 'delegated') ? 'attending' : responses.some(r => r.response === 'maybe') ? 'maybe' : 'declined', null, describeParts(invitedParts, responses)); }
+  catch (error) { console.error('Public response notification failed', error); }
+  return true;
 }

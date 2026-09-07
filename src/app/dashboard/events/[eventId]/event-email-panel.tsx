@@ -1,5 +1,6 @@
 "use client";
 
+import { matchesInvitedParts, type EventPart } from "@/lib/invitations/event-parts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
 import {
@@ -546,7 +547,34 @@ function BatchCard({
   );
 }
 
+function EmailAttachmentFields() {
+  const nextId = useRef(1);
+  const [fields, setFields] = useState([{ id: 0, hasFile: false }]);
+  return <fieldset className="space-y-2">
+    <legend className="text-sm font-medium text-slate-700">Allegati</legend>
+    {fields.map((field, index) => <div key={field.id} className="flex items-center gap-2">
+      <input
+        aria-label={`Allegato ${index + 1}`}
+        name="attachments"
+        type="file"
+        onChange={event => {
+          const hasFile = Boolean(event.target.files?.length);
+          setFields(current => current.map(item => item.id === field.id ? { ...item, hasFile } : item));
+        }}
+        className="mt-1.5 block min-w-0 flex-1 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[#1b3272] hover:file:bg-slate-200"
+      />
+      {fields.length > 1 && <button type="button" aria-label={`Rimuovi allegato ${index + 1}`} onClick={() => setFields(current => current.filter(item => item.id !== field.id))} className="text-sm font-medium text-slate-600">Rimuovi</button>}
+    </div>)}
+    {fields.length < 5 && fields.every(field => field.hasFile) && <button type="button" onClick={() => {
+      const id = nextId.current++;
+      setFields(current => [...current, { id, hasFile: false }]);
+    }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-[#1b3272]">+ Aggiungi allegato</button>}
+    <p className="text-xs text-slate-500">Fino a 5 allegati, massimo 8 MB ciascuno e 15 MB complessivi.</p>
+  </fieldset>;
+}
+
 export function EventEmailPanel({
+  parts,
   eventId,
   templates,
   batches,
@@ -558,25 +586,32 @@ export function EventEmailPanel({
   batches: EventEmailBatchRecord[];
   invitations: EventInvitationRecord[];
   selectedInvitationIds: Set<number>;
+  parts: EventPart[];
 }) {
   const [createState, createAction, createPending] = useArchiveAction(createEmailBatchAction);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [partMode, setPartMode] = useState("any");
+  const [partIds, setPartIds] = useState<string[]>([]);
+  const requiredPartIds = partMode === "all" ? parts.map(part => part.id) : partMode === "parts" ? partIds : [];
+  const filteredInvitations = invitations.filter(invitation => (partMode !== "parts" || partIds.length > 0) && matchesInvitedParts(invitation.part_responses ?? [], requiredPartIds));
   const [showCompletedBatches, setShowCompletedBatches] = useState(false);
   const selectedRows = useMemo(
     () =>
       invitations.filter(
         (invitation) =>
+          matchesInvitedParts(invitation.part_responses ?? [], partMode === "all" ? parts.map(part => part.id) : partMode === "parts" ? partIds : []) &&
           selectedInvitationIds.has(invitation.id) &&
           invitation.row_type === "invitation" &&
           (invitation.invitation_status === "selected" ||
             (invitation.invitation_status === "invited" &&
-              invitation.response_status === "no_response")),
+              (invitation.response_status === "no_response" || invitation.part_responses?.some(part => part.response === "no_response")))),
       ),
-    [invitations, selectedInvitationIds],
+    [invitations, selectedInvitationIds, partMode, parts, partIds],
   );
-  const selectedCount = invitations.filter((invitation) => invitation.invitation_status === "selected").length;
-  const reminderCount = invitations.filter(
+  const selectedCount = filteredInvitations.filter((invitation) => invitation.invitation_status === "selected").length;
+  const reminderCount = filteredInvitations.filter(
     (invitation) =>
-      invitation.invitation_status === "invited" && invitation.response_status === "no_response",
+      invitation.invitation_status === "invited" && (invitation.response_status === "no_response" || invitation.part_responses?.some(part => part.response === "no_response")),
   ).length;
   const activeBatches = batches.filter((batch) => {
     const pendingCount = Math.max(
@@ -604,7 +639,16 @@ export function EventEmailPanel({
         </a>
       </div>
 
-      <form action={createAction} className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+      <form action={createAction} onSubmit={event => {
+        if (partMode === "parts" && !partIds.length) { event.preventDefault(); return; }
+        const files = new FormData(event.currentTarget).getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
+        const error = files.some(file => file.size > 8 * 1024 * 1024)
+          ? "Ogni allegato può pesare al massimo 8 MB."
+          : files.reduce((total, file) => total + file.size, 0) > 15 * 1024 * 1024
+            ? "Gli allegati possono pesare al massimo 15 MB complessivi." : "";
+        setAttachmentError(error);
+        if (error) event.preventDefault();
+      }} className={`mt-4 grid gap-4 ${parts.length > 0 ? "lg:grid-cols-3 lg:items-start" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end"}`}>
         <input type="hidden" name="eventId" value={eventId} />
         {selectedRows.map((invitation) => (
           <input key={invitation.id} type="hidden" name="selectedInvitationIds" value={invitation.id} />
@@ -629,16 +673,22 @@ export function EventEmailPanel({
             <option value="all_invited">Tutti gli invitati</option>
           </select>
         </label>
-        <label className="text-sm font-medium text-slate-700 lg:col-span-2">
-          Allegati
-          <input
-            name="attachments"
-            type="file"
-            multiple
-            className="mt-1.5 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[#1b3272] hover:file:bg-slate-200"
-          />
-        </label>
-        <div className="lg:justify-self-end">
+        {parts.length > 0 && <fieldset className="min-w-0 space-y-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Filtra per parti invitate
+            <select name="emailPartFilter" value={partMode} onChange={event => setPartMode(event.target.value)} className={inputClass}>
+              <option value="any">Nessun filtro sulle parti</option>
+              <option value="all">Invitati a tutto l’evento</option>
+              <option value="parts">Invitati alle parti selezionate</option>
+            </select>
+          </label>
+          {partMode === "parts" && <div className="flex flex-wrap gap-4">{parts.map(part => <label key={part.id} className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="emailPartIds" value={part.id} checked={partIds.includes(part.id)} onChange={event => setPartIds(event.target.checked ? [...partIds, part.id] : partIds.filter(id => id !== part.id))} />{part.title}
+          </label>)}</div>}
+          {partMode === "parts" && !partIds.length && <p className="text-sm text-red-700">Seleziona almeno una parte.</p>}
+        </fieldset>}
+        <div className="lg:col-span-2"><EmailAttachmentFields key={batches.length} />{attachmentError && <p role="alert" className="mt-2 text-sm text-red-700">{attachmentError}</p>}</div>
+        <div className="lg:self-end lg:justify-self-end">
           <SubmitButton pending={createPending}>Prepara invio</SubmitButton>
         </div>
       </form>

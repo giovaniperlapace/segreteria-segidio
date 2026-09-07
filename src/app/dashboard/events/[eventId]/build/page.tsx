@@ -106,7 +106,7 @@ export default async function BuildEventInvitationsPage({
     eventsResult,
     approvedProposalsResult,
   ] = await Promise.all([
-    supabase.from("events").select("id,title,starts_at").eq("id", eventId).maybeSingle(),
+    supabase.from("events").select("parts,id,title,starts_at").eq("id", eventId).maybeSingle(),
     supabase.rpc("event_candidate_contacts_page", {
       p_event_id: eventId,
       p_search: search,
@@ -305,6 +305,7 @@ export default async function BuildEventInvitationsPage({
           </div>
         </section>
         <BuildSelection
+          parts={eventResult.data.parts}
           eventId={eventId}
           candidates={candidates}
           references={(referencesResult.data ?? [])

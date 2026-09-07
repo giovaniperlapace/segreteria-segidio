@@ -109,6 +109,7 @@ export function buildContactsTable(
 }
 
 function participantTotal(row: EventInvitationExportRow) {
+  if (row.partResponses?.length) return new Set(row.partResponses.filter(r => r.response === "attending" || r.response === "delegated").map(r => r.response === "attending" ? "invitee" : r.email?.toLowerCase())).size;
   if (row.delegateEmail) return 1;
   return row.responseStatus === "attending" ? 1 + row.companionCount : 0;
 }
@@ -205,7 +206,7 @@ export function buildEventTable(
     ];
   } else if (type === "participants") {
     columns = [
-      { key: "name", header: "Partecipante", width: 24, value: (row) => delegateName(row) || row.contactName },
+      { key: "name", header: "Partecipante", width: 24, value: (row) => row.partResponses?.length ? [...new Set(row.partResponses.filter(r => r.response === "attending" || r.response === "delegated").map(r => r.response === "attending" ? row.contactName : `${r.firstName} ${r.lastName}`))].join(", ") : delegateName(row) || row.contactName },
       { key: "original_invitee", header: "Invitato originario", width: 24, value: (row) => row.delegateEmail ? row.contactName : "" },
       { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "role", header: "Carica", width: 30, value: (row) => row.delegateRole ?? row.contact.institutional_role },
@@ -241,6 +242,8 @@ export function buildEventTable(
       ...invitationBaseColumns(options).filter((column) => column.key !== "groups"),
     ];
   }
+
+  if (rows.some(row => row.partResponses?.length)) columns.push({ key: "parts", header: "Parti invitate e risposte", width: 55, value: row => row.partsSummary ?? "" });
 
   return {
     title: `${eventExportTitle(type)} - ${eventTitle}`,

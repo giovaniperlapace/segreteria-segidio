@@ -75,7 +75,7 @@ export async function getEmailBatchPreviewAction(
       pendingInvitationIds.length > 0
         ? await supabase
             .from("event_invitations")
-            .select("id,response_status,delegate_email")
+            .select("part_responses,id,response_status,delegate_email")
             .eq("event_id", eventId)
             .in("id", pendingInvitationIds)
         : { data: [], error: null };
@@ -84,7 +84,7 @@ export async function getEmailBatchPreviewAction(
       (invitationResponses ?? [])
         .filter(
           (invitation) =>
-            invitation.response_status === "attending" || Boolean(invitation.delegate_email),
+            !invitation.part_responses?.length && (invitation.response_status === "attending" || Boolean(invitation.delegate_email)),
         )
         .map((invitation) => Number(invitation.id)),
     );

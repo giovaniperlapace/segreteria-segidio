@@ -1,8 +1,10 @@
+import { describeParts, type EventPart } from "@/lib/invitations/event-parts";
 import { NextRequest, NextResponse } from "next/server";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import {
+  type EventInvitationExportRow,
   loadEventForExport,
   loadNotInvitedContactsForEvent,
   parseEventExportType,
@@ -69,8 +71,17 @@ export async function GET(
   const groupIds = parseNumberList(request.nextUrl.searchParams.get("groups") ?? "");
   const matchesGroup = (contact: { group_ids: number[] }) =>
     groupIds.length === 0 || groupIds.some((id) => contact.group_ids.includes(id));
-  const rows = eventData.rows.filter((row) => matchesGroup(row.contact));
+  const partId = request.nextUrl.searchParams.get("part") ?? "";
+  const parts = eventData.event.parts as EventPart[];
+  if (partId && !parts.some(part => part.id === partId)) notFound();
+  const rows = (eventData.rows as EventInvitationExportRow[]).filter(row => matchesGroup(row.contact) && (!partId || row.partResponses?.some(r => r.id === partId))).map(row => {
+    if (!partId) return row;
+    const responses = row.partResponses!.filter(r => r.id === partId);
+    const response = responses[0];
+    return { ...row, partResponses: responses, partsSummary: describeParts(parts, responses), responseStatus: response.response === 'delegated' ? 'attending' as const : response.response };
+  });
   const summary = [
+    partId ? `Parte: ${parts.find(part => part.id === partId)?.title}` : "",
     search ? `Ricerca: ${search}` : "",
     groupIds.length ? `Gruppi: ${optionNames(groupIds, eventData.options.groups).join(", ") || "Nessun gruppo valido"}` : "",
   ].filter(Boolean).join(" | ");

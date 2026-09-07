@@ -111,6 +111,16 @@ Post-MVP:
 - import Excel/CSV;
 - reportistica avanzata.
 
+## Eventi compositi — 2026-09-07
+
+- Creazione/modifica evento: `parts` contiene fino a cinque parti con ID stabile e nome; `[]` mantiene il comportamento degli eventi semplici.
+- Inviti: `part_responses` conserva solo le parti invitate, ciascuna con risposta e delegato facoltativo. La selezione è disponibile nell'aggiunta singola, nella costruzione lista e nella conversione delle proposte approvate; dalla scheda invito si modificano selezione e risposte.
+- Il link pubblico mostra solo le parti invitate. Il salvataggio tramite RPC valida il token e aggiorna risposte, storico e uso del token nella stessa transazione. I delegati restano esclusivamente nell'invito e nello storico.
+- Il riepilogo generale conta gli inviti attesi ad almeno una parte; i conteggi per parte includono i delegati. Email, storico, filtri ed export riportano le parti. La risposta massiva e l'undo legacy sono disabilitati per i compositi, per non sovrascrivere risposte distinte.
+- Le parti già incluse in inviti non possono essere rimosse; un evento semplice già dotato di inviti non può essere convertito in composito. Una nuova parte aggiunta dopo la creazione degli inviti va selezionata esplicitamente negli inviti esistenti.
+- Migration additiva `20260907120000_composite_events.sql` verificata su database temporaneo separato e applicata al Supabase condiviso. Collaudo utente su localhost completato e rilascio su `main` autorizzato; localhost usa lo stesso database della produzione.
+- Test: `node scripts/tests/composite-events.mjs`; `scripts/tests/composite-events.sql` va eseguito esclusivamente su database isolato con schema applicativo aggiornato, termina con rollback.
+
 ## Prossimo lavoro consigliato
 
 La prossima sessione dovrebbe collaudare Milestone 15 + Milestone 16 con un evento di prova o controllato:

@@ -1,5 +1,7 @@
 "use client";
 
+import { PartSelection } from "@/components/events/event-parts-fields";
+import type { EventPart } from "@/lib/invitations/event-parts";
 import { useMemo, useState } from "react";
 import {
   addApprovedProposalsAction,
@@ -33,11 +35,13 @@ function SelectedContactInputs({ selectedIds }: { selectedIds: number[] }) {
 }
 
 export function BuildSelection({
+  parts,
   eventId,
   candidates,
   references,
   approvedProposalCount,
 }: {
+  parts: EventPart[];
   eventId: number;
   candidates: CandidateContact[];
   references: ReferenceOption[];
@@ -144,6 +148,7 @@ export function BuildSelection({
       <div className="grid gap-5 lg:grid-cols-2">
         <form action={inviteAction} className="space-y-3 rounded-2xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <input type="hidden" name="eventId" value={eventId} />
+          <PartSelection parts={parts} />
           <SelectedContactInputs selectedIds={selectedIds} />
           <h2 className="text-lg font-semibold text-[#1b3272]">Inviti diretti</h2>
           <p className="text-sm text-slate-600">
@@ -155,6 +160,7 @@ export function BuildSelection({
 
         <form action={proposalAction} className="space-y-3 rounded-2xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <input type="hidden" name="eventId" value={eventId} />
+
           <SelectedContactInputs selectedIds={selectedIds} />
           <h2 className="text-lg font-semibold text-[#1b3272]">Proposte ai referenti</h2>
           <p className="text-sm text-slate-600">
@@ -197,6 +203,7 @@ export function BuildSelection({
 
       <form action={approvedAction} className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
         <input type="hidden" name="eventId" value={eventId} />
+          <PartSelection parts={parts} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold text-emerald-900">Proposte approvate</h2>

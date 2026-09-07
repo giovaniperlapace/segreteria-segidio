@@ -1,3 +1,4 @@
+import type { PartResponse } from "@/lib/invitations/event-parts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
@@ -72,7 +73,7 @@ export default async function EventDetailPage({
 
   const { data: event, error: eventError } = await supabase
     .from("events")
-    .select("id,title,description,starts_at,ends_at,location,organizational_notes,status,legacy_access_id")
+    .select("parts,id,title,description,starts_at,ends_at,location,organizational_notes,status,legacy_access_id")
     .eq("id", eventId)
     .maybeSingle();
   if (eventError) throw eventError;
@@ -81,7 +82,7 @@ export default async function EventDetailPage({
   let invitationsQuery = supabase
     .from("event_invitations")
     .select(
-      `id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
+      `part_responses,id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
       { count: "exact" },
     )
     .eq("event_id", eventId);
@@ -163,6 +164,7 @@ export default async function EventDetailPage({
     response_status: "no_response" | "attending" | "declined" | "maybe";
     source: "admin" | "public_link";
     actor_profile_id: string | null;
+    part_responses?: (PartResponse & { title?: string })[];
     response_note: string | null;
     delegate_first_name: string | null;
     delegate_last_name: string | null;
@@ -175,7 +177,7 @@ export default async function EventDetailPage({
     const [responseHistoryResult, sentEmailResult] = await Promise.all([
       supabase
         .from("invitation_responses")
-        .select("id,invitation_id,response_status,source,actor_profile_id,response_note,delegate_first_name,delegate_last_name,delegate_email,delegate_role,recorded_at")
+        .select("part_responses,id,invitation_id,response_status,source,actor_profile_id,response_note,delegate_first_name,delegate_last_name,delegate_email,delegate_role,recorded_at")
         .in("invitation_id", visibleInvitationIds)
         .order("recorded_at", { ascending: false }),
       supabase
@@ -227,7 +229,8 @@ export default async function EventDetailPage({
       source: "admin" | "public_link";
       recorded_at: string;
       actor_name: string | null;
-      response_note: string | null;
+      part_responses?: (PartResponse & { title?: string })[];
+    response_note: string | null;
       delegate_first_name: string | null;
       delegate_last_name: string | null;
       delegate_email: string | null;
@@ -246,6 +249,7 @@ export default async function EventDetailPage({
         actor_name: history.actor_profile_id
           ? invitationProfilesById.get(history.actor_profile_id) ?? "Utente non disponibile"
           : null,
+        part_responses: history.part_responses,
         response_note: history.response_note,
         delegate_first_name: history.delegate_first_name,
         delegate_last_name: history.delegate_last_name,
@@ -364,6 +368,7 @@ export default async function EventDetailPage({
       id: Number(invitation.id),
       event_id: Number(invitation.event_id),
       contact_id: Number(invitation.contact_id),
+      part_responses: invitation.part_responses,
       row_type: "invitation",
       has_sent_email: invitationIdsWithSentEmail.has(Number(invitation.id)),
       invitation_status: invitation.invitation_status,
@@ -461,6 +466,8 @@ export default async function EventDetailPage({
       contact,
     };
   }) as EventInvitationRecord[];
+  const partCounts = event.parts.length ? await supabase.rpc("event_part_counts", { p_event_id: eventId }) : { data: [], error: null };
+  if (partCounts.error) throw partCounts.error;
   const eventRows = [...invitationRows, ...proposalRows].sort((a, b) =>
     a.contact_name.localeCompare(b.contact_name, "it", { sensitivity: "base" }),
   );
@@ -498,6 +505,7 @@ export default async function EventDetailPage({
             <EventEditButton
               event={{
                 ...event,
+                parts: event.parts ?? [],
                 status: event.status as EventRecord["status"],
                 invitation_count: Number(responseCounts.total_count),
                 attending_count: Number(responseCounts.attending_count),
@@ -516,7 +524,9 @@ export default async function EventDetailPage({
           </p>
         </header>
 
+        {event.parts.length > 0 && <section className="space-y-3"><h2 className="text-lg font-semibold text-[#1b3272]">Parti dell’evento</h2><p className="text-sm text-slate-600">Il riepilogo generale conta gli inviti con almeno una partecipazione prevista. I conteggi qui sotto riguardano ciascuna parte e includono i delegati.</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{(partCounts.data ?? []).map((part: { id: string; title: string; invited: number; attending: number; declined: number; maybe: number; no_response: number; delegated: number }) => <div key={part.id} className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="font-semibold">{part.title}</h3><p className="mt-2 text-sm">{part.invited} inviti · <span className="text-emerald-700">{part.attending} partecipanti attesi</span></p><p className="mt-1 text-xs text-slate-600">{part.declined} no · {part.maybe} forse · {part.no_response} senza risposta · {part.delegated} deleghe</p></div>)}</div></section>}
         <InvitationManagement
+          parts={event.parts}
           eventId={eventId}
           pageSearch={search}
           invitations={eventRows}

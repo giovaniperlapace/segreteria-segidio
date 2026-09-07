@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { publicResponseChoice } from "@/lib/email/public-response-links";
-import { recordPublicInvitationResponse } from "@/lib/invitations/public-responses";
+import { recordPublicInvitationResponse, recordPublicPartResponses } from "@/lib/invitations/public-responses";
 
 function formText(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -45,4 +45,13 @@ export async function submitPublicInvitationResponse(formData: FormData) {
   }
 
   redirect(`${target}?esito=ok&risposta=${response}`);
+}
+
+export async function submitPublicPartResponses(formData: FormData) {
+  const token = formText(formData, 'token');
+  const target = `/risposta/${encodeURIComponent(token || 'non-valido')}`;
+  let success = false;
+  try { success = await recordPublicPartResponses(token, formText(formData, 'partResponses')); }
+  catch (error) { console.error('Composite response failed', error); }
+  redirect(`${target}?esito=${success ? 'ok' : 'errore'}`);
 }

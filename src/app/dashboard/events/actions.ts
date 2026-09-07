@@ -1,5 +1,6 @@
 "use server";
 
+import { parseEventParts, parsePartResponses, type EventPart } from "@/lib/invitations/event-parts";
 import { revalidatePath } from "next/cache";
 import { requireManager } from "@/lib/auth/profile";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
@@ -101,6 +102,7 @@ function friendlyError(error: unknown) {
         ? String(error.message)
         : String(error);
 
+  if (/part[ei]|composito|delegat/i.test(message)) return message;
   if (message.includes("events_title_not_blank")) return "Inserisci un titolo evento.";
   if (message.includes("events_ends_after_starts")) return "La fine deve essere successiva all'inizio.";
   if (message.includes("events_legacy_access_id_unique_idx")) return "Esiste gia' un evento con questo id Access.";
@@ -245,6 +247,7 @@ export async function createEventAction(
     const supabase = createSupabaseServiceClient();
     const { error } = await supabase.from("events").insert({
       title,
+      parts: parseEventParts(text(formData, "eventParts") || "[]"),
       description: optionalText(formData, "description"),
       starts_at: startsAt,
       ends_at: endsAt,
@@ -284,6 +287,7 @@ export async function updateEventAction(
       .from("events")
       .update({
         title,
+        parts: parseEventParts(text(formData, "eventParts") || "[]"),
         description: optionalText(formData, "description"),
         starts_at: startsAt,
         ends_at: endsAt,
@@ -317,8 +321,10 @@ export async function addInvitationAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const partResponses = await selectedPartsForInvitation(eventId, formData);
     const { error } = await supabase.from("event_invitations").insert({
       event_id: eventId,
+      part_responses: partResponses,
       contact_id: contactId,
       invitation_status: "selected",
       response_status: "no_response",
@@ -351,9 +357,11 @@ export async function bulkAddInvitationsAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const partResponses = await selectedPartsForInvitation(eventId, formData);
     const { error } = await supabase.from("event_invitations").upsert(
       contactIds.map((contactId) => ({
         event_id: eventId,
+        part_responses: partResponses,
         contact_id: contactId,
         invitation_status: "selected",
         response_status: "no_response",
@@ -449,6 +457,7 @@ export async function addApprovedProposalsAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const partResponses = await selectedPartsForInvitation(eventId, formData);
     const { data: approved, error: approvedError } = await supabase
       .from("invitation_proposals")
       .select("contact_id")
@@ -464,6 +473,7 @@ export async function addApprovedProposalsAction(
     const { error } = await supabase.from("event_invitations").upsert(
       contactIds.map((contactId) => ({
         event_id: eventId,
+        part_responses: partResponses,
         contact_id: contactId,
         invitation_status: "selected",
         response_status: "no_response",
@@ -529,6 +539,9 @@ export async function updateInvitationAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const compositeCheck = await supabase.from("events").select("parts").eq("id", eventId).single();
+    if (compositeCheck.error) throw compositeCheck.error;
+    if (compositeCheck.data.parts.length) return { status: "error", message: "Per un evento composito apri l’invito e modifica le singole parti." };
     const { data: currentInvitation, error: currentError } = await supabase
       .from("event_invitations")
       .select("contact_id,invitation_status,response_status,response_source,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id")
@@ -787,6 +800,9 @@ export async function bulkUpdateInvitationResponseAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const compositeCheck = await supabase.from("events").select("parts").eq("id", eventId).single();
+    if (compositeCheck.error) throw compositeCheck.error;
+    if (compositeCheck.data.parts.length) return { status: "error", message: "Per un evento composito apri l’invito e modifica le singole parti." };
     const { data: rows, error: rowsError } = await supabase
       .from("event_invitations")
       .select("id,invitation_status,contact_id,response_status")
@@ -986,6 +1002,9 @@ export async function undoBulkInvitationStatusAction(
 
   try {
     const supabase = createSupabaseServiceClient();
+    const compositeCheck = await supabase.from("events").select("parts").eq("id", eventId).single();
+    if (compositeCheck.error) throw compositeCheck.error;
+    if (compositeCheck.data.parts.length) return { status: "error", message: "Per un evento composito apri l’invito e modifica le singole parti." };
     const invitationStates = previousStates.filter((item) => item.rowType === "invitation");
     const proposalStates = previousStates.filter((item) => item.rowType === "proposal");
     const invitationIds = invitationStates.map((item) => item.id);
@@ -1215,4 +1234,47 @@ export async function bulkRemoveInvitationsAction(
   } catch (error) {
     return { status: "error", message: friendlyError(error) };
   }
+}
+
+async function selectedPartsForInvitation(eventId: number, formData: FormData) {
+  const supabase = createSupabaseServiceClient();
+  const { data: event, error } = await supabase.from('events').select('parts').eq('id', eventId).single();
+  if (error) throw error;
+  const parts = event.parts as EventPart[];
+  if (!parts.length) return [];
+  const ids: string[] = JSON.parse(text(formData, 'selectedPartIds') || JSON.stringify(parts.map(p => p.id)));
+  if (!Array.isArray(ids)) throw new Error('Seleziona le parti invitate.');
+  return parsePartResponses(JSON.stringify(ids.map(id => ({ id, response: 'no_response' }))), parts);
+}
+
+export async function updateCompositeInvitationAction(_state: ArchiveActionState, formData: FormData): Promise<ArchiveActionState> {
+  const profile = await requireManager();
+  try {
+    const eventId = numberField(formData, 'eventId'), invitationId = numberField(formData, 'invitationId');
+    const status = invitationStatus(text(formData, 'invitationStatus'));
+    if (!eventId || !invitationId || !status) throw new Error('Invito non valido.');
+    const supabase = createSupabaseServiceClient();
+    const { data: event, error: eventError } = await supabase.from('events').select('parts').eq('id', eventId).single();
+    if (eventError) throw eventError;
+    const parts = event.parts as EventPart[];
+    const { data: current, error: currentError } = await supabase.from('event_invitations').select('part_responses,invited_at').eq('id', invitationId).eq('event_id', eventId).single();
+    if (currentError) throw currentError;
+    const responses = parsePartResponses(text(formData, 'partResponses'), parts).map(row => status === 'invited' ? row : { id: row.id, response: 'no_response' as const });
+    const changed = JSON.stringify(responses) !== JSON.stringify(parsePartResponses(JSON.stringify(current.part_responses), parts));
+    const now = new Date().toISOString();
+    const { data: saved, error } = await supabase.from('event_invitations').update({
+      part_responses: responses, invitation_status: status,
+      notes: optionalText(formData, 'notes'), attention_flag: formData.get('attentionFlag') === 'on',
+      response_source: changed ? 'admin' : undefined,
+      response_recorded_at: changed ? now : undefined,
+      response_recorded_by_profile_id: changed ? profile.id : undefined,
+      updated_by_profile_id: profile.id,
+      invited_at: status === 'invited' ? current.invited_at ?? now : null,
+      invitation_status_updated_at: now, invitation_status_updated_by_profile_id: profile.id,
+    }).eq('id', invitationId).eq('event_id', eventId).eq('part_responses', JSON.stringify(current.part_responses)).select('id');
+    if (error) throw error;
+    if (!saved?.length) throw new Error('Le risposte delle parti sono cambiate. Riapri l’invito e riprova.');
+    revalidatePath(`/dashboard/events/${eventId}`); revalidatePath('/dashboard'); revalidatePath('/dashboard/events');
+    return { status: 'success', message: 'Parti invitate e risposte salvate.' };
+  } catch (error) { return { status: 'error', message: friendlyError(error) }; }
 }

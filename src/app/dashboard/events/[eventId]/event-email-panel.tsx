@@ -12,6 +12,7 @@ import {
   createEmailBatchAction,
   deleteEmailBatchAction,
   sendEmailBatchAction,
+  sendEmailBatchTestAction,
 } from "../email-actions";
 import type { EventInvitationRecord } from "./invitation-management";
 
@@ -94,6 +95,8 @@ function BatchActions({
   canDelete: boolean;
 }) {
   const [state, action, pending] = useArchiveAction(sendEmailBatchAction);
+  const [testState, testAction, testPending] = useArchiveAction(sendEmailBatchTestAction);
+  const [omitResponseLink, setOmitResponseLink] = useState(!batch.include_public_response_link);
   const [autoContinue, setAutoContinue] = useState(false);
   const sendFormRef = useRef<HTMLFormElement>(null);
   const canChangeResponseLink =
@@ -122,11 +125,31 @@ function BatchActions({
     <div className="flex flex-col items-start gap-2 sm:items-end">
       <div className="flex flex-wrap items-start gap-2 sm:justify-end">
         <BatchPreviewButton eventId={eventId} batch={batch} />
+        <form action={testAction}>
+          <input type="hidden" name="eventId" value={eventId} />
+          <input type="hidden" name="batchId" value={batch.id} />
+          {omitResponseLink ? <input type="hidden" name="omitPublicResponseLink" value="on" /> : null}
+          <button
+            type="submit"
+            disabled={testPending || pending || autoContinue || batch.status === "sending"}
+            aria-busy={testPending}
+            title="Invia a segreteriagenerale@santegidio.org con i dati del primo invitato e gli allegati. Il pulsante di risposta è dimostrativo."
+            className="inline-flex items-center gap-2 rounded-xl border border-[#1b3272] bg-white px-3 py-2 text-sm font-semibold text-[#1b3272] hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+          >
+            {testPending ? <PendingSpinner /> : (
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="m3 7 9 6 9-6" />
+              </svg>
+            )}
+            {testPending ? "Invio prova..." : "Invia prova"}
+          </button>
+        </form>
         {pendingCount > 0 ? (
           <button
             type="submit"
             form={sendFormId}
-            disabled={pending || autoContinue}
+            disabled={pending || autoContinue || testPending}
             aria-busy={pending || autoContinue}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
@@ -140,7 +163,7 @@ function BatchActions({
             form={sendFormId}
             name="includeFailed"
             value="on"
-            disabled={pending || autoContinue}
+            disabled={pending || autoContinue || testPending}
             className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] disabled:cursor-wait disabled:opacity-60"
           >
             {pending ? <PendingSpinner /> : null}
@@ -149,6 +172,7 @@ function BatchActions({
         ) : null}
         {canDelete ? <BatchDeleteForm eventId={eventId} batch={batch} /> : null}
       </div>
+      <ActionMessage state={testState} />
       {canSend ? (
         <form
           ref={sendFormRef}
@@ -171,8 +195,9 @@ function BatchActions({
             <input
               type="checkbox"
               name="omitPublicResponseLink"
-              defaultChecked={!batch.include_public_response_link}
-              disabled={!canChangeResponseLink || pending}
+              checked={omitResponseLink}
+              onChange={(event) => setOmitResponseLink(event.target.checked)}
+              disabled={!canChangeResponseLink || pending || testPending}
               className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#1b3272]"
             />
             <span>

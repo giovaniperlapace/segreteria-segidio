@@ -548,6 +548,91 @@ export async function deleteEmailBatchAction(
   }
 }
 
+export async function sendEmailBatchTestAction(
+  _previousState: ArchiveActionState,
+  formData: FormData,
+): Promise<ArchiveActionState> {
+  await requireManager();
+  const batchId = numberField(formData, "batchId");
+  const eventId = numberField(formData, "eventId");
+  if (!batchId || !eventId) {
+    return { status: "error", message: "Batch email non valido." };
+  }
+
+  try {
+    const supabase = createSupabaseServiceClient();
+    const { data: batch, error: batchError } = await supabase
+      .from("email_batches")
+      .select("id,status,sent_count,failed_count,include_public_response_link")
+      .eq("id", batchId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (batchError) throw batchError;
+    if (!batch) return { status: "error", message: "Batch email non trovato." };
+    const { data: log, error: logError } = await supabase
+      .from("email_logs")
+      .select("invitation_id,subject,rendered_text,rendered_html,response_url,to_email")
+      .eq("batch_id", batchId)
+      .eq("event_id", eventId)
+      .order("id")
+      .limit(1)
+      .maybeSingle();
+    if (logError) throw logError;
+    if (!log) return { status: "error", message: "Il batch non contiene invitati." };
+    if (log.to_email === "email-mancante") {
+      return { status: "error", message: "Il primo invitato non ha un'email valida: il suo messaggio non è stato preparato. Correggi il contatto e ricrea il batch." };
+    }
+    const { data: invitation, error: invitationError } = await supabase
+      .from("event_invitations")
+      .select("part_responses,response_status,delegate_email")
+      .eq("id", log.invitation_id)
+      .eq("event_id", eventId)
+      .single();
+    if (invitationError) throw invitationError;
+    const hasStarted = batch.status === "sending" || batch.sent_count > 0 || batch.failed_count > 0;
+    const includeLink = hasStarted
+      ? Boolean(batch.include_public_response_link)
+      : formData.get("omitPublicResponseLink") !== "on";
+    const confirmed = !invitation.part_responses?.length &&
+      (invitation.response_status === "attending" || Boolean(invitation.delegate_email));
+    const base = removePublicResponseLink({
+      text: log.rendered_text,
+      html: log.rendered_html,
+      responseUrl: log.response_url,
+    });
+    // Never create or reuse a participant token in a test message.
+    const rendered = includeLink && !confirmed
+      ? appendPublicResponseLink({ ...base, responseUrl: publicResponseUrl("prova-email") })
+      : base;
+    const { data: links, error: attachmentError } = await supabase
+      .from("email_batch_attachments")
+      .select("email_attachments(file_name,content_type,content_base64)")
+      .eq("batch_id", batchId);
+    if (attachmentError) throw attachmentError;
+    const attachments = (links ?? []).flatMap((link) => {
+      const item = Array.isArray(link.email_attachments) ? link.email_attachments[0] : link.email_attachments;
+      return item ? [{
+        filename: item.file_name,
+        contentType: item.content_type,
+        content: Buffer.from(item.content_base64, "base64"),
+      }] : [];
+    });
+    await sendSmtpEmail({
+      to: "segreteriagenerale@santegidio.org",
+      subject: `[PROVA] ${log.subject}`,
+      text: rendered.text,
+      html: rendered.html,
+      attachments,
+    });
+    return {
+      status: "success",
+      message: "Email di prova inviata a segreteriagenerale@santegidio.org con i dati del primo invitato. Il pulsante di risposta, se presente, è dimostrativo. Il batch resta invariato.",
+    };
+  } catch (error) {
+    return { status: "error", message: friendlyEmailError(error) };
+  }
+}
+
 export async function sendEmailBatchAction(
   _previousState: ArchiveActionState,
   formData: FormData,

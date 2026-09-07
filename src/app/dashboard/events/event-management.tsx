@@ -213,15 +213,25 @@ function EventCard({ event, onOpen }: { event: EventRecord; onOpen: (event: Even
       className={`rounded-2xl border bg-white p-4 shadow-sm ${isFlagged ? "border-amber-300 bg-amber-50/40" : "border-[#d9e1f2]"}`}
     >
       <div className="flex min-h-24 flex-col justify-between gap-3">
-        <div>
+        <div className="relative pr-12">
+          <button
+            type="button"
+            onClick={() => onOpen(event)}
+            aria-label={`Modifica dettagli evento: ${event.title}`}
+            title="Modifica dettagli evento"
+            className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg text-[#1b3272] hover:bg-[#1b3272]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="m16 4 4 4M4 20l4-1L20 7a2.83 2.83 0 0 0-4-4L4 15l-1 6Z" />
+            </svg>
+          </button>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onOpen(event)}
-              className="text-left text-base font-semibold text-[#1b3272] hover:underline"
+            <Link
+              href={`/dashboard/events/${event.id}`}
+              className="rounded-sm text-left text-base font-semibold text-[#1b3272] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
             >
               {event.title}
-            </button>
+            </Link>
             <span className="rounded-full bg-[#1b3272]/10 px-2 py-0.5 text-xs font-semibold text-[#1b3272]">
               {EVENT_STATUS_LABELS[event.status]}
             </span>
@@ -249,21 +259,6 @@ function EventCard({ event, onOpen }: { event: EventRecord; onOpen: (event: Even
           <span className={`rounded-xl px-3 py-2 ${isFlagged ? "bg-amber-100 text-amber-900" : "bg-slate-50 text-slate-700"}`}>
             <strong>{event.attention_count}</strong> flag
           </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => onOpen(event)}
-            className="rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 text-sm font-semibold text-[#1b3272] hover:border-[#d43c2f]"
-          >
-            Apri scheda
-          </button>
-          <Link
-            href={`/dashboard/events/${event.id}`}
-            className="rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86]"
-          >
-            Lista invitati
-          </Link>
         </div>
       </div>
     </article>
@@ -342,14 +337,29 @@ function EventsTable({
             {events.map((event) => (
               <tr
                 key={event.id}
-                onClick={() => onOpen(event)}
-                className={`cursor-pointer align-top hover:bg-[#f8fafc] ${event.attention_count > 0 ? "bg-amber-50/50" : ""}`}
+                className={`align-top hover:bg-[#f8fafc] ${event.attention_count > 0 ? "bg-amber-50/50" : ""}`}
               >
                 <td className="px-4 py-3">
-                  <button type="button" className="text-left font-semibold text-[#1b3272] hover:underline">
-                    {event.title}
-                  </button>
-                  <div className="mt-1 text-xs text-slate-500">
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpen(event)}
+                      aria-label={`Modifica dettagli evento: ${event.title}`}
+                      title="Modifica dettagli evento"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#1b3272] hover:bg-[#1b3272]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                        <path d="m16 4 4 4M4 20l4-1L20 7a2.83 2.83 0 0 0-4-4L4 15l-1 6Z" />
+                      </svg>
+                    </button>
+                    <Link
+                      href={`/dashboard/events/${event.id}`}
+                      className="rounded-sm py-1.5 text-left font-semibold text-[#1b3272] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+                    >
+                      {event.title}
+                    </Link>
+                  </div>
+                  <div className="ml-10 mt-1 text-xs text-slate-500">
                     {[event.location, event.legacy_access_id ? `Access #${event.legacy_access_id}` : null].filter(Boolean).join(" · ")}
                   </div>
                 </td>

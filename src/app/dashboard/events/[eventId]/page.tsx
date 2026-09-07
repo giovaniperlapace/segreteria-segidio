@@ -5,6 +5,7 @@ import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { CONTACT_COLUMNS } from "../../contacts/contact-data";
 import type { ContactRecord } from "../../contacts/contact-management";
+import { EventEditButton, type EventRecord } from "../event-management";
 import { InvitationManagement, type EventInvitationRecord } from "./invitation-management";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +72,7 @@ export default async function EventDetailPage({
 
   const { data: event, error: eventError } = await supabase
     .from("events")
-    .select("id,title,description,starts_at,ends_at,location,status,legacy_access_id")
+    .select("id,title,description,starts_at,ends_at,location,organizational_notes,status,legacy_access_id")
     .eq("id", eventId)
     .maybeSingle();
   if (eventError) throw eventError;
@@ -492,7 +493,19 @@ export default async function EventDetailPage({
             <Link href="/dashboard" className="hover:underline">← Dashboard</Link>
             <Link href="/dashboard/events" className="hover:underline">← Eventi</Link>
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-[#1b3272]">{event.title}</h1>
+          <div className="mt-3 flex items-start justify-between gap-4">
+            <h1 className="text-3xl font-semibold text-[#1b3272]">{event.title}</h1>
+            <EventEditButton
+              event={{
+                ...event,
+                status: event.status as EventRecord["status"],
+                invitation_count: Number(responseCounts.total_count),
+                attending_count: Number(responseCounts.attending_count),
+                attended_count: 0,
+                attention_count: 0,
+              }}
+            />
+          </div>
           <p className="mt-2 text-sm text-slate-600">
             {formatDateTime(event.starts_at)}
             {event.location ? ` · ${event.location}` : ""}

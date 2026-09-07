@@ -134,9 +134,11 @@ function CreateEventForm() {
 function EventModal({
   event,
   onClose,
+  showStats = true,
 }: {
   event: EventRecord;
   onClose: () => void;
+  showStats?: boolean;
 }) {
   const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateEventAction);
@@ -165,7 +167,7 @@ function EventModal({
             Chiudi
           </button>
         </div>
-        <div className="grid gap-2 px-5 py-4 text-sm sm:grid-cols-4">
+        {showStats ? <div className="grid gap-2 px-5 py-4 text-sm sm:grid-cols-4">
             <span className="rounded-xl bg-slate-50 px-3 py-2 text-slate-700">
               <strong className="text-[#1b3272]">{event.invitation_count}</strong> invitati
             </span>
@@ -178,7 +180,7 @@ function EventModal({
             <span className={`rounded-xl px-3 py-2 ${event.attention_count > 0 ? "bg-amber-100 text-amber-900" : "bg-slate-50 text-slate-700"}`}>
               <strong>{event.attention_count}</strong> flag
             </span>
-        </div>
+        </div> : null}
         <form action={action} className="space-y-4 border-t border-slate-200 px-5 py-5">
           <input type="hidden" name="eventId" value={event.id} />
           <EventFields
@@ -203,6 +205,27 @@ function EventModal({
         </form>
       </div>
     </div>
+  );
+}
+
+export function EventEditButton({ event }: { event: EventRecord }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`Modifica dettagli evento: ${event.title}`}
+        title="Modifica dettagli evento"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#1b3272] hover:bg-[#1b3272]/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+          <path d="m16 4 4 4M4 20l4-1L20 7a2.83 2.83 0 0 0-4-4L4 15l-1 6Z" />
+        </svg>
+      </button>
+      {open ? <EventModal event={event} onClose={() => setOpen(false)} showStats={false} /> : null}
+    </>
   );
 }
 

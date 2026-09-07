@@ -137,7 +137,8 @@ export default async function EventDetailPage({
         .select("id,name,subject")
         .eq("active", true)
         .is("deleted_at", null)
-        .order("name"),
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false }),
       supabase
         .from("email_batches")
         .select(

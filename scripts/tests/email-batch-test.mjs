@@ -7,9 +7,9 @@ function load(path, mocks = {}) {
   const code = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const module = { exports: {} };
-  new Function('require', 'module', 'exports', code)((id) => id in mocks ? mocks[id] : require(id), module, module.exports);
-  return module.exports;
+  const loadedModule = { exports: {} };
+  new Function('require', 'module', 'exports', code)((id) => id in mocks ? mocks[id] : require(id), loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 const links = load('../../src/lib/email/public-response-links.ts');
 let sent, denied = false, tables, queries;

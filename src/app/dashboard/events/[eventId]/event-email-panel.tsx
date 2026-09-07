@@ -680,7 +680,8 @@ export function EventEmailPanel({
         ))}
         <label className="text-sm font-medium text-slate-700">
           Template
-          <select name="templateId" className={inputClass} disabled={templates.length === 0}>
+          <select name="templateId" defaultValue="" required className={inputClass} disabled={templates.length === 0}>
+            <option value="" disabled>{templates.length ? "Scegli un template…" : "Nessun template disponibile"}</option>
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.name}

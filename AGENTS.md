@@ -413,3 +413,9 @@ Se non si riesce ad accedere, non inventare credenziali o workaround. Dire chiar
 ## Criterio di qualita'
 
 Ogni blocco deve lasciare il progetto piu' chiaro di prima: scope piccolo, controlli eseguiti, nessun segreto, permessi ragionati, e una spiegazione sintetica di cosa e' cambiato e cosa resta da fare.
+
+## Origine pubblica dei link email
+
+- `PUBLIC_APP_URL` definisce il dominio raggiungibile dai destinatari degli inviti, anche quando il manager opera da localhost. Valore previsto: `https://archivio-segreteria.segidio.org`.
+- `APP_URL` resta separato per il login locale. La generazione dei link evento sostituisce automaticamente le origini localhost/loopback con il dominio pubblico, anche nei retry di email non ancora inviate.
+- Le email già consegnate con localhost non possono essere cambiate: il percorso e il token funzionano sul dominio pubblico; occorre comunicarne il link corretto o reinviare su richiesta esplicita.

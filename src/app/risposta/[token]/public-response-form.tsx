@@ -1,14 +1,23 @@
 "use client";
 
 import { PartResponsesFields } from "@/components/events/event-parts-fields";
-import type { EventPart, PartResponse } from "@/lib/invitations/event-parts";
+import { parsePartResponses, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   PUBLIC_RESPONSE_CHOICES,
   PUBLIC_RESPONSE_CHOICE_LABELS,
   type PublicResponseChoice,
 } from "@/lib/email/public-response-links";
 import { submitPublicInvitationResponse, submitPublicPartResponses } from "./actions";
+
+function ResponseSubmitButton({ complete, composite = false }: { complete: boolean; composite?: boolean }) {
+  const { pending } = useFormStatus();
+  return <button type="submit" disabled={!complete || pending} aria-busy={pending}
+    className="w-full rounded-xl bg-[#1b3272] px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+    {pending ? "Invio in corso…" : composite ? "Invia risposte" : "Invia risposta"}
+  </button>;
+}
 
 function statusDescription(status: PublicResponseChoice) {
   if (status === "attending") return "Confermo la mia presenza all'evento.";
@@ -40,8 +49,21 @@ export function PublicResponseForm({
 }) {
   const [choice, setChoice] = useState<PublicResponseChoice | null>(initialChoice);
   const delegated = choice === "delegated";
+  const [responses, setResponses] = useState(partResponses);
+  let complete = false;
+  try {
+    complete = parts.length > 0 && parsePartResponses(JSON.stringify(responses), parts, true).length === parts.length;
+  } catch {
+    // An unanswered part or incomplete delegate keeps submission disabled.
+  }
 
-  if (parts.length) return <form action={submitPublicPartResponses} className="mt-7 space-y-4"><input type="hidden" name="token" value={token} /><PartResponsesFields parts={parts} initialResponses={partResponses} /><button type="submit" className="w-full rounded-xl bg-[#1b3272] px-4 py-3 font-semibold text-white">Invia risposte</button></form>;
+  if (parts.length) return (
+    <form action={submitPublicPartResponses} className="mt-7 space-y-4">
+      <input type="hidden" name="token" value={token} />
+      <PartResponsesFields parts={parts} initialResponses={partResponses} responses={responses} onResponsesChange={setResponses} />
+      <ResponseSubmitButton complete={complete} composite />
+    </form>
+  );
   return (
     <form action={submitPublicInvitationResponse} className="mt-7 space-y-4">
       <input type="hidden" name="token" value={token} />

@@ -19,14 +19,31 @@ export const PUBLIC_RESPONSE_CHOICE_LABELS: Record<PublicResponseChoice, string>
   delegated: "Non partecipo e delego una persona al mio posto",
 };
 
+const PRODUCTION_APP_URL = "https://archivio-segreteria.segidio.org";
+
+function isLocalUrl(url: URL) {
+  const host = url.hostname.toLowerCase();
+  return host === "localhost" || host.endsWith(".localhost") || host === "[::1]" ||
+    host === "0.0.0.0" || /^127\./.test(host);
+}
+
+// Email recipients must reach the public app even when an operator uses localhost.
+// Magic-link login uses its own APP_URL handling and continues to work locally.
 export function appBaseUrl() {
-  const configuredUrl = process.env.APP_URL?.trim();
-  if (configuredUrl) return configuredUrl.replace(/\/+$/, "");
-
+  const configured = process.env.PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim();
+  if (configured) {
+    const url = new URL(configured);
+    if (!isLocalUrl(url)) return url.origin;
+    return PRODUCTION_APP_URL;
+  }
   const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) return `https://${vercelUrl.replace(/\/+$/, "")}`;
+  return vercelUrl ? `https://${vercelUrl.replace(/\/+$/, "")}` : PRODUCTION_APP_URL;
+}
 
-  return "http://localhost:3000";
+export function normalizePublicResponseUrl(value: string) {
+  const url = new URL(value);
+  if (!isLocalUrl(url)) return value;
+  return `${appBaseUrl()}${url.pathname}${url.search}${url.hash}`;
 }
 
 export function createPublicResponseToken() {

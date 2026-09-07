@@ -108,9 +108,9 @@ export default async function PublicInvitationResponsePage({
               {formatPublicEventDate(context.event.starts_at)}
               {context.event.location ? ` - ${context.event.location}` : ""}
             </p>
-            <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              {context.event.parts.length ? "Può aggiornare le risposte delle singole parti qui sotto." : <>Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong></>}
-            </p>
+            {!context.event.parts.length && <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong>
+            </p>}
           </div>
 
           <PublicResponseForm

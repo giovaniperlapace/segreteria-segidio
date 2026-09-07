@@ -24,13 +24,18 @@ export function PartSelection({ parts, initialIds }: { parts: EventPart[]; initi
     {!ids.length && <p className="text-sm text-red-700">Seleziona almeno una parte.</p>}
   </fieldset>;
 }
-export function PartResponsesFields({ parts, initialResponses, manager = false, disabled = false }: { parts: EventPart[]; initialResponses: PartResponse[]; manager?: boolean; disabled?: boolean }) {
-  const [rows, setRows] = useState(initialResponses);
+export function PartResponsesFields({ parts, initialResponses, responses, onResponsesChange, manager = false, disabled = false }: { parts: EventPart[]; initialResponses: PartResponse[]; responses?: PartResponse[]; onResponsesChange?: (rows: PartResponse[]) => void; manager?: boolean; disabled?: boolean }) {
+  const [internalRows, setInternalRows] = useState(initialResponses);
+  const rows = responses ?? internalRows;
+  function setRows(nextRows: PartResponse[]) {
+    setInternalRows(nextRows);
+    onResponsesChange?.(nextRows);
+  }
   function change(id: string, patch: Partial<PartResponse>) { setRows(rows.map(row => row.id === id ? { ...row, ...patch } : row)); }
   return <fieldset disabled={disabled} className="space-y-4">
     <input type="hidden" name="partResponses" value={JSON.stringify(rows)} />
-    <p className="text-sm text-slate-600">{manager ? 'Seleziona le parti invitate e registra una risposta per ciascuna.' : 'Comunichi la sua risposta per ciascuna delle parti a cui è invitato.'}</p>
-    <label className="block text-sm font-medium">Stessa risposta per tutte le parti<select className={field} value={rows.length && rows.every(row => row.response === rows[0].response) && (manager || rows[0].response !== "no_response") ? rows[0].response : ""} onChange={e => { if (e.target.value) setRows(rows.map(row => ({ ...row, response: e.target.value as PartResponse['response'] }))); }}><option value="">Scegli…</option>{Object.entries(PART_RESPONSE_LABELS).filter(([key]) => manager || key !== 'no_response').map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+    {manager && <p className="text-sm text-slate-600">Seleziona le parti invitate e registra una risposta per ciascuna.</p>}
+    {manager && <label className="block text-sm font-medium">Stessa risposta per tutte le parti<select className={field} value={rows.length && rows.every(row => row.response === rows[0].response) && (manager || rows[0].response !== "no_response") ? rows[0].response : ""} onChange={e => { if (e.target.value) setRows(rows.map(row => ({ ...row, response: e.target.value as PartResponse['response'] }))); }}><option value="">Scegli…</option>{Object.entries(PART_RESPONSE_LABELS).filter(([key]) => manager || key !== 'no_response').map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>}
     {parts.map(part => { const row = rows.find(r => r.id === part.id); return <div key={part.id} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="font-semibold">{manager && <input aria-label={`Invita a ${part.title}`} type="checkbox" className="mr-2" checked={Boolean(row)} onChange={e => setRows(e.target.checked ? [...rows, { id: part.id, response: 'no_response' }] : rows.filter(r => r.id !== part.id))} />}{part.title}</div>
       {row && <><label className="block text-sm">Risposta<select className={field} value={row.response === 'no_response' && !manager ? '' : row.response} required onChange={e => change(part.id, { response: e.target.value as PartResponse['response'] })}>{!manager && <option value="" disabled>Scegli una risposta</option>}{Object.entries(PART_RESPONSE_LABELS).filter(([key]) => manager || key !== 'no_response').map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>

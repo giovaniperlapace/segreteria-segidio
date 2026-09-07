@@ -9,6 +9,7 @@ import {
   createPublicResponseToken,
   hashPublicResponseToken,
   publicResponseUrl,
+  normalizePublicResponseUrl,
   removePublicResponseLink,
 } from "@/lib/email/public-response-links";
 import { plainTextToHtml, renderEmailTemplate, type EmailTemplateContext } from "@/lib/email/templates";
@@ -186,11 +187,13 @@ async function ensurePublicResponseLink(input: {
   profileId: string;
 }) {
   if (input.log.response_url) {
-    const rendered = appendPublicResponseLink({
+    const responseUrl = normalizePublicResponseUrl(input.log.response_url);
+    const base = removePublicResponseLink({
       text: input.log.rendered_text,
       html: input.log.rendered_html,
       responseUrl: input.log.response_url,
     });
+    const rendered = appendPublicResponseLink({ ...base, responseUrl });
     if (
       rendered.text !== input.log.rendered_text ||
       rendered.html !== input.log.rendered_html
@@ -200,6 +203,7 @@ async function ensurePublicResponseLink(input: {
         .update({
           rendered_text: rendered.text,
           rendered_html: rendered.html,
+          response_url: responseUrl,
         })
         .eq("id", input.log.id);
       if (logError) throw logError;

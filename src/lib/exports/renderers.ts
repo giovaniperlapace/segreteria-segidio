@@ -49,13 +49,13 @@ export async function renderExcel<T>(table: ExportTable<T>) {
   subtitleCell.font = { size: 10, color: { argb: "FF64748B" } };
 
   const headerRow = worksheet.getRow(3);
-  headerRow.values = [undefined, ...table.columns.map((column) => column.header)];
+  headerRow.values = table.columns.map((column) => column.header);
   headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
   headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1B3272" } };
   headerRow.alignment = { vertical: "middle", wrapText: true };
 
   for (const row of table.rows) {
-    worksheet.addRow(table.columns.map((column) => safeText(column.value(row))));
+    worksheet.addRow(table.columns.map((column) => column.value(row) ?? ""));
   }
 
   worksheet.columns = table.columns.map((column) => ({
@@ -72,7 +72,7 @@ export async function renderExcel<T>(table: ExportTable<T>) {
   });
   worksheet.autoFilter = {
     from: { row: 3, column: 1 },
-    to: { row: 3, column: table.columns.length },
+    to: { row: Math.max(3, worksheet.rowCount), column: table.columns.length },
   };
 
   return workbook.xlsx.writeBuffer();
@@ -175,6 +175,9 @@ export function renderPdf<T>(table: ExportTable<T>) {
     const range = document.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i += 1) {
       document.switchToPage(i);
+      // The footer sits outside the content margin; prevent PDFKit from adding a page.
+      const bottomMargin = document.page.margins.bottom;
+      document.page.margins.bottom = 0;
       document
         .font("Helvetica")
         .fontSize(8)
@@ -182,7 +185,9 @@ export function renderPdf<T>(table: ExportTable<T>) {
         .text(`Pagina ${i + 1} di ${range.count}`, left, document.page.height - 24, {
           width: pageWidth,
           align: "right",
+          lineBreak: false,
         });
+      document.page.margins.bottom = bottomMargin;
     }
 
     document.end();

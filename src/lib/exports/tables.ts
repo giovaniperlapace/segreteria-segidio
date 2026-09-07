@@ -119,7 +119,8 @@ function delegateName(row: EventInvitationExportRow) {
 
 function invitationBaseColumns(options: { groups: ExportOption[]; references: ExportOption[] }): ExportColumn<EventInvitationExportRow>[] {
   return [
-    { key: "name", header: "Nome", width: 24, value: (row) => row.contactName },
+    { key: "last_name", header: "Cognome", width: 24, value: (row) => row.contact.last_name },
+    { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
     { key: "role", header: "Carica", width: 30, value: (row) => row.contact.institutional_role },
     { key: "institution", header: "Istituzione", width: 32, value: (row) => row.contact.institution },
     { key: "groups", header: "Gruppi", width: 24, value: (row) => groups(row.contact, options.groups) },
@@ -179,14 +180,17 @@ export function buildEventTable(
     filteredRows = [...filteredRows].sort((a, b) => {
       const aGroup = groups(a.contact, options.groups);
       const bGroup = groups(b.contact, options.groups);
-      return aGroup.localeCompare(bGroup, "it") || a.contactName.localeCompare(b.contactName, "it");
+      return aGroup.localeCompare(bGroup, "it") ||
+        (a.contact.last_name ?? "").localeCompare(b.contact.last_name ?? "", "it") ||
+        (a.contact.first_name ?? "").localeCompare(b.contact.first_name ?? "", "it");
     });
   }
 
   let columns = invitationBaseColumns(options);
   if (type === "responses") {
     columns = [
-      { key: "name", header: "Nome", width: 24, value: (row) => row.contactName },
+      { key: "last_name", header: "Cognome", width: 24, value: (row) => row.contact.last_name },
+      { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
       { key: "response", header: "Risposta", width: 18, value: (row) => RESPONSE_LABELS[row.responseStatus] },
       { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionNames || row.companionCount || "" },
@@ -213,7 +217,8 @@ export function buildEventTable(
     ];
   } else if (type === "followup") {
     columns = [
-      { key: "name", header: "Nome", width: 24, value: (row) => row.contactName },
+      { key: "last_name", header: "Cognome", width: 24, value: (row) => row.contact.last_name },
+      { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
       { key: "email", header: "Email", width: 28, value: (row) => row.contactEmail },
       { key: "phone", header: "Telefono", width: 22, value: (row) => row.contact.phone ?? row.contact.mobile_phone ?? row.contact.phone_home },
@@ -223,7 +228,8 @@ export function buildEventTable(
     ];
   } else if (type === "proposals") {
     columns = [
-      { key: "name", header: "Nome", width: 24, value: (row) => row.contactName },
+      { key: "last_name", header: "Cognome", width: 24, value: (row) => row.contact.last_name },
+      { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
       { key: "detail", header: "Carica / istituzione", width: 38, value: (row) => row.contactDetail },
       { key: "references", header: "Referente proponente", width: 30, value: (row) => row.approvalReferences.join(", ") },
       { key: "status", header: "Stato proposta", width: 16, value: () => "Da approvare" },

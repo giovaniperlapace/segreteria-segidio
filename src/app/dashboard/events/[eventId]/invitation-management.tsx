@@ -1234,6 +1234,7 @@ export function InvitationManagement({
 }) {
   const router = useRouter();
   const [search, setSearch] = useState(pageSearch);
+  const [exportGroup, setExportGroup] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [responseFilter, setResponseFilter] = useState("all");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
@@ -1284,6 +1285,7 @@ export function InvitationManagement({
   function exportUrl(type: string, format: "pdf" | "xlsx") {
     const params = new URLSearchParams();
     if (search.trim()) params.set("q", search.trim());
+    if (exportGroup) params.set("groups", exportGroup);
     params.set("type", type);
     params.set("format", format);
     return `/api/exports/events/${eventId}?${params.toString()}`;
@@ -1621,6 +1623,18 @@ export function InvitationManagement({
 
         <div className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold text-[#1b3272]">Stampe ed export</h2>
+          <label className="mt-3 block text-sm font-medium text-slate-700">
+            Gruppo da esportare
+            <select
+              value={exportGroup}
+              onChange={(event) => setExportGroup(event.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 md:max-w-md"
+            >
+              <option value="">Tutti i gruppi</option>
+              {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+          </label>
+          <p className="mt-2 text-sm text-slate-600">Il gruppo selezionato e la ricerca si applicano alle stampe PDF e agli export Excel.</p>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             <EventExportLinkGroup
               title="Lista invitati"

@@ -7,6 +7,8 @@ import {
   loadNotInvitedContactsForEvent,
   parseEventExportType,
   parseExportFormat,
+  parseNumberList,
+  optionNames,
   sanitizeSearchTerm,
 } from "@/lib/exports/data";
 import { renderExcel, renderLabelsPdf, renderPdf } from "@/lib/exports/renderers";
@@ -64,10 +66,24 @@ export async function GET(
   const search = sanitizeSearchTerm(request.nextUrl.searchParams.get("q") ?? "");
   const eventData = await loadEventForExport(supabase, eventId, search);
   if (!eventData) notFound();
+  const groupIds = parseNumberList(request.nextUrl.searchParams.get("groups") ?? "");
+  const matchesGroup = (contact: { group_ids: number[] }) =>
+    groupIds.length === 0 || groupIds.some((id) => contact.group_ids.includes(id));
+  const rows = eventData.rows.filter((row) => matchesGroup(row.contact));
+  const summary = [
+    search ? `Ricerca: ${search}` : "",
+    groupIds.length ? `Gruppi: ${optionNames(groupIds, eventData.options.groups).join(", ") || "Nessun gruppo valido"}` : "",
+  ].filter(Boolean).join(" | ");
 
   if (type === "not_invited") {
     const { contacts, options } = await loadNotInvitedContactsForEvent(supabase, eventId);
-    const table = buildNotInvitedTable(String(eventData.event.title), contacts, options);
+    const filteredContacts = contacts.filter((contact) => {
+      const text = [contact.first_name, contact.last_name, contact.institutional_role,
+        contact.institution, contact.email, contact.email_2].filter(Boolean).join(" ");
+      return matchesGroup(contact) && (!search || text.toLocaleLowerCase("it").includes(search.toLocaleLowerCase("it")));
+    });
+    const table = buildNotInvitedTable(String(eventData.event.title), filteredContacts, options);
+    if (summary) table.subtitle += ` | ${summary}`;
     if (format === "xlsx") {
       const xlsx = await renderExcel(table);
       return downloadResponse(
@@ -81,11 +97,12 @@ export async function GET(
   }
 
   if (type === "labels" && format === "pdf") {
-    const pdf = await renderLabelsPdf(eventLabels(eventData.rows), `${eventExportTitle(type)} - ${eventData.event.title}`);
+    const pdf = await renderLabelsPdf(eventLabels(rows), `${eventExportTitle(type)} - ${eventData.event.title}`);
     return downloadResponse(pdf, filename(`${eventExportTitle(type)} ${eventData.event.title}`, "pdf"), "application/pdf");
   }
 
-  const table = buildEventTable(String(eventData.event.title), eventData.rows, type, eventData.options, search);
+  const table = buildEventTable(String(eventData.event.title), rows, type, eventData.options);
+  if (summary) table.subtitle += ` | ${summary}`;
   if (format === "xlsx") {
     const xlsx = await renderExcel(table);
     return downloadResponse(

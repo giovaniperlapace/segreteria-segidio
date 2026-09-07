@@ -657,13 +657,20 @@ function ManagerDashboard({
         {summary.events.length > 0 ? (
           <div className="divide-y divide-slate-200">
             {summary.events.map((event) => (
-              <article key={event.id} className="grid gap-4 px-5 py-4 xl:grid-cols-[minmax(220px,1fr)_2fr_auto] xl:items-center">
+              <article key={event.id} className="grid gap-4 px-5 py-4 xl:grid-cols-[minmax(220px,1fr)_2fr] xl:items-center">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-lg bg-[#eef3ff] p-1.5 text-[#1b3272]">
                       <DashboardIcon name="calendar" className="h-4 w-4" />
                     </span>
-                    <h3 className="truncate text-sm font-semibold text-[#1b3272]">{event.title}</h3>
+                    <h3 className="min-w-0 truncate text-sm font-semibold">
+                      <Link
+                        href={`/dashboard/events/${event.id}`}
+                        className="rounded-sm text-[#1b3272] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+                      >
+                        {event.title}
+                      </Link>
+                    </h3>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
                       {eventStatusLabel(event.status)}
                     </span>
@@ -691,13 +698,6 @@ function ManagerDashboard({
                     tone={event.pending_proposal_count > 0 ? "attention" : "default"}
                   />
                 </div>
-
-                <Link
-                  href={`/dashboard/events/${event.id}`}
-                  className="justify-self-start rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white hover:bg-[#263f86] xl:justify-self-end"
-                >
-                  Dettagli
-                </Link>
               </article>
             ))}
           </div>

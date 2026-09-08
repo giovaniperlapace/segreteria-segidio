@@ -274,7 +274,7 @@ export default async function BuildEventInvitationsPage({
           </label>
           <div className="flex items-end gap-2">
             <button className="rounded-xl bg-[#1b3272] px-4 py-2.5 text-sm font-semibold text-white">Applica filtri</button>
-            <Link href={`/dashboard/events/${eventId}/build`} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Azzera</Link>
+            <a href={`/dashboard/events/${eventId}/build`} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Azzera</a>
           </div>
         </form>
 

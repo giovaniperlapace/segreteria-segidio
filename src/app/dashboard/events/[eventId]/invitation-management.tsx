@@ -184,7 +184,7 @@ const INVITATION_STATUS_LABELS: Record<EventInvitationRecord["invitation_status"
 };
 
 function responseLabel(invitation: EventInvitationRecord) {
-  if (invitation.delegate_email) return "Non partecipa · delega";
+  if (invitation.delegate_email || invitation.part_responses?.some(part => part.response === "delegated")) return "Delega";
   return invitation.invitation_status === "invited"
     ? RESPONSE_LABELS[invitation.response_status]
     : "N/A";

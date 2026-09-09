@@ -114,6 +114,11 @@ function participantTotal(row: EventInvitationExportRow) {
   return row.responseStatus === "attending" ? 1 + row.companionCount : 0;
 }
 
+function responseLabel(row: EventInvitationExportRow) {
+  if (row.delegateEmail || row.partResponses?.some(part => part.response === "delegated")) return "Delega";
+  return RESPONSE_LABELS[row.responseStatus];
+}
+
 function delegateName(row: EventInvitationExportRow) {
   return [row.delegateFirstName, row.delegateLastName].filter(Boolean).join(" ");
 }
@@ -127,7 +132,7 @@ function invitationBaseColumns(options: { groups: ExportOption[]; references: Ex
     { key: "groups", header: "Gruppi", width: 24, value: (row) => groups(row.contact, options.groups) },
     { key: "references", header: "Referenti", width: 24, value: (row) => references(row.contact, options.references) },
     { key: "status", header: "Stato invito", width: 16, value: (row) => INVITATION_STATUS_LABELS[row.invitationStatus] },
-    { key: "response", header: "Risposta", width: 18, value: (row) => row.invitationStatus === "invited" ? RESPONSE_LABELS[row.responseStatus] : "N/A" },
+    { key: "response", header: "Risposta", width: 18, value: (row) => row.invitationStatus === "invited" ? responseLabel(row) : "N/A" },
     { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionCount || "" },
     { key: "delegate", header: "Delegato", width: 24, value: delegateName },
     { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
@@ -193,7 +198,7 @@ export function buildEventTable(
       { key: "last_name", header: "Cognome", width: 24, value: (row) => row.contact.last_name },
       { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
-      { key: "response", header: "Risposta", width: 18, value: (row) => RESPONSE_LABELS[row.responseStatus] },
+      { key: "response", header: "Risposta", width: 18, value: responseLabel },
       { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionNames || row.companionCount || "" },
       { key: "delegate", header: "Delegato", width: 24, value: delegateName },
       { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
@@ -224,7 +229,7 @@ export function buildEventTable(
       { key: "email", header: "Email", width: 28, value: (row) => row.contactEmail },
       { key: "phone", header: "Telefono", width: 22, value: (row) => row.contact.phone ?? row.contact.mobile_phone ?? row.contact.phone_home },
       { key: "references", header: "Referenti", width: 26, value: (row) => references(row.contact, options.references) },
-      { key: "response", header: "Risposta", width: 18, value: (row) => RESPONSE_LABELS[row.responseStatus] },
+      { key: "response", header: "Risposta", width: 18, value: responseLabel },
       { key: "note", header: "Note", width: 30, value: (row) => row.responseNote ?? row.notes },
     ];
   } else if (type === "proposals") {

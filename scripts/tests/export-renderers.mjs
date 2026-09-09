@@ -31,6 +31,21 @@ renderer._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
   assert.deepEqual(sheet.getRow(4).values.slice(1), ['Ambasciate', 'Rossi', 'Maria', 2]);
   assert.equal(sheet.autoFilter, 'A3:D103');
   assert.equal(sheet.views[0].ySplit, 3);
+  for (const rows of [table.rows, []]) {
+    const simpleXlsx = await renderer.exports.renderExcel({ ...table, rows }, { simpleLayout: true });
+    const simpleWorkbook = new ExcelJS.Workbook();
+    await simpleWorkbook.xlsx.load(simpleXlsx);
+    const simpleSheet = simpleWorkbook.worksheets[0];
+    assert.deepEqual(simpleSheet.getRow(1).values.slice(1), ['Gruppi', 'Cognome', 'Nome', 'Totale']);
+    assert.equal(simpleSheet.rowCount, rows.length + 1);
+    assert.equal(simpleSheet.autoFilter, undefined);
+    assert.deepEqual(simpleSheet.model.merges, []);
+    assert.equal(simpleSheet.views[0].ySplit, 1);
+    if (rows.length) {
+      assert.deepEqual(simpleSheet.getRow(2).values.slice(1), ['Ambasciate', 'Rossi', 'Maria', 2]);
+      assert.deepEqual(simpleSheet.getRow(101).values.slice(1), ['Ambasciate', 'Rossi', 'Maria', 2]);
+    }
+  }
   const pdf = await renderer.exports.renderPdf(table);
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 3, 'Footers must not generate extra pages');
@@ -40,5 +55,5 @@ renderer._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     fs.writeFileSync(path.join(process.env.EXPORT_QA_DIR, 'segidio-export.pdf'), pdf);
     fs.writeFileSync(path.join(process.env.EXPORT_QA_DIR, 'segidio-export.xlsx'), Buffer.from(xlsx));
   }
-  console.log('PASS: Excel alignment, numeric values, filters, frozen headers; PDF pagination and labels.');
+  console.log('PASS: Excel standard/simple layouts, numeric values, filters, frozen headers; PDF pagination and labels.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

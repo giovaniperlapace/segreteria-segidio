@@ -96,7 +96,7 @@ export async function GET(
     const table = buildNotInvitedTable(String(eventData.event.title), filteredContacts, options);
     if (summary) table.subtitle += ` | ${summary}`;
     if (format === "xlsx") {
-      const xlsx = await renderExcel(table);
+      const xlsx = await renderExcel(table, { simpleLayout: true });
       return downloadResponse(
         xlsx,
         filename(table.title, "xlsx"),
@@ -115,7 +115,7 @@ export async function GET(
   const table = buildEventTable(String(eventData.event.title), rows, type, eventData.options);
   if (summary) table.subtitle += ` | ${summary}`;
   if (format === "xlsx") {
-    const xlsx = await renderExcel(table);
+    const xlsx = await renderExcel(table, { simpleLayout: true });
     return downloadResponse(
       xlsx,
       filename(table.title, "xlsx"),

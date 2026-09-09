@@ -26,29 +26,32 @@ function normalizeWorksheetName(value: string) {
   return cleaned.slice(0, 31);
 }
 
-export async function renderExcel<T>(table: ExportTable<T>) {
+export async function renderExcel<T>(table: ExportTable<T>, options: { simpleLayout?: boolean } = {}) {
+  const headerRowNumber = options.simpleLayout ? 1 : 3;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Segreteria Segidio";
   workbook.created = table.generatedAt ?? new Date();
   const worksheet = workbook.addWorksheet(normalizeWorksheetName(table.title), {
-    views: [{ state: "frozen", ySplit: 3 }],
+    views: [{ state: "frozen", ySplit: headerRowNumber }],
   });
 
-  worksheet.mergeCells(1, 1, 1, Math.max(1, table.columns.length));
-  const titleCell = worksheet.getCell(1, 1);
-  titleCell.value = table.title;
-  titleCell.font = { bold: true, size: 16, color: { argb: "FF1B3272" } };
-  titleCell.alignment = { vertical: "middle" };
+  if (!options.simpleLayout) {
+    worksheet.mergeCells(1, 1, 1, Math.max(1, table.columns.length));
+    const titleCell = worksheet.getCell(1, 1);
+    titleCell.value = table.title;
+    titleCell.font = { bold: true, size: 16, color: { argb: "FF1B3272" } };
+    titleCell.alignment = { vertical: "middle" };
 
-  worksheet.mergeCells(2, 1, 2, Math.max(1, table.columns.length));
-  const subtitleCell = worksheet.getCell(2, 1);
-  subtitleCell.value = table.subtitle ?? `Generato il ${new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(table.generatedAt ?? new Date())}`;
-  subtitleCell.font = { size: 10, color: { argb: "FF64748B" } };
+    worksheet.mergeCells(2, 1, 2, Math.max(1, table.columns.length));
+    const subtitleCell = worksheet.getCell(2, 1);
+    subtitleCell.value = table.subtitle ?? `Generato il ${new Intl.DateTimeFormat("it-IT", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(table.generatedAt ?? new Date())}`;
+    subtitleCell.font = { size: 10, color: { argb: "FF64748B" } };
+  }
 
-  const headerRow = worksheet.getRow(3);
+  const headerRow = worksheet.getRow(headerRowNumber);
   headerRow.values = table.columns.map((column) => column.header);
   headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
   headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1B3272" } };
@@ -65,15 +68,17 @@ export async function renderExcel<T>(table: ExportTable<T>) {
   worksheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.border = {
-        bottom: { style: "thin", color: { argb: rowNumber === 3 ? "FFFFFFFF" : "FFE2E8F0" } },
+        bottom: { style: "thin", color: { argb: rowNumber === headerRowNumber ? "FFFFFFFF" : "FFE2E8F0" } },
       };
       cell.alignment = { vertical: "top", wrapText: true };
     });
   });
-  worksheet.autoFilter = {
-    from: { row: 3, column: 1 },
-    to: { row: Math.max(3, worksheet.rowCount), column: table.columns.length },
-  };
+  if (!options.simpleLayout) {
+    worksheet.autoFilter = {
+      from: { row: headerRowNumber, column: 1 },
+      to: { row: Math.max(headerRowNumber, worksheet.rowCount), column: table.columns.length },
+    };
+  }
 
   return workbook.xlsx.writeBuffer();
 }

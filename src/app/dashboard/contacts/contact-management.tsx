@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import {
   createContactAction,
   deleteContactAction,
@@ -560,12 +560,14 @@ function CountryInput({ defaultValue }: { defaultValue: string }) {
 }
 
 function AssociationPicker({
+  inputId,
   name,
   options,
   selectedIds,
   emptyLabel,
   searchLabel,
 }: {
+  inputId: string;
   name: string;
   options: Option[];
   selectedIds: number[];
@@ -654,6 +656,7 @@ function AssociationPicker({
         <p className="mb-3 text-xs text-slate-500">{emptyLabel}</p>
       )}
       <input
+        id={inputId}
         type="search"
         value={search}
         onChange={(event) => {
@@ -988,6 +991,8 @@ function ContactFields({
   languages: LanguageOption[];
   isManager: boolean;
 }) {
+  const groupInputId = useId();
+  const referenceInputId = useId();
   const selectedLanguage = contact?.spoken_language ?? "";
   const languageOptions = selectedLanguage
     ? languages.some((language) => language.name === selectedLanguage)
@@ -1087,26 +1092,28 @@ function ContactFields({
         </label>
         {isManager ? (
           <>
-            <label className={labelClass()}>
-              Gruppi
+            <div className={labelClass()}>
+              <label htmlFor={groupInputId}>Gruppi</label>
               <AssociationPicker
+                inputId={groupInputId}
                 name="groupIds"
                 options={groups}
                 selectedIds={contact?.group_ids ?? []}
                 emptyLabel="Nessun gruppo selezionato."
                 searchLabel="Cerca gruppo"
               />
-            </label>
-            <label className={labelClass()}>
-              Referenti
+            </div>
+            <div className={labelClass()}>
+              <label htmlFor={referenceInputId}>Referenti</label>
               <AssociationPicker
+                inputId={referenceInputId}
                 name="referenceIds"
                 options={references}
                 selectedIds={contact?.reference_ids ?? []}
                 emptyLabel="Nessun referente selezionato."
                 searchLabel="Cerca referente"
               />
-            </label>
+            </div>
           </>
         ) : null}
         <label className={`${labelClass()} sm:col-span-2`}>

@@ -73,7 +73,27 @@ export function buildContactsTable(
   options: { groups: ExportOption[]; references: ExportOption[] },
   filters: ContactFilters,
 ): ExportTable<ContactRecord> {
-  const rows = type === "missing" ? contacts.filter((contact) => contact.missing_fields.length > 0) : contacts;
+  let rows = type === "missing" ? contacts.filter((contact) => contact.missing_fields.length > 0) : contacts;
+  if (filters.groupIds.length > 0) {
+    const selectedGroups = new Set(filters.groupIds);
+    const collator = new Intl.Collator("it", { sensitivity: "base" });
+    const groupNames = new Map(options.groups.map((group) => [group.id, group.name]));
+    const sortGroup = (contact: ContactRecord) => {
+      const matchingIds = contact.group_ids.filter((id) => selectedGroups.has(id));
+      // OR filters can also include contacts outside the selected groups.
+      const ids = matchingIds.length > 0 ? matchingIds : contact.group_ids;
+      return ids.map((id) => groupNames.get(id) ?? "").filter(Boolean).sort(collator.compare)[0] ?? "";
+    };
+    const rowGroups = new Map(rows.map((contact) => [contact.id, sortGroup(contact)]));
+    rows = [...rows].sort((a, b) => {
+      const aGroup = rowGroups.get(a.id) ?? "";
+      const bGroup = rowGroups.get(b.id) ?? "";
+      return Number(!aGroup) - Number(!bGroup) ||
+        collator.compare(aGroup, bGroup) ||
+        collator.compare(fullName(a), fullName(b)) ||
+        a.id - b.id;
+    });
+  }
   const columns =
     type === "missing"
       ? [

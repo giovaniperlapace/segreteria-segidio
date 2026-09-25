@@ -1146,10 +1146,19 @@ function CreateContactForm({
   languages: LanguageOption[];
   isManager: boolean;
 }) {
-  const [state, action, pending] = useArchiveAction(createContactAction);
+  const [formVersion, setFormVersion] = useState(0);
+  const [state, action, pending] = useArchiveAction(async (previousState, formData) => {
+    const result = await createContactAction(previousState, formData);
+    if (result.status === "success") {
+      // Reset controlled fields too, but keep selections when creation fails.
+      setFormVersion((version) => version + 1);
+    }
+    return result;
+  });
   return (
     <form action={action} className="space-y-4">
       <ContactFields
+        key={formVersion}
         groups={groups}
         references={references}
         languages={languages}

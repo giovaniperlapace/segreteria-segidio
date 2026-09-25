@@ -1,6 +1,6 @@
 import { describeParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
+import { fetchAllSupabaseRows, fetchSupabaseRowsForIds } from "@/lib/supabase/fetch-all";
 import { CONTACT_COLUMNS } from "@/app/dashboard/contacts/contact-data";
 import type { ContactRecord } from "@/app/dashboard/contacts/contact-management";
 
@@ -134,22 +134,20 @@ export function filterSummary(parts: string[]) {
 }
 
 export async function loadExportOptions(supabase: SupabaseClient) {
-  const [groupsResult, referencesResult] = await Promise.all([
-    supabase.from("groups").select("id,name").order("name"),
-    supabase
+  const [groups, references] = await Promise.all([
+    fetchAllSupabaseRows(() => supabase.from("groups").select("id,name").order("name").order("id")),
+    fetchAllSupabaseRows(() => supabase
       .from("internal_references")
       .select("id,full_name")
       .is("deleted_at", null)
-      .order("full_name"),
+      .order("full_name").order("id")),
   ]);
-  if (groupsResult.error) throw groupsResult.error;
-  if (referencesResult.error) throw referencesResult.error;
   return {
-    groups: (groupsResult.data ?? []).map((group) => ({
+    groups: groups.map((group) => ({
       id: Number(group.id),
       name: String(group.name),
     })),
-    references: (referencesResult.data ?? []).map((reference) => ({
+    references: references.map((reference) => ({
       id: Number(reference.id),
       name: String(reference.full_name),
     })),
@@ -251,7 +249,8 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
     .select(
       `part_responses,id,event_id,contact_id,invitation_status,response_status,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,contacts!inner(${CONTACT_COLUMNS})`,
     )
-    .eq("event_id", eventId);
+    .eq("event_id", eventId)
+    .order("id");
   const sanitizedSearch = sanitizeSearchTerm(search);
   if (sanitizedSearch) {
     const pattern = `%${sanitizedSearch}%`;
@@ -261,22 +260,17 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
     );
   }
 
-  const [invitations, proposalsResult, options] = await Promise.all([
-    fetchAllSupabaseRows(() =>
-      invitationsQuery
-        .order("last_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
-        .order("first_name", { foreignTable: "contacts", ascending: true, nullsFirst: false }),
-    ),
-    supabase
+  const [invitations, proposals, options] = await Promise.all([
+    fetchAllSupabaseRows(() => invitationsQuery),
+    fetchAllSupabaseRows(() => supabase
       .from("invitation_proposals")
       .select(
         `id,event_id,contact_id,reference_id,status,manager_note,contacts!inner(${CONTACT_COLUMNS}),internal_references!inner(id,full_name)`,
       )
       .eq("event_id", eventId)
-      .eq("status", "pending"),
+      .eq("status", "pending").order("id")),
     loadExportOptions(supabase),
   ]);
-  if (proposalsResult.error) throw proposalsResult.error;
 
   const profileIds = [
     ...new Set(
@@ -285,37 +279,35 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
         .filter((id): id is string => Boolean(id)),
     ),
   ];
-  const profilesResult =
-    profileIds.length > 0
-      ? await supabase.from("profiles").select("id,full_name,email").in("id", profileIds)
-      : { data: [], error: null };
-  if (profilesResult.error) throw profilesResult.error;
+  const profiles = await fetchSupabaseRowsForIds(profileIds, (batch) =>
+    supabase.from("profiles").select("id,full_name,email").in("id", batch).order("id"),
+  );
   const profileNames = new Map(
-    (profilesResult.data ?? []).map((profile) => [
+    profiles.map((profile) => [
       profile.id,
       profile.full_name || profile.email || "Utente senza nome",
     ]),
   );
 
-  const proposalContactIds = new Set((proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)));
+  const proposalContactIds = new Set(proposals.map((proposal) => Number(proposal.contact_id)));
   const invitationContactIds = invitations.map((invitation) => Number(invitation.contact_id));
   const allContactIds = [
     ...new Set([
       ...invitationContactIds,
-      ...(proposalsResult.data ?? []).map((proposal) => Number(proposal.contact_id)),
+      ...proposals.map((proposal) => Number(proposal.contact_id)),
     ]),
   ];
   const [contactGroups, contactReferences, missingRows] =
     allContactIds.length > 0
       ? await Promise.all([
-          fetchAllSupabaseRows(() =>
-            supabase.from("contact_groups").select("contact_id,group_id").in("contact_id", allContactIds),
+          fetchSupabaseRowsForIds(allContactIds, (batch) =>
+            supabase.from("contact_groups").select("contact_id,group_id").in("contact_id", batch).order("contact_id").order("group_id"),
           ),
-          fetchAllSupabaseRows(() =>
-            supabase.from("contact_references").select("contact_id,reference_id").in("contact_id", allContactIds),
+          fetchSupabaseRowsForIds(allContactIds, (batch) =>
+            supabase.from("contact_references").select("contact_id,reference_id").in("contact_id", batch).order("contact_id").order("reference_id"),
           ),
-          fetchAllSupabaseRows(() =>
-            supabase.from("contacts_missing_required_data").select("id,missing_fields").in("id", allContactIds),
+          fetchSupabaseRowsForIds(allContactIds, (batch) =>
+            supabase.from("contacts_missing_required_data").select("id,missing_fields").in("id", batch).order("id"),
           ),
         ])
       : [[], [], []];
@@ -381,7 +373,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
 
   const invitedContactIds = new Set(invitationRows.map((row) => row.contactId));
   const proposalsByContact = new Map<number, { ids: number[]; references: string[]; note: string | null; contact: ContactRecord }>();
-  for (const proposal of proposalsResult.data ?? []) {
+  for (const proposal of proposals) {
     const contactId = Number(proposal.contact_id);
     if (invitedContactIds.has(contactId)) continue;
     const contact = Array.isArray(proposal.contacts) ? proposal.contacts[0] : proposal.contacts;
@@ -443,10 +435,10 @@ export async function loadNotInvitedContactsForEvent(supabase: SupabaseClient, e
         .is("deleted_at", null)
         .eq("status", "active")
         .order("last_name")
-        .order("first_name"),
+        .order("first_name").order("id"),
     ),
-    fetchAllSupabaseRows(() => supabase.from("event_invitations").select("contact_id").eq("event_id", eventId)),
-    fetchAllSupabaseRows(() => supabase.from("invitation_proposals").select("contact_id").eq("event_id", eventId).eq("status", "pending")),
+    fetchAllSupabaseRows(() => supabase.from("event_invitations").select("contact_id").eq("event_id", eventId).order("id")),
+    fetchAllSupabaseRows(() => supabase.from("invitation_proposals").select("contact_id").eq("event_id", eventId).eq("status", "pending").order("id")),
     loadExportOptions(supabase),
   ]);
   const excludedIds = new Set([
@@ -458,9 +450,9 @@ export async function loadNotInvitedContactsForEvent(supabase: SupabaseClient, e
   const [contactGroups, contactReferences, missingRows] =
     contactIds.length > 0
       ? await Promise.all([
-          fetchAllSupabaseRows(() => supabase.from("contact_groups").select("contact_id,group_id").in("contact_id", contactIds)),
-          fetchAllSupabaseRows(() => supabase.from("contact_references").select("contact_id,reference_id").in("contact_id", contactIds)),
-          fetchAllSupabaseRows(() => supabase.from("contacts_missing_required_data").select("id,missing_fields").in("id", contactIds)),
+          fetchSupabaseRowsForIds(contactIds, (batch) => supabase.from("contact_groups").select("contact_id,group_id").in("contact_id", batch).order("contact_id").order("group_id")),
+          fetchSupabaseRowsForIds(contactIds, (batch) => supabase.from("contact_references").select("contact_id,reference_id").in("contact_id", batch).order("contact_id").order("reference_id")),
+          fetchSupabaseRowsForIds(contactIds, (batch) => supabase.from("contacts_missing_required_data").select("id,missing_fields").in("id", batch).order("id")),
         ])
       : [[], [], []];
   const groupIdsByContact = new Map<number, number[]>();

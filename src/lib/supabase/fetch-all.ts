@@ -29,3 +29,27 @@ export async function fetchAllSupabaseRows<T>(
     }
   }
 }
+
+// Pagination limits response size, not the URL produced by an IN filter.
+// Keep each request small enough for the proxy, including UUID identifiers.
+export async function fetchSupabaseRowsForIds<T, Id extends string | number>(
+  ids: readonly Id[],
+  queryFactory: (batch: Id[]) => RangeQuery<T>,
+): Promise<T[]> {
+  const uniqueIds = [...new Set(ids)];
+  const rows: T[] = [];
+  const batchSize = 100;
+  const concurrency = 3;
+
+  for (let start = 0; start < uniqueIds.length; start += batchSize * concurrency) {
+    const queries: Promise<T[]>[] = [];
+    for (let offset = start; offset < Math.min(start + batchSize * concurrency, uniqueIds.length); offset += batchSize) {
+      const batch = uniqueIds.slice(offset, offset + batchSize);
+      queries.push(fetchAllSupabaseRows(() => queryFactory(batch)));
+    }
+    // Reject the whole export on a failed page rather than returning a partial file.
+    for (const batchRows of await Promise.all(queries)) rows.push(...batchRows);
+  }
+
+  return rows;
+}

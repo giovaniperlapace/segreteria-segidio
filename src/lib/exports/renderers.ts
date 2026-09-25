@@ -199,7 +199,7 @@ export function renderPdf<T>(table: ExportTable<T>, options: { fullText?: boolea
   });
 }
 
-export function renderLabelsPdf(labels: { title: string; lines: string[] }[], title: string) {
+export function renderLabelsPdf(labels: { title: string; firstName?: string; lastName?: string; lines: string[] }[], title: string) {
   return new Promise<Buffer>((resolve, reject) => {
     const document = new PDFDocument({ size: "A4", margin: 22, bufferPages: true, info: { Title: title } });
     const chunks: Buffer[] = [];
@@ -223,14 +223,24 @@ export function renderLabelsPdf(labels: { title: string; lines: string[] }[], ti
       const x = document.page.margins.left + col * (labelWidth + gap);
       const y = document.page.margins.top + row * (labelHeight + gap);
       document.roundedRect(x, y, labelWidth, labelHeight, 4).strokeColor("#cbd5e1").stroke();
-      document.font("Helvetica-Bold").fontSize(8).fillColor("#1b3272").text(label.title, x + 6, y + 7, {
-        width: labelWidth - 12,
-        height: 11,
-        ellipsis: true,
-      });
+      const splitName = label.firstName !== undefined || label.lastName !== undefined;
+      if (splitName) {
+        const nameWidth = (labelWidth - 18) / 2;
+        [ ["Nome", label.firstName], ["Cognome", label.lastName] ].forEach(([heading, value], nameIndex) => {
+          const nameX = x + 6 + nameIndex * (nameWidth + 6);
+          document.font("Helvetica").fontSize(6).fillColor("#64748b").text(heading ?? "", nameX, y + 5, { width: nameWidth, height: 8 });
+          document.font("Helvetica-Bold").fontSize(8).fillColor("#1b3272").text(value ?? "", nameX, y + 14, { width: nameWidth, height: 20, ellipsis: true });
+        });
+      } else {
+        document.font("Helvetica-Bold").fontSize(8).fillColor("#1b3272").text(label.title, x + 6, y + 7, {
+          width: labelWidth - 12,
+          height: 11,
+          ellipsis: true,
+        });
+      }
       document.font("Helvetica").fontSize(7).fillColor("#0f172a");
       label.lines.slice(0, 5).forEach((line, lineIndex) => {
-        document.text(line, x + 6, y + 21 + lineIndex * 10, {
+        document.text(line, x + 6, y + (splitName ? 37 : 21) + lineIndex * 10, {
           width: labelWidth - 12,
           height: 9,
           ellipsis: true,

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireManager } from "@/lib/auth/profile";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
-import { loadAllCandidates, type SearchParams } from "@/lib/exports/candidates";
+import { loadAllCandidates, type CandidateExportContact, type SearchParams } from "@/lib/exports/candidates";
 import { renderExcel, renderPdf, type ExportTable } from "@/lib/exports/renderers";
-import type { CandidateContact } from "@/app/dashboard/events/[eventId]/build/build-selection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,12 +20,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const query: SearchParams = {};
   for (const key of request.nextUrl.searchParams.keys()) query[key] = request.nextUrl.searchParams.getAll(key);
   const rows = await loadAllCandidates(supabase, eventId, query);
-  const table: ExportTable<CandidateContact> = {
+  const table: ExportTable<CandidateExportContact> = {
     title: "Persone da invitare",
     subtitle: `${event.title} · ${rows.length} candidati filtrati · esclusi i contatti già in lista evento`,
     rows,
     columns: [
-      { key: "name", header: "Contatto", width: 28, value: (row) => row.name },
+      { key: "first_name", header: "Nome", width: 24, value: (row) => row.firstName },
+      { key: "last_name", header: "Cognome", width: 24, value: (row) => row.lastName },
       { key: "detail", header: "Carica / Istituzione", width: 40, value: (row) => row.detail },
       { key: "email", header: "Email", width: 30, value: (row) => row.email },
       { key: "country", header: "Paese", width: 20, value: (row) => row.country },

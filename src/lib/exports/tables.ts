@@ -47,7 +47,8 @@ function missingFields(contact: ContactRecord) {
 
 function baseContactColumns(options: { groups: ExportOption[]; references: ExportOption[] }): ExportColumn<ContactRecord>[] {
   return [
-    { key: "name", header: "Nome", width: 24, value: fullName },
+    { key: "first_name", header: "Nome", width: 24, value: (contact: ContactRecord) => contact.first_name },
+    { key: "last_name", header: "Cognome", width: 24, value: (contact: ContactRecord) => contact.last_name },
     { key: "role", header: "Carica", width: 30, value: (contact) => contact.institutional_role },
     { key: "institution", header: "Istituzione", width: 32, value: (contact) => contact.institution },
     { key: "groups", header: "Gruppi", width: 26, value: (contact) => groups(contact, options.groups) },
@@ -97,7 +98,8 @@ export function buildContactsTable(
   const columns =
     type === "missing"
       ? [
-          { key: "name", header: "Nome", width: 24, value: fullName },
+          { key: "first_name", header: "Nome", width: 24, value: (contact: ContactRecord) => contact.first_name },
+          { key: "last_name", header: "Cognome", width: 24, value: (contact: ContactRecord) => contact.last_name },
           { key: "role", header: "Carica", width: 30, value: (contact: ContactRecord) => contact.institutional_role },
           { key: "institution", header: "Istituzione", width: 32, value: (contact: ContactRecord) => contact.institution },
           { key: "missing", header: "Dati mancanti", width: 30, value: missingFields },
@@ -139,8 +141,21 @@ function responseLabel(row: EventInvitationExportRow) {
   return RESPONSE_LABELS[row.responseStatus];
 }
 
-function delegateName(row: EventInvitationExportRow) {
-  return [row.delegateFirstName, row.delegateLastName].filter(Boolean).join(" ");
+function participantNames(row: EventInvitationExportRow) {
+  const invitee = { firstName: row.contact.first_name, lastName: row.contact.last_name };
+  if (row.partResponses?.length) {
+    const people = new Map<string, { firstName: string | null; lastName: string | null }>();
+    for (const part of row.partResponses) {
+      if (part.response === "attending") people.set("invitee", invitee);
+      if (part.response === "delegated") people.set(`delegate:${part.email?.toLowerCase()}`, {
+        firstName: part.firstName ?? null, lastName: part.lastName ?? null,
+      });
+    }
+    return [...people.values()];
+  }
+  return [row.delegateEmail
+    ? { firstName: row.delegateFirstName, lastName: row.delegateLastName }
+    : invitee];
 }
 
 function invitationBaseColumns(options: { groups: ExportOption[]; references: ExportOption[] }): ExportColumn<EventInvitationExportRow>[] {
@@ -154,7 +169,8 @@ function invitationBaseColumns(options: { groups: ExportOption[]; references: Ex
     { key: "status", header: "Stato invito", width: 16, value: (row) => INVITATION_STATUS_LABELS[row.invitationStatus] },
     { key: "response", header: "Risposta", width: 18, value: (row) => row.invitationStatus === "invited" ? responseLabel(row) : "N/A" },
     { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionCount || "" },
-    { key: "delegate", header: "Delegato", width: 24, value: delegateName },
+    { key: "delegate_first_name", header: "Nome delegato", width: 24, value: (row) => row.delegateFirstName },
+    { key: "delegate_last_name", header: "Cognome delegato", width: 24, value: (row) => row.delegateLastName },
     { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
     { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
     { key: "total", header: "Totale partecipanti", width: 14, value: participantTotal },
@@ -220,7 +236,8 @@ export function buildEventTable(
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
       { key: "response", header: "Risposta", width: 18, value: responseLabel },
       { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionNames || row.companionCount || "" },
-      { key: "delegate", header: "Delegato", width: 24, value: delegateName },
+      { key: "delegate_first_name", header: "Nome delegato", width: 24, value: (row) => row.delegateFirstName },
+      { key: "delegate_last_name", header: "Cognome delegato", width: 24, value: (row) => row.delegateLastName },
       { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
       { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "total", header: "Totale", width: 12, value: participantTotal },
@@ -231,8 +248,10 @@ export function buildEventTable(
     ];
   } else if (type === "participants") {
     columns = [
-      { key: "name", header: "Partecipante", width: 24, value: (row) => row.partResponses?.length ? [...new Set(row.partResponses.filter(r => r.response === "attending" || r.response === "delegated").map(r => r.response === "attending" ? row.contactName : `${r.firstName} ${r.lastName}`))].join(", ") : delegateName(row) || row.contactName },
-      { key: "original_invitee", header: "Invitato originario", width: 24, value: (row) => row.delegateEmail ? row.contactName : "" },
+      { key: "first_name", header: "Nome", width: 24, value: (row) => participantNames(row).map(person => person.firstName ?? "").join("\n") },
+      { key: "last_name", header: "Cognome", width: 24, value: (row) => participantNames(row).map(person => person.lastName ?? "").join("\n") },
+      { key: "original_first_name", header: "Nome invitato originario", width: 24, value: (row) => row.delegateEmail || row.partResponses?.some(part => part.response === "delegated") ? row.contact.first_name : "" },
+      { key: "original_last_name", header: "Cognome invitato originario", width: 24, value: (row) => row.delegateEmail || row.partResponses?.some(part => part.response === "delegated") ? row.contact.last_name : "" },
       { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "role", header: "Carica", width: 30, value: (row) => row.delegateRole ?? row.contact.institutional_role },
       { key: "institution", header: "Istituzione", width: 32, value: (row) => row.contact.institution },
@@ -294,6 +313,8 @@ export function buildNotInvitedTable(
 export function contactLabels(contacts: ContactRecord[]) {
   return contacts.map((contact) => ({
     title: fullName(contact),
+    firstName: contact.first_name ?? "",
+    lastName: contact.last_name ?? "",
     lines: [
       contact.institutional_role ?? "",
       contact.institution ?? "",
@@ -307,6 +328,8 @@ export function contactLabels(contacts: ContactRecord[]) {
 export function eventLabels(rows: EventInvitationExportRow[]) {
   return rows.map((row) => ({
     title: row.contactName,
+    firstName: row.contact.first_name ?? "",
+    lastName: row.contact.last_name ?? "",
     lines: [
       row.contact.institutional_role ?? "",
       row.contact.institution ?? "",

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CandidateContact } from "@/app/dashboard/events/[eventId]/build/build-selection";
 
+export type CandidateExportContact = CandidateContact & { firstName: string | null; lastName: string | null };
+
 export type SearchParams = Record<string, string | string[] | undefined>;
 type FilterMatchMode = "or" | "and";
 
@@ -42,13 +44,17 @@ export function candidateSearchArgs(eventId: number, query: SearchParams) {
 }
 
 export async function addCandidateCountries(supabase: SupabaseClient, candidates: CandidateContact[]) {
-  const result: CandidateContact[] = [];
+  const result: CandidateExportContact[] = [];
   for (let offset = 0; offset < candidates.length; offset += 100) {
     const batch = candidates.slice(offset, offset + 100);
-    const { data, error } = await supabase.from("contacts").select("id,country").in("id", batch.map((row) => row.id));
+    const { data, error } = await supabase.from("contacts").select("id,country,first_name,last_name").in("id", batch.map((row) => row.id));
     if (error) throw error;
-    const countries = new Map((data ?? []).map((row) => [Number(row.id), row.country as string | null]));
-    result.push(...batch.map((row) => ({ ...row, country: countries.get(row.id) ?? null })));
+    const contacts = new Map((data ?? []).map((row) => [Number(row.id), row]));
+    result.push(...batch.map((row) => ({ ...row,
+      country: contacts.get(row.id)?.country ?? null,
+      firstName: contacts.get(row.id)?.first_name ?? null,
+      lastName: contacts.get(row.id)?.last_name ?? null,
+    })));
   }
   return result;
 }

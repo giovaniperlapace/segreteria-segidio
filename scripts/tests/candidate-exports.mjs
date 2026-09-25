@@ -25,12 +25,14 @@ const client = {
     assert.deepEqual(params.p_group_ids, [3, 4]);
     return { data: Array.from({ length: Math.min(100, 205 - params.p_offset) }, (_, i) => ({ candidate: { id: params.p_offset + i + 1 }, total_count: 205 })), error: null };
   },
-  from() { return { select() { return { async in(key, ids) { assert.ok(ids.length <= 100); return { data: ids.map(id => ({ id, country: 'Italia' })), error: null }; } }; } }; },
+  from() { return { select() { return { async in(key, ids) { assert.ok(ids.length <= 100); return { data: ids.map(id => ({ id, country: 'Italia', first_name: 'Maria Luisa', last_name: 'De Rossi' })), error: null }; } }; } }; },
 };
 const rows = await loadAllCandidates(client, 492, query);
 assert.equal(rows.length, 205);
 assert.deepEqual(calls.map(call => call.p_offset), [0, 100, 200]);
 assert.equal(rows[204].country, 'Italia');
+assert.equal(rows[204].firstName, 'Maria Luisa');
+assert.equal(rows[204].lastName, 'De Rossi');
 await assert.rejects(() => loadAllCandidates({ ...client, rpc: async () => ({ error: new Error('database unavailable') }) }, 492, query), /database unavailable/);
 const empty = await loadAllCandidates({ ...client, rpc: async () => ({ data: [], error: null }) }, 492, query);
 assert.deepEqual(empty, []);

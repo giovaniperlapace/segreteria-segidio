@@ -87,7 +87,7 @@ function truncate(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 3))}...` : value;
 }
 
-export function renderPdf<T>(table: ExportTable<T>) {
+export function renderPdf<T>(table: ExportTable<T>, options: { fullText?: boolean } = {}) {
   return new Promise<Buffer>((resolve, reject) => {
     const document = new PDFDocument({
       size: "A4",
@@ -147,11 +147,11 @@ export function renderPdf<T>(table: ExportTable<T>) {
     document.font("Helvetica").fontSize(7).fillColor("#0f172a");
 
     table.rows.forEach((row, rowIndex) => {
-      const values = table.columns.map((column) => truncate(safeText(column.value(row)), 140));
+      const values = table.columns.map((column) => options.fullText ? safeText(column.value(row)) : truncate(safeText(column.value(row)), 140));
       const heights = values.map((value) =>
         document.heightOfString(value || " ", { width: columnWidth - 6, lineGap: 1 }),
       );
-      const rowHeight = Math.max(18, Math.min(58, Math.max(...heights) + 8));
+      const rowHeight = Math.max(18, Math.min(options.fullText ? bottom - top - 68 : 58, Math.max(...heights) + 8));
       if (y + rowHeight > bottom) {
         document.addPage();
         y = addTableHeader(addHeader());

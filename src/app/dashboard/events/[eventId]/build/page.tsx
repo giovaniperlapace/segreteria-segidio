@@ -1,3 +1,4 @@
+import { addCandidateCountries, candidateSearchArgs, ids, one, matchMode, type SearchParams } from "@/lib/exports/candidates";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
@@ -8,8 +9,7 @@ import { SearchableCheckboxFilter } from "./searchable-checkbox-filter";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
-type SearchParams = Record<string, string | string[] | undefined>;
-type FilterMatchMode = "or" | "and";
+
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Attivi",
@@ -41,26 +41,6 @@ const PAST_ATTENDANCE_LABELS: Record<string, string> = {
   unknown: "Non verificata",
 };
 
-function values(params: SearchParams, key: string) {
-  const raw = params[key];
-  return (Array.isArray(raw) ? raw : raw ? [raw] : [])
-    .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function ids(params: SearchParams, key: string) {
-  return [...new Set(values(params, key).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))];
-}
-
-function one(params: SearchParams, key: string) {
-  return values(params, key)[0] ?? "";
-}
-
-function matchMode(params: SearchParams): FilterMatchMode {
-  return one(params, "match") === "or" ? "or" : "and";
-}
-
 function selectedOptionLabels(selectedIds: number[], options: { id: number; label: string }[]) {
   const selected = new Set(selectedIds);
   const labels = options.filter((option) => selected.has(option.id)).map((option) => option.label);
@@ -84,7 +64,6 @@ export default async function BuildEventInvitationsPage({
   if (!Number.isSafeInteger(eventId) || eventId <= 0) notFound();
 
   const query = (await searchParams) ?? {};
-  const search = one(query, "q").toLocaleLowerCase("it");
   const status = one(query, "status") || "active";
   const filterMatchMode = matchMode(query);
   const priority = one(query, "priority") || "all";
@@ -108,17 +87,7 @@ export default async function BuildEventInvitationsPage({
   ] = await Promise.all([
     supabase.from("events").select("parts,id,title,starts_at").eq("id", eventId).maybeSingle(),
     supabase.rpc("event_candidate_contacts_page", {
-      p_event_id: eventId,
-      p_search: search,
-      p_status: status,
-      p_match: filterMatchMode,
-      p_priority: priority,
-      p_missing: missing,
-      p_group_ids: groupIds,
-      p_reference_ids: referenceIds,
-      p_past_event_ids: pastEventIds,
-      p_past_response: pastResponse,
-      p_past_attendance: pastAttendance,
+      ...candidateSearchArgs(eventId, query),
       p_limit: PAGE_SIZE,
       p_offset: offset,
     }),
@@ -144,7 +113,7 @@ export default async function BuildEventInvitationsPage({
   }
 
   const candidateRows = (candidatesResult.data ?? []) as unknown as CandidateSearchRow[];
-  const candidates = candidateRows.map((row) => row.candidate);
+  const candidates = await addCandidateCountries(supabase, candidateRows.map((row) => row.candidate));
   const totalCandidates = Number(candidateRows[0]?.total_count ?? 0);
   const totalPages = Math.max(1, Math.ceil(totalCandidates / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -308,6 +277,7 @@ export default async function BuildEventInvitationsPage({
           parts={eventResult.data.parts}
           eventId={eventId}
           candidates={candidates}
+          exportQuery={pageHref(1).slice(1)}
           references={(referencesResult.data ?? [])
             .filter((reference) => reference.active && reference.profile_id)
             .map((reference) => ({ id: Number(reference.id), name: String(reference.full_name) }))}

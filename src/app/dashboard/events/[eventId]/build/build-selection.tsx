@@ -15,6 +15,7 @@ export type CandidateContact = {
   name: string;
   detail: string;
   email: string | null;
+  country: string | null;
   status: "active" | "standby";
   priority: "standard" | "important" | "critical";
   groups: string[];
@@ -40,12 +41,14 @@ export function BuildSelection({
   candidates,
   references,
   approvedProposalCount,
+  exportQuery,
 }: {
   parts: EventPart[];
   eventId: number;
   candidates: CandidateContact[];
   references: ReferenceOption[];
   approvedProposalCount: number;
+  exportQuery: string;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [inviteState, inviteAction, invitePending] = useArchiveAction(bulkAddInvitationsAction);
@@ -85,6 +88,7 @@ export function BuildSelection({
               {selectedIds.length} selezionati nella pagina corrente
             </p>
           </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={togglePage}
@@ -92,6 +96,29 @@ export function BuildSelection({
           >
             {allPageSelected ? "Deseleziona pagina" : "Seleziona tutta la pagina"}
           </button>
+          {(["xlsx", "pdf"] as const).map((format) => (
+            <a
+              key={format}
+              href={`/api/exports/events/${eventId}/candidates?${exportQuery}&format=${format}`}
+              title={format === "xlsx" ? "esporta in excel" : "esporta in pdf"}
+              aria-label={format === "xlsx" ? "esporta in excel" : "esporta in pdf"}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b3272]"
+            >
+              <svg aria-hidden="true" viewBox="0 0 32 32" className="h-7 w-7" fill="none">
+                <path d="M10 3h12l6 6v20H10z" fill={format === "xlsx" ? "#e7f3ec" : "#fff1f2"} stroke={format === "xlsx" ? "#217346" : "#c62828"} strokeWidth="1.5" />
+                <path d="M22 3v7h6" stroke={format === "xlsx" ? "#217346" : "#c62828"} strokeWidth="1.5" />
+                {format === "xlsx" ? <>
+                  <path d="M16 14h9m-9 5h9m-9 5h9m-5-10v10" stroke="#217346" />
+                  <rect x="2" y="10" width="16" height="16" rx="2" fill="#217346" />
+                  <path d="m7 14 6 8m0-8-6 8" stroke="white" strokeWidth="2" />
+                </> : <>
+                  <rect x="1" y="14" width="28" height="12" rx="2" fill="#c62828" />
+                  <text x="15" y="23" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">PDF</text>
+                </>}
+              </svg>
+            </a>
+          ))}
+          </div>
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
@@ -100,6 +127,7 @@ export function BuildSelection({
               <tr>
                 <th className="px-3 py-3">Sel.</th>
                 <th className="px-3 py-3">Contatto</th>
+                <th className="px-3 py-3">Paese</th>
                 <th className="px-3 py-3">Gruppi</th>
                 <th className="px-3 py-3">Referenti</th>
                 <th className="px-3 py-3">Stato dati</th>
@@ -127,6 +155,7 @@ export function BuildSelection({
                       {candidate.status === "active" ? "Attivo" : "Non attivo"} · {candidate.priority}
                     </div>
                   </td>
+                  <td className="px-3 py-3 text-slate-700">{candidate.country || "—"}</td>
                   <td className="px-3 py-3 text-slate-700">{candidate.groups.join(", ") || "—"}</td>
                   <td className="px-3 py-3 text-slate-700">{candidate.references.join(", ") || "—"}</td>
                   <td className="px-3 py-3 text-slate-700">

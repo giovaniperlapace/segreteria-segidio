@@ -1243,7 +1243,8 @@ export function InvitationManagement({
   emailBatches: EventEmailBatchRecord[];
 }) {
   const [partFilter, setPartFilter] = useState("");
-  const invitations = useMemo(() => sourceInvitations.filter(invitation => !partFilter || invitation.part_responses?.some(r => r.id === partFilter)).map(invitation => parts.length && invitation.part_responses?.length ? { ...invitation, contact_detail: [invitation.contact_detail, describeParts(parts, invitation.part_responses)].filter(Boolean).join(" · ") } : invitation), [sourceInvitations, parts, partFilter]);
+  const [exclusivePart, setExclusivePart] = useState(false);
+  const invitations = useMemo(() => sourceInvitations.filter(invitation => !partFilter || (invitation.part_responses?.some(r => r.id === partFilter) && (!exclusivePart || invitation.part_responses.length === 1))).map(invitation => parts.length && invitation.part_responses?.length ? { ...invitation, contact_detail: [invitation.contact_detail, describeParts(parts, invitation.part_responses)].filter(Boolean).join(" · ") } : invitation), [sourceInvitations, parts, partFilter, exclusivePart]);
   const router = useRouter();
   const [search, setSearch] = useState(pageSearch);
   const [exportGroup, setExportGroup] = useState("");
@@ -1299,6 +1300,7 @@ export function InvitationManagement({
     if (search.trim()) params.set("q", search.trim());
     if (exportGroup) params.set("groups", exportGroup);
     if (partFilter) params.set("part", partFilter);
+    if (partFilter && exclusivePart) params.set("exclusivePart", "1");
     params.set("type", type);
     params.set("format", format);
     return `/api/exports/events/${eventId}?${params.toString()}`;
@@ -1443,7 +1445,7 @@ export function InvitationManagement({
     return () => window.clearTimeout(timeout);
   }, [eventId, router, search]);
 
-  const visibleInvitations = (() => {
+  const filteredInvitations = (() => {
     const term = normalizeContactSearch(deferredSearch.trim());
     const filtered = invitations.filter((invitation) => {
       const partResponse = invitation.part_responses?.find(r => r.id === partFilter);
@@ -1503,6 +1505,11 @@ export function InvitationManagement({
       return String(aValue).localeCompare(String(bValue), "it", { numeric: true }) * direction;
     });
   })();
+  const filterKey = JSON.stringify([deferredSearch, partFilter, exclusivePart, statusFilter, responseFilter, attendanceFilter, flagFilter, sortKey, sortDirection]);
+  const [pagination, setPagination] = useState({ key: "", page: 1 });
+  const totalPages = Math.max(1, Math.ceil(filteredInvitations.length / 80));
+  const currentPage = pagination.key === filterKey ? Math.min(pagination.page, totalPages) : 1;
+  const visibleInvitations = filteredInvitations.slice((currentPage - 1) * 80, currentPage * 80);
   const selectedInvitedRows = invitations.filter(
     (invitation) =>
       selectedInvitationIds.has(invitation.id) &&
@@ -1708,7 +1715,7 @@ export function InvitationManagement({
             <div>
               <h2 className="text-xl font-semibold text-[#1b3272]">Lista evento</h2>
               <p className="mt-1 text-sm text-slate-600">
-                {visibleInvitations.length} di {invitations.length} contatti nella pagina
+                {visibleInvitations.length} contatti in questa pagina · {filteredInvitations.length} contatti totali filtrati
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1787,7 +1794,16 @@ export function InvitationManagement({
           <div className="mt-3">
             <ActionMessage state={bulkRemoveState} />
           </div>
+          {totalPages > 1 && <nav aria-label="Pagine lista evento" className="mt-3 flex items-center gap-3 text-sm">
+            <button type="button" disabled={currentPage === 1} onClick={() => setPagination({ key: filterKey, page: currentPage - 1 })} className="rounded-lg border px-3 py-2 disabled:opacity-40">Precedente</button>
+            <span>Pagina {currentPage} di {totalPages}</span>
+            <button type="button" disabled={currentPage === totalPages} onClick={() => setPagination({ key: filterKey, page: currentPage + 1 })} className="rounded-lg border px-3 py-2 disabled:opacity-40">Successiva</button>
+          </nav>}
           {parts.length > 0 && <label className="mt-4 block text-sm font-medium">Parte dell’evento<select className={inputClass} value={partFilter} onChange={e => setPartFilter(e.target.value)}><option value="">Tutte le parti</option>{parts.map(part => <option key={part.id} value={part.id}>{part.title}</option>)}</select></label>}
+          {partFilter && <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={exclusivePart} onChange={e => setExclusivePart(e.target.checked)} />
+            Solo questa parte (escludi chi è invitato anche ad altre parti)
+          </label>}
           <div className="mt-4 grid gap-2 md:grid-cols-5 md:items-end">
             <label className="text-sm font-medium text-slate-700">
               Cerca tra gli invitati

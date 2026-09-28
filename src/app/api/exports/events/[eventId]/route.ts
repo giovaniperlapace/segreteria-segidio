@@ -72,16 +72,17 @@ export async function GET(
   const matchesGroup = (contact: { group_ids: number[] }) =>
     groupIds.length === 0 || groupIds.some((id) => contact.group_ids.includes(id));
   const partId = request.nextUrl.searchParams.get("part") ?? "";
+  const exclusivePart = request.nextUrl.searchParams.get("exclusivePart") === "1";
   const parts = eventData.event.parts as EventPart[];
   if (partId && !parts.some(part => part.id === partId)) notFound();
-  const rows = (eventData.rows as EventInvitationExportRow[]).filter(row => matchesGroup(row.contact) && (!partId || row.partResponses?.some(r => r.id === partId))).map(row => {
+  const rows = (eventData.rows as EventInvitationExportRow[]).filter(row => matchesGroup(row.contact) && (!partId || (row.partResponses?.some(r => r.id === partId) && (!exclusivePart || row.partResponses.length === 1)))).map(row => {
     if (!partId) return row;
     const responses = row.partResponses!.filter(r => r.id === partId);
     const response = responses[0];
     return { ...row, partResponses: responses, partsSummary: describeParts(parts, responses), responseStatus: response.response === 'delegated' ? 'attending' as const : response.response };
   });
   const summary = [
-    partId ? `Parte: ${parts.find(part => part.id === partId)?.title}` : "",
+    partId ? `${exclusivePart ? "Solo questa parte" : "Parte"}: ${parts.find(part => part.id === partId)?.title}` : "",
     search ? `Ricerca: ${search}` : "",
     groupIds.length ? `Gruppi: ${optionNames(groupIds, eventData.options.groups).join(", ") || "Nessun gruppo valido"}` : "",
   ].filter(Boolean).join(" | ");

@@ -2,7 +2,7 @@ import type { PartResponse } from "@/lib/invitations/event-parts";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
-import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
+import { fetchAllSupabaseRows, fetchSupabaseRowsForIds } from "@/lib/supabase/fetch-all";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { CONTACT_COLUMNS } from "../../contacts/contact-data";
 import type { ContactRecord } from "../../contacts/contact-management";
@@ -11,7 +11,6 @@ import { InvitationManagement, type EventInvitationRecord } from "./invitation-m
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 80;
 
 type EventDetailSearchParams = Record<string, string | string[] | undefined>;
 
@@ -44,14 +43,6 @@ function contactName(contact: {
   return [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome";
 }
 
-function pageHref(eventId: number, page: number, q: string) {
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (page > 1) params.set("page", String(page));
-  const query = params.toString();
-  return `/dashboard/events/${eventId}${query ? `?${query}` : ""}`;
-}
-
 export default async function EventDetailPage({
   params,
   searchParams,
@@ -65,10 +56,7 @@ export default async function EventDetailPage({
   if (!eventId) notFound();
 
   const resolvedSearchParams = (await searchParams) ?? {};
-  const page = parsePositiveInt(paramValue(resolvedSearchParams, "page"), 1);
   const search = sanitizeSearchTerm(paramValue(resolvedSearchParams, "q"));
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
   const supabase = createSupabaseServiceClient();
 
   const { data: event, error: eventError } = await supabase
@@ -83,7 +71,6 @@ export default async function EventDetailPage({
     .from("event_invitations")
     .select(
       `part_responses,id,event_id,contact_id,invitation_status,response_status,response_source,attendance_status,attention_flag,attention_note,notes,response_note,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role,invited_at,response_recorded_at,response_recorded_by_profile_id,invitation_status_updated_at,invitation_status_updated_by_profile_id,legacy_invited_raw,legacy_viene_raw,legacy_presence_raw,contacts!inner(${CONTACT_COLUMNS})`,
-      { count: "exact" },
     )
     .eq("event_id", eventId);
 
@@ -95,8 +82,10 @@ export default async function EventDetailPage({
     );
   }
 
+  invitationsQuery = invitationsQuery.order("id");
+
   const [
-    { data: invitations, error: invitationsError, count },
+    invitations,
     proposalsResult,
     groupsResult,
     referencesResult,
@@ -106,11 +95,7 @@ export default async function EventDetailPage({
     emailBatchesResult,
   ] =
     await Promise.all([
-      invitationsQuery
-        .order("attention_flag", { ascending: false })
-        .order("last_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
-        .order("first_name", { foreignTable: "contacts", ascending: true, nullsFirst: false })
-        .range(from, to),
+      fetchAllSupabaseRows(() => invitationsQuery),
       supabase
         .from("invitation_proposals")
         .select(
@@ -149,7 +134,6 @@ export default async function EventDetailPage({
         .limit(50),
     ]);
 
-  if (invitationsError) throw invitationsError;
   if (proposalsResult.error) throw proposalsResult.error;
   for (const result of [groupsResult, referencesResult, languagesResult]) {
     if (result.error) throw result.error;
@@ -176,22 +160,20 @@ export default async function EventDetailPage({
   let sentEmailRows: Array<{ invitation_id: number }> = [];
   if (visibleInvitationIds.length > 0) {
     const [responseHistoryResult, sentEmailResult] = await Promise.all([
-      supabase
+      fetchSupabaseRowsForIds(visibleInvitationIds, batch => supabase
         .from("invitation_responses")
         .select("part_responses,id,invitation_id,response_status,source,actor_profile_id,response_note,delegate_first_name,delegate_last_name,delegate_email,delegate_role,recorded_at")
-        .in("invitation_id", visibleInvitationIds)
-        .order("recorded_at", { ascending: false }),
-      supabase
+        .in("invitation_id", batch)
+        .order("recorded_at", { ascending: false }).order("id")),
+      fetchSupabaseRowsForIds(visibleInvitationIds, batch => supabase
         .from("email_logs")
         .select("invitation_id")
         .eq("event_id", eventId)
         .eq("status", "sent")
-        .in("invitation_id", visibleInvitationIds),
+        .in("invitation_id", batch).order("id")),
     ]);
-    if (responseHistoryResult.error) throw responseHistoryResult.error;
-    if (sentEmailResult.error) throw sentEmailResult.error;
-    responseHistoryRows = (responseHistoryResult.data ?? []) as typeof responseHistoryRows;
-    sentEmailRows = (sentEmailResult.data ?? []) as typeof sentEmailRows;
+    responseHistoryRows = responseHistoryResult as typeof responseHistoryRows;
+    sentEmailRows = sentEmailResult as typeof sentEmailRows;
   }
   const invitationIdsWithSentEmail = new Set(
     sentEmailRows.map((row) => Number(row.invitation_id)),
@@ -277,29 +259,29 @@ export default async function EventDetailPage({
   const [contactGroups, contactReferences, missingRows, eventInvitationRows] =
     invitationContactIds.length > 0
       ? await Promise.all([
-          fetchAllSupabaseRows(() =>
+          fetchSupabaseRowsForIds(invitationContactIds, batch =>
             supabase
               .from("contact_groups")
               .select("contact_id,group_id")
-              .in("contact_id", invitationContactIds),
+              .in("contact_id", batch).order("contact_id").order("group_id"),
           ),
-          fetchAllSupabaseRows(() =>
+          fetchSupabaseRowsForIds(invitationContactIds, batch =>
             supabase
               .from("contact_references")
               .select("contact_id,reference_id")
-              .in("contact_id", invitationContactIds),
+              .in("contact_id", batch).order("contact_id").order("reference_id"),
           ),
-          fetchAllSupabaseRows(() =>
+          fetchSupabaseRowsForIds(invitationContactIds, batch =>
             supabase
               .from("contacts_missing_required_data")
               .select("id,missing_fields")
-              .in("id", invitationContactIds),
+              .in("id", batch).order("id"),
           ),
-          fetchAllSupabaseRows(() =>
+          fetchSupabaseRowsForIds(invitationContactIds, batch =>
             supabase
               .from("event_invitations")
               .select("contact_id,response_status,attendance_status,events!inner(id,title,starts_at)")
-              .in("contact_id", invitationContactIds),
+              .in("contact_id", batch).order("id"),
           ),
         ])
       : [[], [], [], []];
@@ -473,8 +455,7 @@ export default async function EventDetailPage({
     a.contact_name.localeCompare(b.contact_name, "it", { sensitivity: "base" }),
   );
 
-  const total = (count ?? invitationRows.length) + proposalRows.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = invitationRows.length + proposalRows.length;
   const responseCounts = (responseCountsResult.data ?? {
     total_count: 0,
     selected_count: 0,
@@ -521,7 +502,7 @@ export default async function EventDetailPage({
             {event.legacy_access_id ? ` · Access #${event.legacy_access_id}` : ""}
           </p>
           <p className="mt-3 text-sm text-slate-600">
-            {eventRows.length} contatti mostrati di {total} nella lista evento.
+            {total} contatti nella lista evento{search ? " corrispondenti alla ricerca" : ""}.
           </p>
         </header>
 
@@ -592,23 +573,7 @@ export default async function EventDetailPage({
           })}
         />
 
-        {totalPages > 1 ? (
-          <nav className="mt-8 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <Link
-              href={pageHref(eventId, Math.max(1, page - 1), search)}
-              className={`rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 font-semibold text-[#1b3272] ${page <= 1 ? "pointer-events-none opacity-40" : "hover:border-[#d43c2f]"}`}
-            >
-              Precedente
-            </Link>
-            <span className="text-slate-600">Pagina {page} di {totalPages}</span>
-            <Link
-              href={pageHref(eventId, Math.min(totalPages, page + 1), search)}
-              className={`rounded-xl border border-[#d9e1f2] bg-white px-3 py-2 font-semibold text-[#1b3272] ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:border-[#d43c2f]"}`}
-            >
-              Successiva
-            </Link>
-          </nav>
-        ) : null}
+
       </div>
     </main>
   );

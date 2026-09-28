@@ -341,7 +341,8 @@ export async function createEmailBatchAction(
       }
 
       if (requiredPartIds.length) {
-        query = query.contains("part_responses", requiredPartIds.map(id => ({ id })));
+        // Pass JSON explicitly: an array is otherwise encoded as a PostgreSQL array.
+        query = query.contains("part_responses", JSON.stringify(requiredPartIds.map(id => ({ id }))));
       }
       const { data: invitations, error: invitationsError } = await query
         .order("id")

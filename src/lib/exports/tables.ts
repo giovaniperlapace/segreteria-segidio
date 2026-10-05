@@ -131,9 +131,14 @@ export function buildContactsTable(
 }
 
 function participantTotal(row: EventInvitationExportRow) {
-  if (row.partResponses?.length) return new Set(row.partResponses.filter(r => r.response === "attending" || r.response === "delegated").map(r => r.response === "attending" ? "invitee" : r.email?.toLowerCase())).size;
+  if (row.partResponses?.length) return row.partResponses.map(r => `${row.eventParts?.find(part => part.id === r.id)?.title ?? r.id}: ${r.response === "attending" ? 1 + (r.companionCount ?? 0) : r.response === "delegated" ? 1 : 0}`).join("\n");
   if (row.delegateEmail) return 1;
   return row.responseStatus === "attending" ? 1 + row.companionCount : 0;
+}
+
+function companionSummary(row: EventInvitationExportRow) {
+  if (row.partResponses?.length) return row.partResponses.filter(r => r.response === "attending" && r.companionCount).map(r => `${row.eventParts?.find(part => part.id === r.id)?.title ?? r.id}: ${r.companionCount}${r.companionNames ? ` — ${r.companionNames}` : ""}`).join("\n");
+  return row.companionNames || row.companionCount || "";
 }
 
 function responseLabel(row: EventInvitationExportRow) {
@@ -168,7 +173,7 @@ function invitationBaseColumns(options: { groups: ExportOption[]; references: Ex
     { key: "references", header: "Referenti", width: 24, value: (row) => references(row.contact, options.references) },
     { key: "status", header: "Stato invito", width: 16, value: (row) => INVITATION_STATUS_LABELS[row.invitationStatus] },
     { key: "response", header: "Risposta", width: 18, value: (row) => row.invitationStatus === "invited" ? responseLabel(row) : "N/A" },
-    { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionCount || "" },
+    { key: "companions", header: "Accompagnatori", width: 18, value: companionSummary },
     { key: "delegate_first_name", header: "Nome delegato", width: 24, value: (row) => row.delegateFirstName },
     { key: "delegate_last_name", header: "Cognome delegato", width: 24, value: (row) => row.delegateLastName },
     { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
@@ -235,7 +240,7 @@ export function buildEventTable(
       { key: "first_name", header: "Nome", width: 24, value: (row) => row.contact.first_name },
       { key: "detail", header: "Carica / istituzione", width: 36, value: (row) => row.contactDetail },
       { key: "response", header: "Risposta", width: 18, value: responseLabel },
-      { key: "companions", header: "Accompagnatori", width: 18, value: (row) => row.companionNames || row.companionCount || "" },
+      { key: "companions", header: "Accompagnatori", width: 18, value: companionSummary },
       { key: "delegate_first_name", header: "Nome delegato", width: 24, value: (row) => row.delegateFirstName },
       { key: "delegate_last_name", header: "Cognome delegato", width: 24, value: (row) => row.delegateLastName },
       { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => row.delegateRole },
@@ -255,7 +260,7 @@ export function buildEventTable(
       { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },
       { key: "role", header: "Carica", width: 30, value: (row) => row.delegateRole ?? row.contact.institutional_role },
       { key: "institution", header: "Istituzione", width: 32, value: (row) => row.contact.institution },
-      { key: "companions", header: "Accompagnatori", width: 26, value: (row) => row.companionNames || row.companionCount || "" },
+      { key: "companions", header: "Accompagnatori", width: 26, value: companionSummary },
       { key: "total", header: "Totale persone", width: 14, value: participantTotal },
       { key: "note", header: "Note risposta", width: 30, value: (row) => row.responseNote },
       { key: "flag", header: "Da seguire", width: 18, value: (row) => row.attentionFlag ? row.attentionNote || "Si" : "No" },

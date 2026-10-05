@@ -223,6 +223,7 @@ export type EventInvitationExportRow = {
   responseNote: string | null;
   partResponses?: PartResponse[];
   partsSummary?: string;
+  eventParts?: EventPart[];
   companionCount: number;
   companionNames: string | null;
   delegateFirstName: string | null;
@@ -357,6 +358,7 @@ export async function loadEventForExport(supabase: SupabaseClient, eventId: numb
       companionCount: Number(invitation.companion_count ?? 0),
       companionNames: invitation.companion_names,
       partResponses: invitation.part_responses,
+      eventParts: event.parts as EventPart[],
       partsSummary: describeParts(event.parts as EventPart[], invitation.part_responses as PartResponse[]),
       delegateFirstName: invitation.delegate_first_name,
       delegateLastName: invitation.delegate_last_name,

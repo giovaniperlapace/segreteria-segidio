@@ -79,3 +79,18 @@ for (const labels of [tables.contactLabels([contact]), tables.eventLabels([row])
   if (process.env.EXPORT_QA_DIR) fs.writeFileSync(path.join(process.env.EXPORT_QA_DIR, 'labels.pdf'), pdf);
 }
 console.log('PASS: separate name/surname in all list tables, Excel cells, compound names, delegates, aligned composite participants and labels.');
+
+const compositeRow = { ...row, eventParts: [{ id: 'a', title: 'Celebrazione' }, { id: 'b', title: 'Ricevimento' }], partResponses: [
+  { id: 'a', response: 'attending', companionCount: 2, companionNames: 'Anna, Marco' },
+  { id: 'b', response: 'attending', companionCount: 1, companionNames: 'Anna' },
+] };
+for (const type of ['invitations', 'responses', 'participants']) {
+  const companionTable = tables.buildEventTable('Evento', [compositeRow], type, options);
+  assert.equal(value(companionTable, 'total'), 'Celebrazione: 3\nRicevimento: 2');
+  assert.equal(value(companionTable, 'companions'), 'Celebrazione: 2 — Anna, Marco\nRicevimento: 1 — Anna');
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await render.renderExcel(companionTable, { simpleLayout: true }));
+  const column = companionTable.columns.findIndex(c => c.key === 'companions');
+  assert.equal(workbook.worksheets[0].getCell(2, column + 1).value, value(companionTable, 'companions'));
+}
+console.log('PASS: per-part companions and totals survive Excel export.');

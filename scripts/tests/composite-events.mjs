@@ -31,3 +31,14 @@ assert.equal(matchesInvitedParts([{ id: 'mass' }, { id: 'reception' }], ['mass',
 assert.equal(matchesInvitedParts([{ id: 'mass' }, { id: 'reception' }], ['mass']), true);
 assert.equal(matchesInvitedParts([], []), true);
 console.log('Email part filters: AND, whole event, no filter and invalid input verified');
+
+const withCompanions = parsePartResponses(JSON.stringify([{ id: 'mass', response: 'attending', companionCount: 2, companionNames: ' Anna, Marco ' }, { id: 'reception', response: 'attending', companionCount: 1 }]), parts, true);
+assert.equal(withCompanions[0].companionNames, 'Anna, Marco');
+assert.equal(withCompanions[1].companionCount, 1);
+assert.match(describeParts(parts, withCompanions), /Celebrazione: Partecipo \(\+2 accompagnatori: Anna, Marco\)/);
+for (const companionCount of [-1, 21, 1.5, '2', null]) {
+  if (companionCount === null) continue;
+  assert.throws(() => parsePartResponses(JSON.stringify([{ id: 'mass', response: 'attending', companionCount }]), parts));
+}
+assert.deepEqual(parsePartResponses('[{"id":"mass","response":"declined","companionCount":2,"companionNames":"Old"}]', parts), [{ id: 'mass', response: 'declined' }]);
+console.log('Per-part companions: independent counts, names, validation and reset verified');

@@ -419,3 +419,10 @@ Ogni blocco deve lasciare il progetto piu' chiaro di prima: scope piccolo, contr
 - `PUBLIC_APP_URL` definisce il dominio raggiungibile dai destinatari degli inviti, anche quando il manager opera da localhost. Valore previsto: `https://archivio-segreteria.segidio.org`.
 - `APP_URL` resta separato per il login locale. La generazione dei link evento sostituisce automaticamente le origini localhost/loopback con il dominio pubblico, anche nei retry di email non ancora inviate.
 - Le email già consegnate con localhost non possono essere cambiate: il percorso e il token funzionano sul dominio pubblico; occorre comunicarne il link corretto o reinviare su richiesta esplicita.
+
+## Accompagnatori per parte — 2026-10-05
+
+- Le risposte `attending` in `part_responses` supportano `companionCount` (0–20) e `companionNames` facoltativo (massimo 2000 caratteri), sia nel modulo manager sia nel link pubblico.
+- Ogni parte conserva i propri accompagnatori. Le altre risposte e gli inviti non confermati li azzerano; lo storico conserva gli snapshot precedenti.
+- `event_part_counts` include gli accompagnatori nei partecipanti della singola parte. Il riepilogo generale mantiene il conteggio degli inviti attesi ad almeno una parte. Gli export indicano accompagnatori e totali per parte, senza deduplicazioni arbitrarie tra parti.
+- Migration `20261005120000_part_companions.sql` applicata al database condiviso dopo verifica su database isolato, con test storico, conteggi, validazione e RLS. Commit, push e deploy su produzione autorizzati il 2026-10-05.

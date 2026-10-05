@@ -15,9 +15,11 @@ begin
   select * into r from event_invitations where id=i;
   assert jsonb_array_length(r.part_responses)=2, 'default includes every part';
   insert into invitation_response_tokens(invitation_id,event_id,contact_id,token_hash,token_prefix) values(i,e,c,'test-composite-hash','test') returning id into token_id;
-  assert record_public_part_responses('test-composite-hash','[{"id":"mass","response":"attending"},{"id":"reception","response":"delegated","firstName":"Delegate","lastName":"Test","email":"delegate@example.invalid"}]'), 'response saved';
+  assert record_public_part_responses('test-composite-hash','[{"id":"mass","response":"attending","companionCount":2,"companionNames":"Anna, Marco"},{"id":"reception","response":"delegated","firstName":"Delegate","lastName":"Test","email":"delegate@example.invalid"}]'), 'response saved';
   select * into r from event_invitations where id=i;
   assert exists(select 1 from event_part_counts(e) where id='reception' and attending=1 and delegated=1), 'per-part count includes delegate';
+  assert exists(select 1 from event_part_counts(e) where id='mass' and attending=3), 'per-part count includes companions';
+  assert exists(select 1 from invitation_responses where invitation_id=i and part_responses @> '[{"id":"mass","companionCount":2,"companionNames":"Anna, Marco"}]'), 'history keeps companions';
   assert r.response_status='attending' and r.delegate_email is null, 'aggregate does not overwrite per-part delegates';
   select count(*) into n from invitation_responses where invitation_id=i and response_token_id=token_id and source='public_link' and jsonb_array_length(part_responses)=2;
   assert n=1, 'one atomic public history snapshot';
@@ -34,6 +36,15 @@ begin
     update event_invitations set response_status='declined' where id=i;
     raise exception 'TEST FAILED: legacy bulk erased answers';
   exception when others then if sqlerrm like 'TEST FAILED%' then raise; end if; end;
+  begin
+    update event_invitations set part_responses='[{"id":"mass","response":"attending","companionCount":21}]' where id=i;
+    raise exception 'TEST FAILED: invalid count accepted';
+  exception when others then if sqlerrm like 'TEST FAILED%' then raise; end if; end;
+  update event_invitations set part_responses='[{"id":"mass","response":"attending","companionCount":2},{"id":"reception","response":"attending","companionCount":1}]' where id=i;
+  assert exists(select 1 from event_part_counts(e) where id='mass' and attending=3), 'first part remains independent';
+  assert exists(select 1 from event_part_counts(e) where id='reception' and attending=2), 'second part has own companions';
+  update event_invitations set part_responses='[{"id":"mass","response":"declined","companionCount":2,"companionNames":"Old"}]' where id=i;
+  assert not exists(select 1 from event_invitations x cross join lateral jsonb_array_elements(x.part_responses) p where x.id=i and (p ? 'companionCount' or p ? 'companionNames')), 'declined clears companions';
   perform set_config('app.part_response_token','',true);
   update event_invitations set part_responses='[{"id":"mass","response":"maybe"}]',response_source='admin',response_recorded_by_profile_id='00000000-0000-4000-8000-000000000071' where id=i;
   select * into r from event_invitations where id=i;

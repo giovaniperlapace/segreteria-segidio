@@ -6,6 +6,8 @@ export type PartResponse = {
   lastName?: string;
   email?: string;
   role?: string;
+  companionCount?: number;
+  companionNames?: string;
 };
 export const PART_RESPONSE_LABELS = {
   no_response: 'Nessuna risposta', attending: 'Partecipo', declined: 'Non partecipo', maybe: 'Forse', delegated: 'Delego una persona',
@@ -28,6 +30,12 @@ export function parsePartResponses(value: string, parts: EventPart[], publicResp
   return rows.map((row) => {
     if (!parts.some((part) => part.id === row.id) || ids.has(row.id) || !Object.hasOwn(PART_RESPONSE_LABELS, row.response) || (publicResponse && row.response === 'no_response')) throw new Error('Indica una risposta valida per ogni parte invitata.');
     ids.add(row.id);
+    if (row.response === 'attending') {
+      const count = row.companionCount ?? 0;
+      if (!Number.isSafeInteger(count) || count < 0 || count > 20) throw new Error('Indica da 0 a 20 accompagnatori per ogni parte.');
+      if (row.companionNames != null && (typeof row.companionNames !== 'string' || row.companionNames.length > 2000)) throw new Error('I nomi degli accompagnatori non possono superare 2000 caratteri.');
+      return { id: row.id, response: row.response, ...(count > 0 ? { companionCount: count, companionNames: row.companionNames?.trim() ?? '' } : {}) };
+    }
     if (row.response !== 'delegated') return { id: row.id, response: row.response };
     const firstName = row.firstName?.trim() ?? '', lastName = row.lastName?.trim() ?? '', email = row.email?.trim().toLowerCase() ?? '', role = row.role?.trim() ?? '';
     if (!firstName || !lastName || firstName.length > 200 || lastName.length > 200 || role.length > 200 || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Indica nome, cognome ed email valida per ogni delegato.');
@@ -35,7 +43,7 @@ export function parsePartResponses(value: string, parts: EventPart[], publicResp
   });
 }
 export function describeParts(parts: EventPart[], responses: PartResponse[]) {
-  return responses.map((row) => `${parts.find((part) => part.id === row.id)?.title ?? row.id}: ${PART_RESPONSE_LABELS[row.response]}${row.response === 'delegated' ? ` (${row.firstName} ${row.lastName}, ${row.email}${row.role ? `, ${row.role}` : ''})` : ''}`).join('\n');
+  return responses.map((row) => `${parts.find((part) => part.id === row.id)?.title ?? row.id}: ${PART_RESPONSE_LABELS[row.response]}${row.response === 'attending' && row.companionCount ? ` (+${row.companionCount} accompagnatori${row.companionNames ? `: ${row.companionNames}` : ''})` : ''}${row.response === 'delegated' ? ` (${row.firstName} ${row.lastName}, ${row.email}${row.role ? `, ${row.role}` : ''})` : ''}`).join('\n');
 }
 
 export function emailPartFilterIds(mode: string, selectedIds: string[], parts: EventPart[]) {

@@ -1,6 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { sendMagicLinkEmail } from "@/lib/email/gmail";
+import { sendMagicLinkEmail } from "@/lib/email/magic-link";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 type GenerateLinkResponse = {

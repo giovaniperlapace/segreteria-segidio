@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<EventEmailBatchRecord["status"], string> = {
 
 const DELIVERY_STATUS_LABELS: Record<EmailBatchPreviewMessage["status"], string> = {
   queued: "Da inviare",
-  sending: "Invio in corso",
+  sending: "In corso / da verificare",
   sent: "Inviata",
   failed: "Errore",
   skipped: "Saltata",
@@ -594,7 +594,7 @@ function EmailAttachmentFields() {
       const id = nextId.current++;
       setFields(current => [...current, { id, hasFile: false }]);
     }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-[#1b3272]">+ Aggiungi allegato</button>}
-    <p className="text-xs text-slate-500">Fino a 5 allegati, massimo 8 MB ciascuno e 15 MB complessivi.</p>
+    <p className="text-xs text-slate-500">Fino a 5 allegati, massimo 6 MB complessivi.</p>
   </fieldset>;
 }
 
@@ -667,10 +667,10 @@ export function EventEmailPanel({
       <form action={createAction} onSubmit={event => {
         if (partMode === "parts" && !partIds.length) { event.preventDefault(); return; }
         const files = new FormData(event.currentTarget).getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
-        const error = files.some(file => file.size > 8 * 1024 * 1024)
-          ? "Ogni allegato può pesare al massimo 8 MB."
-          : files.reduce((total, file) => total + file.size, 0) > 15 * 1024 * 1024
-            ? "Gli allegati possono pesare al massimo 15 MB complessivi." : "";
+        const error = files.some(file => file.size > 6 * 1024 * 1024)
+          ? "Ogni allegato può pesare al massimo 6 MB."
+          : files.reduce((total, file) => total + file.size, 0) > 6 * 1024 * 1024
+            ? "Gli allegati possono pesare al massimo 6 MB complessivi." : "";
         setAttachmentError(error);
         if (error) event.preventDefault();
       }} className={`mt-4 grid gap-4 ${parts.length > 0 ? "lg:grid-cols-3 lg:items-start" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end"}`}>

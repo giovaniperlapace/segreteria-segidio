@@ -426,3 +426,12 @@ Ogni blocco deve lasciare il progetto piu' chiaro di prima: scope piccolo, contr
 - Ogni parte conserva i propri accompagnatori. Le altre risposte e gli inviti non confermati li azzerano; lo storico conserva gli snapshot precedenti.
 - `event_part_counts` include gli accompagnatori nei partecipanti della singola parte. Il riepilogo generale mantiene il conteggio degli inviti attesi ad almeno una parte. Gli export indicano accompagnatori e totali per parte, senza deduplicazioni arbitrarie tra parti.
 - Migration `20261005120000_part_companions.sql` applicata al database condiviso dopo verifica su database isolato, con test storico, conteggi, validazione e RLS. Commit, push e deploy su produzione autorizzati il 2026-10-05.
+
+## Integrazione Postmark — 2026-10-09
+
+- Implementata sostituzione SMTP Gmail con API HTTP Postmark: server dedicato `21096792`, `outbound` per magic link/notifiche e `broadcast` per inviti.
+- Mittente/Reply-To `segreteriagenerale@santegidio.org`; DKIM e Return-Path del dominio già verificati. Tracking disattivato, disiscrizione broadcast gestita da Postmark.
+- Nuovi log per singolo indirizzo, claim condizionali, risultati parziali, suppression senza retry, pausa su rate limit e blocco dei reinvii con esito incerto. Allegati: massimo 6 MiB complessivi.
+- `/auth/callback` richiede conferma POST per proteggere il token dagli scanner.
+- Configurazione e procedura di verifica/riconciliazione: `POSTMARK.md`. Variabili documentate in `.env.example`; nessuna migration necessaria.
+- Commit, push e deploy autorizzati dall’utente il 2026-10-09. Verificare il deployment Production del commit rilasciato e il dominio pubblico prima di considerare concluso il rilascio.

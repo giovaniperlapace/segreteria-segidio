@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { emailPartFilterIds, matchesInvitedParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { requireManager } from "@/lib/auth/profile";
-import { sendSmtpEmail } from "@/lib/email/gmail";
+import { getEmailConfig } from "@/lib/email/config";
+import { sendTransactionalEmail, sendBroadcastBatch, type SendEmailInput } from "@/lib/email/postmark";
+import { fetchAllSupabaseRows } from "@/lib/supabase/fetch-all";
 import {
   appendPublicResponseLink,
   createPublicResponseToken,
@@ -19,8 +21,8 @@ import type { ArchiveActionState } from "../archive-actions";
 const EMAIL_SEND_LIMIT = 25;
 const EMAIL_RECIPIENT_QUERY_PAGE_SIZE = 1000;
 const MAX_ATTACHMENTS = 5;
-const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
-const MAX_TOTAL_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 6 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 6 * 1024 * 1024;
 const TARGET_KINDS = [
   "selected",
   "selected_rows",
@@ -53,6 +55,20 @@ type EmailLogToSend = {
   attempt_count: number | null;
   response_token_id: number | null;
   response_url: string | null;
+};
+
+type PreparedEmailLog = {
+  batch_id: number;
+  event_id: number;
+  invitation_id: number;
+  contact_id: number;
+  template_id: number;
+  to_email: string;
+  subject: string;
+  rendered_text: string;
+  rendered_html: string | null;
+  status: "queued" | "skipped";
+  error_message?: string;
 };
 
 function text(formData: FormData, key: string) {
@@ -88,8 +104,9 @@ function friendlyEmailError(error: unknown) {
         : String(error);
 
   if (/Filtro parti|filtro\.|evento non ha parti|Puoi allegare|allegati superano|allegati supera/.test(message)) return message;
-  if (message.includes("Missing GMAIL_USER")) return "Configurazione SMTP Gmail mancante.";
-  if (message.includes("email_attachments_file_size_valid")) return "Uno degli allegati supera 8 MB.";
+  if (message.includes("POSTMARK") || message.includes("Postmark")) return "Configurazione Postmark non valida. Controlla token e flussi di invio.";
+  if (message.startsWith("postmark_")) return "Invio Postmark non riuscito. Controlla l’attività del server prima di riprovare.";
+  if (message.includes("email_attachments_file_size_valid")) return "Uno degli allegati supera 6 MB.";
   if (message.includes("row-level security")) return "Non hai i permessi necessari per questa operazione.";
 
   console.error("Email operation failed", error);
@@ -101,14 +118,14 @@ function extractRecipients(...values: Array<string | null | undefined>) {
   const emails = values
     .flatMap((value) => value?.split(/[;,]/) ?? [])
     .map((item) => item.trim())
-    .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item))
+    .filter((item) => /^[^\s,;<>@]+@[^\s,;<>@]+\.[^\s,;<>@]+$/.test(item))
     .filter((item) => {
       const normalized = item.toLowerCase();
       if (seen.has(normalized)) return false;
       seen.add(normalized);
       return true;
     });
-  return emails.length > 0 ? emails.join(", ") : null;
+  return emails;
 }
 
 function contactFromRelation(value: InvitationEmailRow["contacts"]) {
@@ -137,11 +154,8 @@ function invitationMatchesTarget(row: InvitationEmailRow, target: TargetKind) {
 
 async function refreshBatchCounters(batchId: number) {
   const supabase = createSupabaseServiceClient();
-  const { data: rows, error } = await supabase
-    .from("email_logs")
-    .select("status")
-    .eq("batch_id", batchId);
-  if (error) throw error;
+  const rows = await fetchAllSupabaseRows<{ status: string }>(() => supabase
+    .from("email_logs").select("status").eq("batch_id", batchId).order("id"));
 
   const counts = {
     sent_count: 0,
@@ -155,8 +169,9 @@ async function refreshBatchCounters(batchId: number) {
   }
   const processed = counts.sent_count + counts.failed_count + counts.skipped_count;
   const total = rows?.length ?? 0;
+  const uncertainCount = rows.filter(row => row.status === "sending").length;
   const nextStatus =
-    total > 0 && processed >= total
+    uncertainCount > 0 ? "sending" : total > 0 && processed >= total
       ? counts.failed_count > 0
         ? "completed_with_errors"
         : "completed"
@@ -175,7 +190,8 @@ async function refreshBatchCounters(batchId: number) {
   return {
     ...counts,
     recipientCount: total,
-    remainingCount: Math.max(0, total - processed),
+    remainingCount: Math.max(0, total - processed - uncertainCount),
+    uncertainCount,
     status: nextStatus,
   };
 }
@@ -258,10 +274,10 @@ async function readAttachments(formData: FormData) {
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   if (totalSize > MAX_TOTAL_ATTACHMENT_BYTES) {
-    throw new Error("Gli allegati superano il limite totale di 15 MB.");
+    throw new Error("Gli allegati superano il limite totale di 6 MB.");
   }
   if (files.some((file) => file.size > MAX_ATTACHMENT_BYTES)) {
-    throw new Error("Uno degli allegati supera 8 MB.");
+    throw new Error("Uno degli allegati supera 6 MB.");
   }
 
   return Promise.all(
@@ -396,11 +412,11 @@ export async function createEmailBatchAction(
       if (joinError) throw joinError;
     }
 
-    const logRows = rows.map((row) => {
+    const logRows = rows.flatMap<PreparedEmailLog>((row) => {
       const contact = contactFromRelation(row.contacts);
-      const recipient = extractRecipients(contact?.email, contact?.email_2);
-      if (!contact || !recipient) {
-        return {
+      const recipients = extractRecipients(contact?.email, contact?.email_2);
+      if (!contact || !recipients.length) {
+        return [{
           batch_id: batchId,
           event_id: eventId,
           invitation_id: row.id,
@@ -412,7 +428,7 @@ export async function createEmailBatchAction(
           rendered_html: null,
           status: "skipped",
           error_message: "Email mancante o non valida.",
-        };
+        }];
       }
       const context = {
         event,
@@ -421,7 +437,7 @@ export async function createEmailBatchAction(
       const subject = renderEmailTemplate(template.subject, context);
       const invitedPartTitles = (event.parts as EventPart[]).filter(part => row.part_responses.some(r => r.id === part.id)).map(part => part.title);
       const renderedText = [renderEmailTemplate(template.body_text, context), invitedPartTitles.length ? `L’invito comprende:\n${invitedPartTitles.map(title => `• ${title}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
-      return {
+      return recipients.map(recipient => ({
         batch_id: batchId,
         event_id: eventId,
         invitation_id: row.id,
@@ -432,7 +448,7 @@ export async function createEmailBatchAction(
         rendered_text: renderedText,
         rendered_html: plainTextToHtml(renderedText),
         status: "queued",
-      };
+      }));
     });
 
     const { error: logsError } = await supabase.from("email_logs").insert(logRows);
@@ -441,7 +457,7 @@ export async function createEmailBatchAction(
     revalidatePath(`/dashboard/events/${eventId}`);
     return {
       status: "success",
-      message: `Invio preparato per ${rows.length} ${rows.length === 1 ? "destinatario" : "destinatari"}.`,
+      message: `Invio preparato per ${rows.length} contatti (${logRows.length} indirizzi o righe da verificare).`,
     };
   } catch (error) {
     return { status: "error", message: friendlyEmailError(error) };
@@ -618,7 +634,7 @@ export async function sendEmailBatchTestAction(
         content: Buffer.from(item.content_base64, "base64"),
       }] : [];
     });
-    await sendSmtpEmail({
+    await sendTransactionalEmail({
       to: "segreteriagenerale@santegidio.org",
       subject: `[PROVA] ${log.subject}`,
       text: rendered.text,
@@ -651,12 +667,20 @@ export async function sendEmailBatchAction(
     const supabase = createSupabaseServiceClient();
     const { data: batch, error: batchError } = await supabase
       .from("email_batches")
-      .select("id,event_id,target_kind,status,sent_count,failed_count,include_public_response_link")
+      .select("id,event_id,target_kind,status,sent_count,failed_count,include_public_response_link,last_error")
       .eq("id", batchId)
       .eq("event_id", eventId)
       .maybeSingle();
     if (batchError) throw batchError;
     if (!batch) return { status: "error", message: "Batch email non trovato." };
+
+    // Fail before claiming rows when delivery configuration is missing.
+    getEmailConfig();
+    if (batch.status === "sending") return {
+      status: "error", message: "Invio in corso o con esito da verificare su Postmark. Non reinviare il batch prima del controllo.",
+    };
+    const retryAt = /^Riprovare dopo ([^ ]+)\./.exec(batch.last_error ?? "")?.[1];
+    if (retryAt && Date.now() < Date.parse(retryAt)) return { status: "error", message: batch.last_error };
 
     const requestedIncludePublicResponseLink = formData.get("omitPublicResponseLink") !== "on";
     const includePublicResponseLink = Boolean(batch.include_public_response_link);
@@ -714,6 +738,7 @@ export async function sendEmailBatchAction(
       .select("id,invitation_id,contact_id,to_email,subject,rendered_text,rendered_html,attempt_count,response_token_id,response_url")
       .eq("batch_id", batchId)
       .in("status", statuses)
+      .is("provider_message_id", null)
       .neq("to_email", "email-mancante")
       .order("id")
       .limit(EMAIL_SEND_LIMIT);
@@ -749,6 +774,7 @@ export async function sendEmailBatchAction(
       .from("email_batches")
       .update({ status: "sending", last_error: null })
       .eq("id", batchId)
+      .neq("status", "sending")
       .select("id")
       .maybeSingle();
     if (sendingBatchError) throw sendingBatchError;
@@ -758,18 +784,18 @@ export async function sendEmailBatchAction(
 
     let sent = 0;
     let failed = 0;
+    let stopped = false;
+    let batchErrorMessage: string | null = null;
+    const prepared: Array<{ log: EmailLogToSend; input: SendEmailInput }> = [];
     for (const log of logs) {
-      const now = new Date().toISOString();
-      await supabase
-        .from("email_logs")
-        .update({
-          status: "sending",
-          attempt_count: Number(log.attempt_count ?? 0) + 1,
-          last_attempt_at: now,
-          error_message: null,
-        })
-        .eq("id", log.id);
-
+      // Compare-and-set prevents a stale or concurrent request from resending a row.
+      const { data: claimed, error: claimError } = await supabase.from("email_logs")
+        .update({ status: "sending", attempt_count: Number(log.attempt_count ?? 0) + 1,
+          last_attempt_at: new Date().toISOString(), error_message: null })
+        .eq("id", log.id).in("status", statuses).eq("attempt_count", log.attempt_count ?? 0)
+        .is("provider_message_id", null).select("id").maybeSingle();
+      if (claimError) throw claimError;
+      if (!claimed) continue;
       try {
         const shouldIncludePublicResponseLink =
           requestedIncludePublicResponseLink &&
@@ -799,52 +825,69 @@ export async function sendEmailBatchAction(
             .eq("id", log.id);
           if (renderedUpdateError) throw renderedUpdateError;
         }
-        const info = await sendSmtpEmail({
-          to: log.to_email,
-          subject: log.subject,
-          text: rendered.text,
-          html: rendered.html,
-          attachments,
-        });
-        const sentAt = new Date().toISOString();
-        const [{ error: logUpdateError }, { error: invitationUpdateError }] = await Promise.all([
-          supabase
-            .from("email_logs")
-            .update({
-              status: "sent",
-              sent_at: sentAt,
-              provider_message_id: info.messageId,
-            })
-            .eq("id", log.id),
-          supabase
-            .from("event_invitations")
-            .update({
-              invitation_status: "invited",
-              invited_at: sentAt,
-              response_status: "no_response",
-              attendance_status: "unknown",
-              invitation_status_updated_at: sentAt,
-              invitation_status_updated_by_profile_id: profile.id,
-              updated_by_profile_id: profile.id,
-            })
-            .eq("id", log.invitation_id)
-            .eq("event_id", eventId)
-            .eq("invitation_status", "selected"),
-        ]);
-        if (logUpdateError) throw logUpdateError;
-        if (invitationUpdateError) throw invitationUpdateError;
-        sent += 1;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        await supabase
-          .from("email_logs")
-          .update({
-            status: "failed",
-            error_message: errorMessage.slice(0, 1000),
-          })
-          .eq("id", log.id);
+        prepared.push({ log: log as EmailLogToSend, input: {
+          to: log.to_email, subject: log.subject, text: rendered.text, html: rendered.html,
+          attachments, metadata: { batch_id: String(batchId), email_log_id: String(log.id), event_id: String(eventId) },
+        } });
+      } catch {
+        const { error } = await supabase.from("email_logs").update({ status: "failed",
+          error_message: "Preparazione del messaggio non riuscita; nessun invio effettuato." }).eq("id", log.id);
+        if (error) throw error;
         failed += 1;
       }
+    }
+
+    const results = await sendBroadcastBatch(prepared.map(item => item.input));
+    for (const [index, result] of results.entries()) {
+      const log = prepared[index].log;
+      if (result.messageId) {
+        const sentAt = new Date().toISOString();
+        // Store acceptance before updating invitation state. Never turn an accepted
+        // email into a retryable failure if a later database write fails.
+        const { error: logError } = await supabase.from("email_logs").update({
+          status: "sent", sent_at: sentAt, provider_message_id: result.messageId, error_message: null,
+        }).eq("id", log.id).eq("status", "sending");
+        if (logError) {
+          stopped = true;
+          batchErrorMessage = "Postmark ha accettato messaggi ma il salvataggio del log non è riuscito. Verificare l’attività Postmark tramite email_log_id prima di reinviare.";
+          continue;
+        }
+        sent += 1;
+        const { error: invitationError } = await supabase.from("event_invitations").update({
+          invitation_status: "invited", invited_at: sentAt, response_status: "no_response", attendance_status: "unknown",
+          invitation_status_updated_at: sentAt, invitation_status_updated_by_profile_id: profile.id,
+          updated_by_profile_id: profile.id,
+        }).eq("id", log.invitation_id).eq("event_id", eventId).eq("invitation_status", "selected");
+        if (invitationError) {
+          stopped = true;
+          batchErrorMessage = "Email accettata da Postmark; aggiornare lo stato dell’invito manualmente. L’email non verrà reinviata.";
+        }
+      } else {
+        const unknown = result.disposition === "unknown";
+        const deferred = result.errorCode === "postmark_batch_deferred";
+        const suppressed = result.errorCode === "postmark_406";
+        const message = unknown
+          ? "Esito incerto: verificare l’attività Postmark tramite email_log_id. Reinvio automatico bloccato."
+          : suppressed ? "Indirizzo escluso da Postmark (disiscrizione, bounce o segnalazione spam). Non reinviare."
+          : result.errorCode === "invalid_recipient" ? "Indirizzo non valido o multiplo: correggere il contatto e preparare un nuovo batch."
+          : result.errorCode === "postmark_message_too_large" ? "Messaggio troppo grande: ridurre gli allegati e preparare un nuovo batch."
+          : `Invio non effettuato: ${result.errorCode}.`;
+        const { error } = await supabase.from("email_logs").update({
+          status: unknown ? "sending" : suppressed ? "skipped" : deferred ? "queued" : "failed",
+          error_message: message,
+        }).eq("id", log.id).eq("status", "sending");
+        if (error) throw error;
+        if (!suppressed && !deferred) failed += 1;
+        stopped ||= Boolean(result.disposition);
+        if (result.disposition === "retry" && !deferred) {
+          const retryAt = new Date(Date.now() + Math.max(60, result.retryAfterSeconds ?? 60) * 1000).toISOString();
+          batchErrorMessage = `Riprovare dopo ${retryAt}. Postmark ha temporaneamente sospeso l’invio.`;
+        } else if (!batchErrorMessage && !suppressed) batchErrorMessage = message;
+      }
+    }
+    if (batchErrorMessage) {
+      const { error } = await supabase.from("email_batches").update({ last_error: batchErrorMessage }).eq("id", batchId);
+      if (error) throw error;
     }
 
     const counters = await refreshBatchCounters(batchId);
@@ -852,10 +895,10 @@ export async function sendEmailBatchAction(
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return {
-      status: failed > 0 ? "error" : "success",
+      status: failed > 0 || stopped || counters.uncertainCount > 0 ? "error" : "success",
       message:
-        failed > 0
-          ? `${sent} email inviate, ${failed} fallite. L'invio automatico si e' fermato per consentire il controllo degli errori.`
+        failed > 0 || stopped || counters.uncertainCount > 0
+          ? `${sent} email accettate da Postmark. Invio fermato: ${batchErrorMessage ?? "controlla gli errori prima di riprovare."}`
           : counters.remainingCount > 0
             ? `${sent} email inviate. Proseguo automaticamente con le ${counters.remainingCount} rimaste.`
             : `${sent} email inviate. Invio completato.`,

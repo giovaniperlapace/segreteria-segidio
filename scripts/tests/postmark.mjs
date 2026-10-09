@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+const require = createRequire(import.meta.url);
+function load(path, mocks={}) {
+  const js = ts.transpileModule(readFileSync(new URL(path, import.meta.url),'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  const m={exports:{}}; new Function('require','module','exports',js)(id=>id in mocks?mocks[id]:require(id),m,m.exports);return m.exports;
+}
+const config=load('../../src/lib/email/config.ts');
+const outcome=load('../../src/lib/email/batch-outcome.ts');
+const transport=load('../../src/lib/email/postmark.ts',{'./config':config,'./batch-outcome':outcome});
+process.env.POSTMARK_SERVER_TOKEN='POSTMARK_API_TEST';
+delete process.env.EMAIL_FROM;delete process.env.EMAIL_REPLY_TO;
+let requests=[];
+const originalFetch=globalThis.fetch;
+const input={to:'test@blackhole.postmarkapp.com',subject:'Test',text:'Test',html:'<p>Test</p>',attachments:[{filename:'test.txt',contentType:'text/plain',content:Buffer.from('attachment')}]};
+const ok=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers});
+try {
+  globalThis.fetch=async(url,options)=>{ requests.push({url,...options}); return ok({ErrorCode:0,MessageID:'tx-id'}); };
+  assert.equal((await transport.sendTransactionalEmail(input)).messageId,'tx-id');
+  let payload=JSON.parse(requests[0].body);
+  assert.equal(payload.From,'segreteriagenerale@santegidio.org');assert.equal(payload.ReplyTo,payload.From);
+  assert.equal(payload.MessageStream,'outbound');assert.equal(payload.TrackOpens,false);assert.equal(payload.TrackLinks,'None');
+  assert.doesNotMatch(payload.TextBody,/unsubscribe/);assert.equal(payload.Attachments[0].Content,Buffer.from('attachment').toString('base64'));
+  requests=[];
+  globalThis.fetch=async(url,options)=>{ requests.push({url,...options});return ok([{ErrorCode:0,MessageID:'a'},{ErrorCode:406},{ErrorCode:300}]); };
+  const result=await transport.sendBroadcastBatch([input,input,input]);
+  assert.equal(requests.length,1);assert.match(requests[0].url,/email\/batch$/);
+  payload=JSON.parse(requests[0].body);assert.equal(payload[0].MessageStream,'broadcast');assert.match(payload[0].TextBody,/pm:unsubscribe/);assert.match(payload[0].HtmlBody,/Non ricevere altri inviti/);
+  assert.deepEqual(result,[{messageId:'a'},{errorCode:'postmark_406'},{errorCode:'postmark_300'}]);
+  requests=[];let calls=0;
+  globalThis.fetch=async()=>{calls++;throw Error('timeout contains secret-body');};
+  assert.equal((await transport.sendBroadcastBatch([input]))[0].disposition,'unknown');assert.equal(calls,1);
+  await assert.rejects(transport.sendTransactionalEmail(input),/postmark_delivery_unknown/);assert.equal(calls,2);
+  globalThis.fetch=async()=>ok([{ErrorCode:0}]);
+  assert.equal((await transport.sendBroadcastBatch([input]))[0].disposition,'unknown');
+  globalThis.fetch=async()=>ok([]);
+  assert.equal((await transport.sendBroadcastBatch([input]))[0].disposition,'unknown');
+  calls=0;globalThis.fetch=async()=>{calls++;return ok({ErrorCode:429},429,{'Retry-After':'120'});};
+  const large={...input,attachments:[{filename:'large.txt',contentType:'text/plain',content:Buffer.alloc(4_000_000)}]};
+  const limited=await transport.sendBroadcastBatch([large,large,large]);assert.equal(calls,1);assert.equal(limited[0].retryAfterSeconds,120);assert.equal(limited[1].errorCode,'postmark_batch_deferred');
+  globalThis.fetch=async()=>ok({ErrorCode:101},500);
+  assert.equal((await transport.sendBroadcastBatch([input]))[0].disposition,'unknown');
+  globalThis.fetch=async()=>ok({ErrorCode:10},401);
+  assert.equal((await transport.sendBroadcastBatch([input]))[0].disposition,'blocked');
+  calls=0;globalThis.fetch=async()=>{calls++;throw Error('must not send');};
+  const invalid=await transport.sendBroadcastBatch([{...input,to:'one@example.org, two@example.org'},{...input,text:'x'.repeat(9_000_001)}]);
+  assert.equal(calls,0);assert.equal(invalid[0].errorCode,'invalid_recipient');assert.equal(invalid[1].errorCode,'postmark_message_too_large');
+  calls=0;globalThis.fetch=async(_url,options)=>{calls++;return ok(JSON.parse(options.body).map((_,i)=>({ErrorCode:0,MessageID:String(i)})));};
+  assert.equal((await transport.sendBroadcastBatch(Array(501).fill(input))).length,501);assert.equal(calls,2);
+  process.env.POSTMARK_BROADCAST_STREAM='outbound';assert.throws(()=>config.getEmailConfig(),/separate/);delete process.env.POSTMARK_BROADCAST_STREAM;
+  process.env.NODE_ENV='production';assert.throws(()=>config.getEmailConfig(),/test token/);delete process.env.NODE_ENV;
+  console.log('Postmark transport: streams, sender, unsubscribe, attachments, privacy, partial failures, suppression, 429 cooldown, ambiguous outcomes, size limits and 500-message splitting passed. No delivery.');
+} finally { globalThis.fetch=originalFetch; }

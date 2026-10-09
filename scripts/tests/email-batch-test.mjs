@@ -30,7 +30,8 @@ const supabase = { from(table) {
 const { sendEmailBatchTestAction } = load('../../src/app/dashboard/events/email-actions.ts', {
   'next/cache': {}, '@/lib/invitations/event-parts': {},
   '@/lib/auth/profile': { requireManager: async () => { if (denied) throw Error('Forbidden'); } },
-  '@/lib/email/gmail': { sendSmtpEmail: async (input) => { sent = input; return {}; } },
+  '@/lib/email/config': {}, '@/lib/supabase/fetch-all': {},
+  '@/lib/email/postmark': { sendTransactionalEmail: async (input) => { sent = input; return {}; } },
   '@/lib/email/public-response-links': links, '@/lib/email/templates': {},
   '@/lib/supabase/service': { createSupabaseServiceClient: () => supabase },
 });

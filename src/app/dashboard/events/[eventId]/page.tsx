@@ -1,3 +1,6 @@
+// Allow bounded Postmark batches with attachments to finish on Vercel.
+export const maxDuration = 300;
+
 import type { PartResponse } from "@/lib/invitations/event-parts";
 import Link from "next/link";
 import { notFound } from "next/navigation";

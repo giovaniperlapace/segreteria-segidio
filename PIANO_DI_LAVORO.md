@@ -492,3 +492,7 @@ Prima di usarla su liste reali conviene verificare:
 - criteri di rollback o disattivazione rapida della funzione email se crea problemi operativi.
 
 Output atteso del prossimo blocco: conferma operativa che invio SMTP, allegati, log, retry, link pubblico, registrazione risposta, notifica admin e storico funzionano su un caso reale controllato, senza compromettere l'uso manuale dell'MVP.
+
+## Aggiornamento 2026-10-09 — Postmark
+
+Su richiesta dell’utente, il provider della Milestone 15 passa da Gmail SMTP alle API Postmark. Il server dedicato e il dominio sono pronti; il codice locale include flussi separati, disiscrizione broadcast, batch per indirizzo, protezioni contro duplicati ed esiti incerti e conferma dei magic link. Configurazione, limiti e verifiche in `POSTMARK.md`. Commit, push e pubblicazione Vercel autorizzati dall’utente il 2026-10-09; il rilascio prevede verifica del deployment e del dominio pubblico.

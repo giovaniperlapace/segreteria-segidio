@@ -1,5 +1,5 @@
 import { parsePartResponses, describeParts, type EventPart, type PartResponse } from "./event-parts";
-import { sendSmtpEmail } from "@/lib/email/gmail";
+import { sendTransactionalEmail } from "@/lib/email/postmark";
 import {
   appAbsoluteUrl,
   hashPublicResponseToken,
@@ -179,8 +179,8 @@ async function notifySelectedManagers(
     `Apri la lista evento: ${dashboardUrl}`,
   ].filter(Boolean).join("\n");
 
-  await sendSmtpEmail({
-    to: managerEmails.join(", "),
+  const notifications = await Promise.allSettled(managerEmails.map(to => sendTransactionalEmail({
+    to,
     subject,
     text,
     html: `
@@ -200,7 +200,10 @@ async function notifySelectedManagers(
         </p>
       </div>
     `,
-  });
+  })));
+  if (notifications.some(result => result.status === "rejected")) {
+    throw new Error("Invio di una o più notifiche Postmark non riuscito.");
+  }
 }
 
 export type PublicResponseDelegate = {

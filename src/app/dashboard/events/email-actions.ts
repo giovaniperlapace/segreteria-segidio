@@ -3,6 +3,8 @@
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { invitationRecipients } from "@/lib/email/invitation-recipients";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { processSentArchives } from "@/lib/email/sent-archive";
 import { emailPartFilterIds, matchesInvitedParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { requireManager } from "@/lib/auth/profile";
 import { getEmailConfig } from "@/lib/email/config";
@@ -827,6 +829,12 @@ export async function sendEmailBatchAction(
       }
     }
 
+    // The database trigger queues copies atomically with acceptance. This wakeup is
+    // best-effort; the authenticated recovery endpoint handles interruptions.
+    after(async () => {
+      try { await processSentArchives(); }
+      catch { console.error("Email archive recovery pending"); }
+    });
     const results = await sendBroadcastBatch(prepared.map(item => item.input));
     for (const [index, result] of results.entries()) {
       const log = prepared[index].log;

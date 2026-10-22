@@ -1,5 +1,6 @@
 "use client";
 
+import { recoverSentEmailAction } from "../email-archive-actions";
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { matchesInvitedParts, type EventPart } from "@/lib/invitations/event-parts";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -379,6 +380,29 @@ function BatchRecipientsButton({
   );
 }
 
+function SentEmailEvidence({ message, eventId, refresh }: { message: EmailBatchPreviewMessage; eventId: number; refresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  if (message.status !== "sent") return null;
+  const archiveLabels: Record<string, string> = { pending: "Copia in attesa", processing: "Archiviazione in corso", archived: "Copia presente nella Posta inviata", failed: "Archiviazione da recuperare" };
+  const deliveryLabels: Record<string, string> = { Delivered: "Accettata dal server del destinatario", Bounced: "Mancata consegna", SpamComplaint: "Segnalata come spam" };
+  return <div className="space-y-3 rounded-xl border border-slate-200 p-4 text-sm">
+    <p className="font-semibold">{archiveLabels[message.archive_status ?? ""] ?? "Copia nella Posta inviata non ancora recuperata"}{message.archive_recovered ? " · Recupero storico" : ""}</p>
+    {message.delivery_events.length ? message.delivery_events.map((item, index) => <div key={index}>
+      <p>{deliveryLabels[item.kind] ?? item.kind} · {formatDate(item.occurred_at)}</p>
+      {item.details ? <details className="mt-1 text-xs text-slate-600"><summary>Dettaglio tecnico</summary><p className="break-words">{item.details}</p></details> : null}
+    </div>) : <p>Accettata da Postmark; conferma di consegna non disponibile.</p>}
+    <p className="text-xs text-slate-600">La consegna al server non conferma la lettura del messaggio.</p>
+    <button type="button" disabled={busy} className="rounded-lg border border-slate-300 px-3 py-2 font-semibold disabled:opacity-50" onClick={async () => {
+      setBusy(true); setFeedback("");
+      try { const result = await recoverSentEmailAction(eventId, message.id); setFeedback(result.error ?? result.message ?? ""); await refresh(); }
+      catch { setFeedback("Operazione non completata. Riprova più tardi."); }
+      finally { setBusy(false); }
+    }}>{busy ? "Verifica in corso…" : message.archive_status === "archived" ? "Aggiorna esiti" : "Recupera copia e verifica esiti"}</button>
+    {feedback ? <p role="status">{feedback}</p> : null}
+  </div>;
+}
+
 function BatchPreviewButton({
   eventId,
   batch,
@@ -501,6 +525,10 @@ function BatchPreviewButton({
                   <dt className="font-semibold text-slate-700">Oggetto</dt>
                   <dd className="text-slate-900">{selectedMessage.subject}</dd>
                 </dl>
+                <SentEmailEvidence key={selectedMessage.id} message={selectedMessage} eventId={eventId} refresh={async () => {
+                  const result = await getEmailBatchPreviewAction(eventId, batch.id);
+                  if (result.status === "success") { setMessages(result.messages); setTotal(result.total); }
+                }} />
                 {selectedMessage.error_message ? (
                   <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {selectedMessage.error_message}

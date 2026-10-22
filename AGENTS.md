@@ -435,3 +435,13 @@ Ogni blocco deve lasciare il progetto piu' chiaro di prima: scope piccolo, contr
 - `/auth/callback` richiede conferma POST per proteggere il token dagli scanner.
 - Configurazione e procedura di verifica/riconciliazione: `POSTMARK.md`. Variabili documentate in `.env.example`; nessuna migration necessaria.
 - Commit, push e deploy autorizzati dall’utente il 2026-10-09. Verificare il deployment Production del commit rilasciato e il dominio pubblico prima di considerare concluso il rilascio.
+
+## Copia Posta inviata e riscontri — 2026-10-22
+
+- Implementata archiviazione delle comunicazioni evento tramite IMAP Gmail nella cartella `\Sent`, usando il MIME originale Postmark con data e allegati; nessun invio SMTP. Magic link e notifiche transazionali esclusi.
+- Coda atomica al salvataggio dell'accettazione, snapshot persistente, lease e riconciliazione Message-ID; errori di archivio non rendono reinviabile l'email.
+- Aggiunti esiti di consegna persistenti, webhook autenticato e recupero della singola copia dalla finestra `Vedi testo`, riservato ai manager.
+- Migration additiva `20261022120000_email_sent_archive.sql` verificata su database isolato e applicata al database condiviso. Recupero reale del log 1972 verificato in Posta inviata con MIME/allegato originale, una sola copia e riscontro di consegna. Nessuna email reinviata.
+- Rilascio in produzione autorizzato il 22 ottobre: configurazione Vercel Production, webhook Postmark broadcast e timer permanente Hetzner `segidio-email-archive.timer` ogni cinque minuti. Il worker automatico esclude i recuperi storici, affidati al job dedicato. Configurazione e utility in `POSTMARK.md`.
+- Recupero storico autorizzato il 22 ottobre: 197 copie complete verificate (122 comunicazioni e 75 notifiche); 97 comunicazioni restano accodate per rispettare i 500 MB/giorno IMAP Gmail. Timer temporaneo Hetzner `segidio-archive-backfill.timer`, prossima esecuzione 23 ottobre ore 14:00 Roma; report e stato corrente in `POSTMARK.md` e `/root/segidio-backfill-20261022/report.json`. Nessun rilascio dell'app implicito in questa operazione.
+- Postmark tronca i MIME a 512 KiB: il worker ora rifiuta sorgenti incompleti e recupera corpi verificati e allegati originali del batch con nomi/dimensioni coerenti. Le copie ricostruite hanno Message-ID di archivio e intestazioni esplicite; test reali SHA-256 sugli allegati letti da Gmail superati.

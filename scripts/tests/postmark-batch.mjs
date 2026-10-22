@@ -18,7 +18,7 @@ const links=load('../../src/lib/email/public-response-links.ts');
 const actions=load('../../src/app/dashboard/events/email-actions.ts',{
  '@/lib/email/selected-invitations':load('../../src/lib/email/selected-invitations.ts'),
  '@/lib/email/invitation-recipients': load('../../src/lib/email/invitation-recipients.ts'),
-  'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
+  'next/server':{after(){}}, '@/lib/email/sent-archive':{processSentArchives:async()=>({})}, 'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
  '@/lib/auth/profile':{requireManager:async()=>{if(denied)throw Error('Forbidden');return{id:'manager'};}},
  '@/lib/email/config':{getEmailConfig:()=>({})},
  '@/lib/email/postmark':{sendBroadcastBatch:async inputs=>{deliveries.push(...inputs);return inputs.map((_,i)=>results?.[i]??{messageId:'id-'+i});}},

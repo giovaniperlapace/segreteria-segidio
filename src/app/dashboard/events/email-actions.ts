@@ -1,7 +1,7 @@
 "use server";
 
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
-import { invitationRecipients } from "@/lib/email/invitation-recipients";
+import { invitationRecipients, invitationRecipientContact } from "@/lib/email/invitation-recipients";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { processSentArchives } from "@/lib/email/sent-archive";
@@ -45,6 +45,9 @@ type InvitationEmailRow = {
   invitation_status: "selected" | "invited";
   response_status: "no_response" | "attending" | "declined" | "maybe";
   delegate_email: string | null;
+  delegate_first_name?: string | null;
+  delegate_last_name?: string | null;
+  delegate_role?: string | null;
   contacts: EmailTemplateContext["contact"] | EmailTemplateContext["contact"][] | null;
 };
 
@@ -330,7 +333,7 @@ export async function createEmailBatchAction(
       let query = supabase
         .from("event_invitations")
         .select(
-          "part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_email,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
+          "part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_email,delegate_first_name,delegate_last_name,delegate_role,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
         )
         .eq("event_id", eventId);
 
@@ -422,25 +425,27 @@ export async function createEmailBatchAction(
           error_message: "Email mancante o non valida.",
         }];
       }
-      const context = {
-        event,
-        contact,
-      } satisfies EmailTemplateContext;
-      const subject = renderEmailTemplate(template.subject, context);
-      const invitedPartTitles = (event.parts as EventPart[]).filter(part => row.part_responses.some(r => r.id === part.id)).map(part => part.title);
-      const renderedText = [renderEmailTemplate(template.body_text, context), invitedPartTitles.length ? `L’invito comprende:\n${invitedPartTitles.map(title => `• ${title}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
-      return recipients.map(recipient => ({
-        batch_id: batchId,
-        event_id: eventId,
-        invitation_id: row.id,
-        contact_id: row.contact_id,
-        template_id: templateId,
-        to_email: recipient,
-        subject,
-        rendered_text: renderedText,
-        rendered_html: plainTextToHtml(renderedText),
-        status: "queued",
-      }));
+      return recipients.map(recipient => {
+        const context = {
+          event,
+          contact: invitationRecipientContact(row, contact, recipientPartIds, recipient),
+        } satisfies EmailTemplateContext;
+        const subject = renderEmailTemplate(template.subject, context);
+        const invitedPartTitles = (event.parts as EventPart[]).filter(part => row.part_responses.some(r => r.id === part.id)).map(part => part.title);
+        const renderedText = [renderEmailTemplate(template.body_text, context), invitedPartTitles.length ? `L’invito comprende:\n${invitedPartTitles.map(title => `• ${title}`).join("\n")}` : ""].filter(Boolean).join("\n\n");
+        return {
+          batch_id: batchId,
+          event_id: eventId,
+          invitation_id: row.id,
+          contact_id: row.contact_id,
+          template_id: templateId,
+          to_email: recipient,
+          subject,
+          rendered_text: renderedText,
+          rendered_html: plainTextToHtml(renderedText),
+          status: "queued",
+        };
+      });
     });
 
     const { error: logsError } = await supabase.from("email_logs").insert(logRows);

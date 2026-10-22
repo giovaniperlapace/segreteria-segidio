@@ -1,5 +1,6 @@
 "use server";
 
+import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { revalidatePath } from "next/cache";
 import { emailPartFilterIds, matchesInvitedParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { requireManager } from "@/lib/auth/profile";
@@ -135,10 +136,7 @@ function contactFromRelation(value: InvitationEmailRow["contacts"]) {
 function invitationMatchesTarget(row: InvitationEmailRow, target: TargetKind) {
   if (target === "selected") return row.invitation_status === "selected";
   if (target === "selected_rows") {
-    return (
-      row.invitation_status === "selected" ||
-      (row.invitation_status === "invited" && (row.response_status === "no_response" || row.part_responses.some(part => part.response === "no_response")))
-    );
+    return canEmailSelectedInvitation(row);
   }
   if (target === "invited_no_response") {
     return row.invitation_status === "invited" && (row.response_status === "no_response" || row.part_responses.some(part => part.response === "no_response"));

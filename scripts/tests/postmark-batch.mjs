@@ -16,6 +16,7 @@ const supabase={from(table){let filters=[],patch=null,single=false,limit=Infinit
 }};
 const links=load('../../src/lib/email/public-response-links.ts');
 const actions=load('../../src/app/dashboard/events/email-actions.ts',{
+ '@/lib/email/selected-invitations':load('../../src/lib/email/selected-invitations.ts'),
  'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
  '@/lib/auth/profile':{requireManager:async()=>{if(denied)throw Error('Forbidden');return{id:'manager'};}},
  '@/lib/email/config':{getEmailConfig:()=>({})},
@@ -42,3 +43,22 @@ reset();denied=true;await assert.rejects(send(),/Forbidden/);assert.equal(delive
 reset(0);tables.events=[{id:2,title:'Evento',parts:[]}];tables.email_templates=[{id:3,active:true,deleted_at:null,subject:'Invito',body_text:'Gentile'}];tables.event_invitations=[{id:7,event_id:2,contact_id:4,invitation_status:'selected',part_responses:[],contacts:{email:'one@example.org; TWO@example.org',email_2:'two@example.org'}}];
 const form=new FormData();form.set('eventId','2');form.set('templateId','3');form.set('targetKind','selected');assert.equal((await actions.createEmailBatchAction({},form)).status,'success');assert.equal(tables.email_logs.length,2);assert.equal(tables.email_logs[0].to_email,'one@example.org');assert.equal(tables.email_logs[1].to_email,'TWO@example.org');
 console.log('Batch actions: concurrent claims, per-address logs, address deduplication, suppression, cooldown, ambiguous outcomes, persistence failures, paginated counters and authorization passed. No real data or email changed.');
+
+// Follow-up communication: confirmed and declined rows stay selectable; unselected rows never leak in.
+for (const response of ['attending', 'declined', 'maybe', 'no_response']) {
+  tables.email_logs = [];
+  tables.event_invitations = [
+    {id:7,event_id:2,contact_id:4,invitation_status:'invited',response_status:response,part_responses:[{id:'opening',response}],contacts:{email:'selected@example.org'}},
+    {id:8,event_id:2,contact_id:5,invitation_status:'invited',response_status:'attending',part_responses:[],contacts:{email:'other@example.org'}},
+  ];
+  form.set('targetKind','selected_rows'); form.set('selectedInvitationIds','7');
+  assert.equal((await actions.createEmailBatchAction({},form)).status,'success');
+  assert.deepEqual(tables.email_logs.map(row=>row.to_email),['selected@example.org']);
+}
+for (const status of ['draft','proposed','excluded']) {
+  tables.email_logs=[]; tables.event_invitations[0].invitation_status=status;
+  assert.equal((await actions.createEmailBatchAction({},form)).status,'error');
+  assert.equal(tables.email_logs.length,0);
+}
+assert.equal(deliveries.length,0,'preparing follow-up batches must not send emails');
+console.log('Selected-row follow-ups: all responses, composite events, selection isolation and excluded states passed.');

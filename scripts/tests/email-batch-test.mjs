@@ -28,6 +28,7 @@ const supabase = { from(table) {
   return builder;
 } };
 const { sendEmailBatchTestAction } = load('../../src/app/dashboard/events/email-actions.ts', {
+  '@/lib/email/selected-invitations': load('../../src/lib/email/selected-invitations.ts'),
   'next/cache': {}, '@/lib/invitations/event-parts': {},
   '@/lib/auth/profile': { requireManager: async () => { if (denied) throw Error('Forbidden'); } },
   '@/lib/email/config': {}, '@/lib/supabase/fetch-all': {},

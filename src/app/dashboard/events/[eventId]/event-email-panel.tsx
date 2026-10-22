@@ -1,5 +1,6 @@
 "use client";
 
+import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { matchesInvitedParts, type EventPart } from "@/lib/invitations/event-parts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
@@ -627,9 +628,7 @@ export function EventEmailPanel({
           matchesInvitedParts(invitation.part_responses ?? [], partMode === "all" ? parts.map(part => part.id) : partMode === "parts" ? partIds : []) &&
           selectedInvitationIds.has(invitation.id) &&
           invitation.row_type === "invitation" &&
-          (invitation.invitation_status === "selected" ||
-            (invitation.invitation_status === "invited" &&
-              (invitation.response_status === "no_response" || invitation.part_responses?.some(part => part.response === "no_response")))),
+          canEmailSelectedInvitation(invitation),
       ),
     [invitations, selectedInvitationIds, partMode, parts, partIds],
   );
@@ -698,6 +697,9 @@ export function EventEmailPanel({
             <option value="participants">Tutti i partecipanti</option>
             <option value="all_invited">Tutti gli invitati</option>
           </select>
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            “Righe selezionate” include anche chi ha già risposto, per inviare comunicazioni successive all’invito.
+          </span>
         </label>
         {parts.length > 0 && <fieldset className="min-w-0 space-y-2">
           <label className="block text-sm font-medium text-slate-700">

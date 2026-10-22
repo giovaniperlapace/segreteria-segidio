@@ -1705,6 +1705,7 @@ export function InvitationManagement({
           parts={parts}
           eventId={eventId}
           templates={emailTemplates}
+          selectedListPartId={partFilter}
           batches={emailBatches}
           invitations={invitations}
           selectedInvitationIds={selectedInvitationIds}

@@ -1,6 +1,7 @@
 "use server";
 
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
+import { invitationRecipients } from "@/lib/email/invitation-recipients";
 import { revalidatePath } from "next/cache";
 import { emailPartFilterIds, matchesInvitedParts, type EventPart, type PartResponse } from "@/lib/invitations/event-parts";
 import { requireManager } from "@/lib/auth/profile";
@@ -114,20 +115,6 @@ function friendlyEmailError(error: unknown) {
   return "Operazione email non riuscita. Controlla i dati e riprova.";
 }
 
-function extractRecipients(...values: Array<string | null | undefined>) {
-  const seen = new Set<string>();
-  const emails = values
-    .flatMap((value) => value?.split(/[;,]/) ?? [])
-    .map((item) => item.trim())
-    .filter((item) => /^[^\s,;<>@]+@[^\s,;<>@]+\.[^\s,;<>@]+$/.test(item))
-    .filter((item) => {
-      const normalized = item.toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    });
-  return emails;
-}
 
 function contactFromRelation(value: InvitationEmailRow["contacts"]) {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -331,6 +318,11 @@ export async function createEmailBatchAction(
       formData.getAll("emailPartIds").map(String),
       event.parts as EventPart[],
     );
+    const selectedListPartId = target === "selected_rows" ? text(formData, "selectedListPartId") : "";
+    if (selectedListPartId && !(event.parts as EventPart[]).some(part => part.id === selectedListPartId)) {
+      return { status: "error", message: "Parte selezionata non valida." };
+    }
+    const recipientPartIds = selectedListPartId ? [selectedListPartId] : requiredPartIds;
     const invitationRows: InvitationEmailRow[] = [];
     for (let from = 0; ; from += EMAIL_RECIPIENT_QUERY_PAGE_SIZE) {
       let query = supabase
@@ -368,7 +360,7 @@ export async function createEmailBatchAction(
     }
 
     const rows = invitationRows.filter((row) =>
-      invitationMatchesTarget(row, target) && matchesInvitedParts(row.part_responses, requiredPartIds),
+      invitationMatchesTarget(row, target) && matchesInvitedParts(row.part_responses, requiredPartIds) && matchesInvitedParts(row.part_responses, recipientPartIds),
     );
     if (rows.length === 0) {
       return { status: "error", message: "Nessun destinatario corrisponde alla selezione." };
@@ -412,7 +404,7 @@ export async function createEmailBatchAction(
 
     const logRows = rows.flatMap<PreparedEmailLog>((row) => {
       const contact = contactFromRelation(row.contacts);
-      const recipients = extractRecipients(contact?.email, contact?.email_2);
+      const recipients = invitationRecipients(row, contact ?? {}, recipientPartIds);
       if (!contact || !recipients.length) {
         return [{
           batch_id: batchId,

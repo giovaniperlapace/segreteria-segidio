@@ -606,12 +606,14 @@ export function EventEmailPanel({
   batches,
   invitations,
   selectedInvitationIds,
+  selectedListPartId,
 }: {
   eventId: number;
   templates: EventEmailTemplateOption[];
   batches: EventEmailBatchRecord[];
   invitations: EventInvitationRecord[];
   selectedInvitationIds: Set<number>;
+  selectedListPartId: string;
   parts: EventPart[];
 }) {
   const [createState, createAction, createPending] = useArchiveAction(createEmailBatchAction);
@@ -674,6 +676,7 @@ export function EventEmailPanel({
         if (error) event.preventDefault();
       }} className={`mt-4 grid gap-4 ${parts.length > 0 ? "lg:grid-cols-3 lg:items-start" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end"}`}>
         <input type="hidden" name="eventId" value={eventId} />
+        <input type="hidden" name="selectedListPartId" value={selectedListPartId} />
         {selectedRows.map((invitation) => (
           <input key={invitation.id} type="hidden" name="selectedInvitationIds" value={invitation.id} />
         ))}
@@ -698,7 +701,8 @@ export function EventEmailPanel({
             <option value="all_invited">Tutti gli invitati</option>
           </select>
           <span className="mt-1 block text-xs font-normal text-slate-500">
-            “Righe selezionate” include anche chi ha già risposto, per inviare comunicazioni successive all’invito.
+            “Righe selezionate” include anche chi ha già risposto. Se presente, l’email va solo al delegato; altrimenti al contatto.
+            {selectedListPartId && ` Per le righe selezionate si usa il delegato di ${parts.find(part => part.id === selectedListPartId)?.title ?? "questa parte"}.`}
           </span>
         </label>
         {parts.length > 0 && <fieldset className="min-w-0 space-y-2">

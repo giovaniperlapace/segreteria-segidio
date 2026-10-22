@@ -29,6 +29,7 @@ const supabase = { from(table) {
 } };
 const { sendEmailBatchTestAction } = load('../../src/app/dashboard/events/email-actions.ts', {
   '@/lib/email/selected-invitations': load('../../src/lib/email/selected-invitations.ts'),
+  '@/lib/email/invitation-recipients': load('../../src/lib/email/invitation-recipients.ts'),
   'next/cache': {}, '@/lib/invitations/event-parts': {},
   '@/lib/auth/profile': { requireManager: async () => { if (denied) throw Error('Forbidden'); } },
   '@/lib/email/config': {}, '@/lib/supabase/fetch-all': {},

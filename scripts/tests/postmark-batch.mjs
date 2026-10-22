@@ -17,7 +17,8 @@ const supabase={from(table){let filters=[],patch=null,single=false,limit=Infinit
 const links=load('../../src/lib/email/public-response-links.ts');
 const actions=load('../../src/app/dashboard/events/email-actions.ts',{
  '@/lib/email/selected-invitations':load('../../src/lib/email/selected-invitations.ts'),
- 'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
+ '@/lib/email/invitation-recipients': load('../../src/lib/email/invitation-recipients.ts'),
+  'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
  '@/lib/auth/profile':{requireManager:async()=>{if(denied)throw Error('Forbidden');return{id:'manager'};}},
  '@/lib/email/config':{getEmailConfig:()=>({})},
  '@/lib/email/postmark':{sendBroadcastBatch:async inputs=>{deliveries.push(...inputs);return inputs.map((_,i)=>results?.[i]??{messageId:'id-'+i});}},
@@ -62,3 +63,22 @@ for (const status of ['draft','proposed','excluded']) {
 }
 assert.equal(deliveries.length,0,'preparing follow-up batches must not send emails');
 console.log('Selected-row follow-ups: all responses, composite events, selection isolation and excluded states passed.');
+// Recipient routing uses the selected list part, with contact fallback only when no delegate email is supplied.
+tables.events[0].parts=[{id:'opening',title:'Opening'},{id:'closing',title:'Closing'}];
+const routingCases=[
+  {parts:[{id:'opening',response:'delegated',email:'opening@example.org'},{id:'closing',response:'delegated',email:'closing@example.org'}],scope:'opening',expected:['opening@example.org']},
+  {parts:[{id:'opening',response:'delegated',email:''},{id:'closing',response:'delegated',email:'closing@example.org'}],scope:'opening',expected:['contact@example.org','second@example.org']},
+  {parts:[{id:'opening',response:'attending'},{id:'closing',response:'delegated',email:'closing@example.org'}],scope:'opening',expected:['contact@example.org','second@example.org']},
+  {parts:[],delegate:'delegate@example.org',scope:'',expected:['delegate@example.org']},
+  {parts:[],delegate:null,scope:'',expected:['contact@example.org','second@example.org']},
+  {parts:[{id:'opening',response:'delegated',email:'same@example.org'},{id:'closing',response:'delegated',email:'SAME@example.org'}],scope:'',expected:['same@example.org']},
+];
+for(const test of routingCases){
+ tables.email_logs=[];
+ tables.event_invitations=[{id:7,event_id:2,contact_id:4,invitation_status:'invited',response_status:'attending',part_responses:test.parts,delegate_email:test.delegate,contacts:{email:'contact@example.org',email_2:'second@example.org'}}];
+ form.set('selectedListPartId',test.scope);
+ assert.equal((await actions.createEmailBatchAction({},form)).status,'success');
+ assert.deepEqual(tables.email_logs.map(row=>row.to_email),test.expected);
+}
+assert.equal(deliveries.length,0);
+console.log('Delegate routing: part isolation, contact fallback, simple events and deduplication passed.');

@@ -57,20 +57,32 @@ for (const table of cases) {
   if (process.env.EXPORT_QA_DIR) fs.writeFileSync(path.join(process.env.EXPORT_QA_DIR, `${cases.indexOf(table)}.pdf`), pdf);
 }
 const value = (table, key) => table.columns.find(column => column.key === key).value(table.rows[0]);
-const delegate = { ...row, delegateEmail: 'delegate@example.test', delegateFirstName: 'Anna Maria', delegateLastName: 'Di Luca' };
+const delegate = { ...row, delegateEmail: 'delegate@example.test', delegateFirstName: 'Anna Maria', delegateLastName: 'Di Luca', delegateRole: 'Direttrice' };
 let table = tables.buildEventTable('Evento', [delegate], 'participants', options);
 assert.equal(value(table, 'first_name'), 'Anna Maria');
 assert.equal(value(table, 'last_name'), 'Di Luca');
 assert.equal(value(table, 'original_first_name'), 'Maria Luisa');
 assert.equal(value(table, 'original_last_name'), 'De Rossi');
+assert.equal(value(table, 'delegate_role'), 'Direttrice');
 table = tables.buildEventTable('Evento', [{ ...row, partResponses: [
-  { id: 'a', response: 'delegated', firstName: 'Anna', lastName: 'Rossi', email: 'a@example.test' },
-  { id: 'b', response: 'delegated', firstName: 'Anna', lastName: 'Bianchi', email: 'b@example.test' },
-  { id: 'c', response: 'delegated', firstName: 'Anna', lastName: 'Rossi', email: 'a@example.test' },
+  { id: 'a', response: 'delegated', firstName: 'Anna', lastName: 'Rossi', email: 'a@example.test', role: 'Presidente' },
+  { id: 'b', response: 'delegated', firstName: 'Anna', lastName: 'Bianchi', email: 'b@example.test', role: 'Segretaria' },
+  { id: 'c', response: 'delegated', firstName: 'Anna', lastName: 'Rossi', email: 'a@example.test', role: 'Presidente' },
   { id: 'd', response: 'attending' },
 ] }], 'participants', options);
 assert.equal(value(table, 'first_name'), 'Anna\nAnna\nMaria Luisa');
 assert.equal(value(table, 'last_name'), 'Rossi\nBianchi\nDe Rossi');
+assert.equal(value(table, 'delegate_role'), 'Presidente\nSegretaria\n');
+for (const participantRow of [delegate, table.rows[0], row, { ...delegate, delegateRole: null }]) {
+  const exportTable = tables.buildEventTable('Evento', [participantRow], 'participants', options);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await render.renderExcel(exportTable, { simpleLayout: true }));
+  const column = exportTable.columns.findIndex(c => c.key === 'delegate_role');
+  assert.equal(workbook.worksheets[0].getCell(1, column + 1).value, 'Ruolo/Carica delegato');
+  assert.equal(workbook.worksheets[0].getCell(2, column + 1).value ?? '', value(exportTable, 'delegate_role'));
+}
+assert.equal(value(tables.buildEventTable('Evento', [row], 'participants', options), 'delegate_role'), '');
+assert.equal(value(tables.buildEventTable('Evento', [{ ...delegate, delegateRole: null }], 'participants', options), 'delegate_role'), '');
 for (const labels of [tables.contactLabels([contact]), tables.eventLabels([row])]) {
   assert.equal(labels[0].firstName, 'Maria Luisa');
   assert.equal(labels[0].lastName, 'De Rossi');

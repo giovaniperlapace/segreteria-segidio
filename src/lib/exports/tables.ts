@@ -147,19 +147,19 @@ function responseLabel(row: EventInvitationExportRow) {
 }
 
 function participantNames(row: EventInvitationExportRow) {
-  const invitee = { firstName: row.contact.first_name, lastName: row.contact.last_name };
+  const invitee = { firstName: row.contact.first_name, lastName: row.contact.last_name, delegateRole: null };
   if (row.partResponses?.length) {
-    const people = new Map<string, { firstName: string | null; lastName: string | null }>();
+    const people = new Map<string, { firstName: string | null; lastName: string | null; delegateRole: string | null }>();
     for (const part of row.partResponses) {
       if (part.response === "attending") people.set("invitee", invitee);
       if (part.response === "delegated") people.set(`delegate:${part.email?.toLowerCase()}`, {
-        firstName: part.firstName ?? null, lastName: part.lastName ?? null,
+        firstName: part.firstName ?? null, lastName: part.lastName ?? null, delegateRole: part.role ?? null,
       });
     }
     return [...people.values()];
   }
   return [row.delegateEmail
-    ? { firstName: row.delegateFirstName, lastName: row.delegateLastName }
+    ? { firstName: row.delegateFirstName, lastName: row.delegateLastName, delegateRole: row.delegateRole }
     : invitee];
 }
 
@@ -255,6 +255,7 @@ export function buildEventTable(
     columns = [
       { key: "first_name", header: "Nome", width: 24, value: (row) => participantNames(row).map(person => person.firstName ?? "").join("\n") },
       { key: "last_name", header: "Cognome", width: 24, value: (row) => participantNames(row).map(person => person.lastName ?? "").join("\n") },
+      { key: "delegate_role", header: "Ruolo/Carica delegato", width: 28, value: (row) => participantNames(row).map(person => person.delegateRole ?? "").join("\n") },
       { key: "original_first_name", header: "Nome invitato originario", width: 24, value: (row) => row.delegateEmail || row.partResponses?.some(part => part.response === "delegated") ? row.contact.first_name : "" },
       { key: "original_last_name", header: "Cognome invitato originario", width: 24, value: (row) => row.delegateEmail || row.partResponses?.some(part => part.response === "delegated") ? row.contact.last_name : "" },
       { key: "delegate_email", header: "Email delegato", width: 28, value: (row) => row.delegateEmail },

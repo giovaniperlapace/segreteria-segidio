@@ -33,3 +33,9 @@ Verificato il servizio Hetzner `segidio-email-archive.service`: il timer richiam
 - `node scripts/tests/postmark-batch.mjs`: anteprima senza scritture, permessi, delegati, invalidazione per nomi modificati, badge distinti e identici byte al retry, oltre alle regressioni invio esistenti.
 - `node scripts/tests/email-batch-test.mjs` e `node scripts/tests/email-sent-archive.mjs`: regressioni di invio prova e archivio. Le modifiche preesistenti nel test archivio sono state conservate.
 - Anteprima generata dal JPG dell’utente e controllata visivamente. Accesso manager e presenza del nuovo pannello verificati su localhost; il selettore file nativo non ha completato il caricamento tramite automazione, quindi il collaudo interattivo completo resta da effettuare.
+
+## Correzione caricamento online — 24 ottobre 2026
+
+I JPG di quasi 5 MB venivano rifiutati dal limite del servizio prima della validazione nella server action, mostrando l’errore generico di anteprima. Ora i JPG oltre 4 MiB vengono ridimensionati nel browser (massimo 1600×2400, JPEG qualità 90) prima di qualsiasi upload. Lo stesso file ridotto resta nel campo del modulo per anteprima, prova di validazione e preparazione batch. File oltre 30 MiB o 24 milioni di pixel vengono rifiutati con un messaggio esplicito. La richiesta di anteprima include soltanto immagine, layout e, quando necessari, filtri dei destinatari.
+
+Verificati nel browser locale JPG oltre 5 MiB, anteprima segnaposti, primo destinatario di prova e validazione, senza preparare batch o inviare email. Test automatici su esclusione allegati/metadati React e controllo dimensione prima della rete, rendering e snapshot; lint, TypeScript e build.

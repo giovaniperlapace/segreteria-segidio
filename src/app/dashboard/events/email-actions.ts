@@ -1,5 +1,6 @@
 "use server";
 
+import { readBadge, renderBadge, badgeProof, verifyBadgeProof, badgeMailAttachment, type BadgeAttachment } from "@/lib/email/personalized-badge";
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { invitationRecipients, invitationRecipientContact } from "@/lib/email/invitation-recipients";
 import { revalidatePath } from "next/cache";
@@ -65,6 +66,7 @@ type EmailLogToSend = {
 };
 
 type PreparedEmailLog = {
+  personalized_badge?: BadgeAttachment;
   batch_id: number;
   event_id: number;
   invitation_id: number;
@@ -110,6 +112,7 @@ function friendlyEmailError(error: unknown) {
         ? String(error.message)
         : String(error);
 
+  if (message.startsWith("Badge:")) return message;
   if (/Filtro parti|filtro\.|evento non ha parti|Puoi allegare|allegati superano|allegati supera/.test(message)) return message;
   if (message.includes("POSTMARK") || message.includes("Postmark")) return "Configurazione Postmark non valida. Controlla token e flussi di invio.";
   if (message.startsWith("postmark_")) return "Invio Postmark non riuscito. Controlla l’attività del server prima di riprovare.";
@@ -280,6 +283,100 @@ async function readAttachments(formData: FormData) {
   );
 }
 
+async function loadEmailAudience(formData: FormData) {
+  const supabase = createSupabaseServiceClient();
+  const eventId = numberField(formData, "eventId");
+  if (!eventId) throw new Error("Badge: evento non valido.");
+  const target = targetKind(text(formData, "targetKind")) ?? "selected";
+  const selectedInvitationIds = numberFields(formData, "selectedInvitationIds");
+  if (target === "selected_rows" && !selectedInvitationIds.length) throw new Error("Badge: seleziona almeno un invitato.");
+  const { data: event, error } = await supabase.from("events").select("parts,id,title,starts_at,location").eq("id", eventId).single();
+  if (error) throw error;
+  const requiredPartIds = emailPartFilterIds(
+    text(formData, "emailPartFilter") || "any",
+    formData.getAll("emailPartIds").map(String),
+    event.parts as EventPart[],
+  );
+  const selectedListPartId = target === "selected_rows" ? text(formData, "selectedListPartId") : "";
+  if (selectedListPartId && !(event.parts as EventPart[]).some(part => part.id === selectedListPartId)) {
+    throw new Error("Badge: parte selezionata non valida.");
+  }
+  const recipientPartIds = selectedListPartId ? [selectedListPartId] : requiredPartIds;
+  const invitationRows: InvitationEmailRow[] = [];
+  for (let from = 0; ; from += EMAIL_RECIPIENT_QUERY_PAGE_SIZE) {
+    let query = supabase
+      .from("event_invitations")
+      .select(
+        "part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_email,delegate_first_name,delegate_last_name,delegate_role,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
+      )
+      .eq("event_id", eventId);
+
+    if (target === "selected") {
+      query = query.eq("invitation_status", "selected");
+    } else if (target === "selected_rows") {
+      query = query.in("id", selectedInvitationIds);
+    } else if (target === "invited_no_response") {
+      query = query.eq("invitation_status", "invited").or('response_status.eq.no_response,part_responses.cs.[{"response":"no_response"}]');
+    } else if (target === "participants") {
+      query = query
+        .eq("invitation_status", "invited")
+        .or("response_status.eq.attending,delegate_email.not.is.null");
+    } else {
+      query = query.eq("invitation_status", "invited");
+    }
+
+    if (requiredPartIds.length) {
+      // Pass JSON explicitly: an array is otherwise encoded as a PostgreSQL array.
+      query = query.contains("part_responses", JSON.stringify(requiredPartIds.map(id => ({ id }))));
+    }
+    const { data: invitations, error: invitationsError } = await query
+      .order("id")
+      .range(from, from + EMAIL_RECIPIENT_QUERY_PAGE_SIZE - 1);
+    if (invitationsError) throw invitationsError;
+    const page = (invitations ?? []) as InvitationEmailRow[];
+    invitationRows.push(...page);
+    if (page.length < EMAIL_RECIPIENT_QUERY_PAGE_SIZE) break;
+  }
+
+  const rows = invitationRows.filter((row) =>
+    invitationMatchesTarget(row, target) && matchesInvitedParts(row.part_responses, requiredPartIds) && matchesInvitedParts(row.part_responses, recipientPartIds),
+  );
+  if (rows.length === 0) {
+    throw new Error("Badge: nessun destinatario corrisponde alla selezione.");
+  }
+
+  return { event, rows, recipientPartIds };
+}
+
+function badgeAudience(rows: InvitationEmailRow[], partIds: string[]) {
+  return rows.flatMap(row => {
+    const contact = contactFromRelation(row.contacts);
+    if (!contact) return [];
+    return invitationRecipients(row, contact, partIds).map(email => {
+      const person = invitationRecipientContact(row, contact, partIds, email);
+      return { invitationId: row.id, email, firstName: person.first_name ?? "", lastName: person.last_name ?? "" };
+    });
+  });
+}
+
+export async function previewPersonalizedBadgeAction(formData: FormData, realNames: boolean) {
+  await requireManager();
+  try {
+    const badge = await readBadge(formData);
+    if (!badge) throw new Error("Badge: carica prima un JPG.");
+    if (!realNames) {
+      const result = await renderBadge(badge.image, badge.layout, "{{nome}}", "{{cognome}}");
+      return { status: "success" as const, image: `data:image/jpeg;base64,${result.content_base64}`, label: "Segnaposti nome e cognome", proof: "" };
+    }
+    const { rows, recipientPartIds } = await loadEmailAudience(formData);
+    const audience = badgeAudience(rows, recipientPartIds);
+    if (!audience.length) throw new Error("Badge: nessun destinatario con email valida.");
+    const person = audience[0];
+    const result = await renderBadge(badge.image, badge.layout, person.firstName, person.lastName);
+    return { status: "success" as const, image: `data:image/jpeg;base64,${result.content_base64}`, label: `${person.firstName} ${person.lastName} · ${person.email}`, proof: badgeProof(badge.image, badge.layout, audience) };
+  } catch (error) { return { status: "error" as const, message: friendlyEmailError(error) }; }
+}
+
 export async function createEmailBatchAction(
   _previousState: ArchiveActionState,
   formData: FormData,
@@ -318,60 +415,21 @@ export async function createEmailBatchAction(
     if (!event) return { status: "error", message: "Evento non trovato." };
     if (!template?.active) return { status: "error", message: "Template email non disponibile." };
 
-    const requiredPartIds = emailPartFilterIds(
-      text(formData, "emailPartFilter") || "any",
-      formData.getAll("emailPartIds").map(String),
-      event.parts as EventPart[],
-    );
-    const selectedListPartId = target === "selected_rows" ? text(formData, "selectedListPartId") : "";
-    if (selectedListPartId && !(event.parts as EventPart[]).some(part => part.id === selectedListPartId)) {
-      return { status: "error", message: "Parte selezionata non valida." };
-    }
-    const recipientPartIds = selectedListPartId ? [selectedListPartId] : requiredPartIds;
-    const invitationRows: InvitationEmailRow[] = [];
-    for (let from = 0; ; from += EMAIL_RECIPIENT_QUERY_PAGE_SIZE) {
-      let query = supabase
-        .from("event_invitations")
-        .select(
-          "part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_email,delegate_first_name,delegate_last_name,delegate_role,contacts!inner(first_name,last_name,honorific_title,honorific_title_invitation,institutional_role,institutional_role_invitation,institution,legacy_salutation,email,email_2)",
-        )
-        .eq("event_id", eventId);
-
-      if (target === "selected") {
-        query = query.eq("invitation_status", "selected");
-      } else if (target === "selected_rows") {
-        query = query.in("id", selectedInvitationIds);
-      } else if (target === "invited_no_response") {
-        query = query.eq("invitation_status", "invited").or('response_status.eq.no_response,part_responses.cs.[{"response":"no_response"}]');
-      } else if (target === "participants") {
-        query = query
-          .eq("invitation_status", "invited")
-          .or("response_status.eq.attending,delegate_email.not.is.null");
-      } else {
-        query = query.eq("invitation_status", "invited");
-      }
-
-      if (requiredPartIds.length) {
-        // Pass JSON explicitly: an array is otherwise encoded as a PostgreSQL array.
-        query = query.contains("part_responses", JSON.stringify(requiredPartIds.map(id => ({ id }))));
-      }
-      const { data: invitations, error: invitationsError } = await query
-        .order("id")
-        .range(from, from + EMAIL_RECIPIENT_QUERY_PAGE_SIZE - 1);
-      if (invitationsError) throw invitationsError;
-      const page = (invitations ?? []) as InvitationEmailRow[];
-      invitationRows.push(...page);
-      if (page.length < EMAIL_RECIPIENT_QUERY_PAGE_SIZE) break;
-    }
-
-    const rows = invitationRows.filter((row) =>
-      invitationMatchesTarget(row, target) && matchesInvitedParts(row.part_responses, requiredPartIds) && matchesInvitedParts(row.part_responses, recipientPartIds),
-    );
-    if (rows.length === 0) {
-      return { status: "error", message: "Nessun destinatario corrisponde alla selezione." };
-    }
+    const { rows, recipientPartIds } = await loadEmailAudience(formData);
 
     const attachments = await readAttachments(formData);
+    const badge = await readBadge(formData);
+    const generatedBadges = new Map<string, BadgeAttachment>();
+    if (badge) {
+      const audience = badgeAudience(rows, recipientPartIds);
+      if (!verifyBadgeProof(text(formData, "badgeProof"), badgeProof(badge.image, badge.layout, audience))) throw new Error("Badge: mostra l’anteprima con il primo destinatario e premi Validare. Se cambi destinatari o modello, ripeti la validazione.");
+      const commonSize = attachments.reduce((sum, item) => sum + item.file_size_bytes, 0);
+      for (const person of audience) {
+        const rendered = await renderBadge(badge.image, badge.layout, person.firstName, person.lastName);
+        if (commonSize + rendered.file_size_bytes > MAX_TOTAL_ATTACHMENT_BYTES) throw new Error("Badge: insieme agli altri allegati supera il limite di 6 MB.");
+        generatedBadges.set(`${person.invitationId}:${person.email}`, rendered);
+      }
+    }
     const { data: batch, error: batchError } = await supabase
       .from("email_batches")
       .insert({
@@ -440,6 +498,7 @@ export async function createEmailBatchAction(
           contact_id: row.contact_id,
           template_id: templateId,
           to_email: recipient,
+          personalized_badge: generatedBadges.get(`${row.id}:${recipient}`),
           subject,
           rendered_text: renderedText,
           rendered_html: plainTextToHtml(renderedText),
@@ -454,7 +513,7 @@ export async function createEmailBatchAction(
     revalidatePath(`/dashboard/events/${eventId}`);
     return {
       status: "success",
-      message: `Invio preparato per ${rows.length} contatti (${logRows.length} indirizzi o righe da verificare).`,
+      message: `Invio preparato per ${rows.length} contatti (${logRows.length} indirizzi o righe da verificare).${badge ? " Badge personalizzati inclusi." : ""}`,
     };
   } catch (error) {
     return { status: "error", message: friendlyEmailError(error) };
@@ -585,7 +644,7 @@ export async function sendEmailBatchTestAction(
     if (!batch) return { status: "error", message: "Batch email non trovato." };
     const { data: log, error: logError } = await supabase
       .from("email_logs")
-      .select("invitation_id,subject,rendered_text,rendered_html,response_url,to_email")
+      .select("invitation_id,subject,rendered_text,rendered_html,response_url,to_email,personalized_badge")
       .eq("batch_id", batchId)
       .eq("event_id", eventId)
       .order("id")
@@ -636,7 +695,7 @@ export async function sendEmailBatchTestAction(
       subject: `[PROVA] ${log.subject}`,
       text: rendered.text,
       html: rendered.html,
-      attachments,
+      attachments: [...attachments, ...badgeMailAttachment(log.personalized_badge)],
     });
     return {
       status: "success",
@@ -732,7 +791,7 @@ export async function sendEmailBatchAction(
     const statuses = includeFailed ? ["queued", "failed"] : ["queued"];
     const { data: logs, error: logsError } = await supabase
       .from("email_logs")
-      .select("id,invitation_id,contact_id,to_email,subject,rendered_text,rendered_html,attempt_count,response_token_id,response_url")
+      .select("id,invitation_id,contact_id,to_email,subject,rendered_text,rendered_html,attempt_count,response_token_id,response_url,personalized_badge")
       .eq("batch_id", batchId)
       .in("status", statuses)
       .is("provider_message_id", null)
@@ -824,7 +883,7 @@ export async function sendEmailBatchAction(
         }
         prepared.push({ log: log as EmailLogToSend, input: {
           to: log.to_email, subject: log.subject, text: rendered.text, html: rendered.html,
-          attachments, metadata: { batch_id: String(batchId), email_log_id: String(log.id), event_id: String(eventId) },
+          attachments: [...attachments, ...badgeMailAttachment(log.personalized_badge)], metadata: { batch_id: String(batchId), email_log_id: String(log.id), event_id: String(eventId) },
         } });
       } catch {
         const { error } = await supabase.from("email_logs").update({ status: "failed",

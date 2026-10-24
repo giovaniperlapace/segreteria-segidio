@@ -1,5 +1,6 @@
 "use client";
 
+import { PersonalizedBadgeEditor } from "./personalized-badge-editor";
 import { recoverSentEmailAction } from "../email-archive-actions";
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { matchesInvitedParts, type EventPart } from "@/lib/invitations/event-parts";
@@ -7,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
 import {
   getEmailBatchPreviewAction,
+  getSavedBadgeAction,
   type EmailBatchPreviewMessage,
   type EmailDeliveryStatus,
 } from "../email-preview-actions";
@@ -525,6 +527,7 @@ function BatchPreviewButton({
                   <dt className="font-semibold text-slate-700">Oggetto</dt>
                   <dd className="text-slate-900">{selectedMessage.subject}</dd>
                 </dl>
+                <SavedBadge key={`badge-${selectedMessage.id}`} eventId={eventId} logId={selectedMessage.id} />
                 <SentEmailEvidence key={selectedMessage.id} message={selectedMessage} eventId={eventId} refresh={async () => {
                   const result = await getEmailBatchPreviewAction(eventId, batch.id);
                   if (result.status === "success") { setMessages(result.messages); setTotal(result.total); }
@@ -546,6 +549,28 @@ function BatchPreviewButton({
       ) : null}
     </>
   );
+}
+
+function SavedBadge({ eventId, logId }: { eventId: number; logId: number }) {
+  const [image, setImage] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  return <div className="space-y-2">
+    <button type="button" disabled={pending} className="text-sm font-semibold text-[#1b3272] underline" onClick={async () => {
+      setPending(true); setError("");
+      try {
+        const result = await getSavedBadgeAction(eventId, logId);
+        if (result.image) setImage(result.image); else setError(result.error ?? "Badge non disponibile.");
+      } catch { setError("Impossibile caricare il badge."); }
+      finally { setPending(false); }
+    }}>{pending ? "Caricamento badge…" : "Mostra badge personalizzato"}</button>
+    {error && <p role="status" className="text-sm text-slate-600">{error}</p>}
+    {image && <a href={image} download="badge-personalizzato.jpg" className="block">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={image} alt="Badge personalizzato salvato per questo destinatario" className="max-h-96 max-w-full rounded border" />
+      <span className="text-sm underline">Scarica badge JPG</span>
+    </a>}
+  </div>;
 }
 
 function BatchCard({
@@ -583,10 +608,10 @@ function BatchCard({
           </p>
           <p className="mt-1 text-xs text-slate-500">
             {batch.attachments.length > 0
-              ? `Allegati (${batch.attachments.length}): ${batch.attachments.map((attachment) =>
+              ? `Allegati comuni (${batch.attachments.length}): ${batch.attachments.map((attachment) =>
                   `${attachment.file_name} (${formatBytes(attachment.file_size_bytes)})`,
                 ).join(", ")}`
-              : "Allegati: nessuno"}
+              : "Allegati comuni: nessuno"}
           </p>
           {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
         </div>
@@ -604,8 +629,8 @@ function BatchCard({
 function EmailAttachmentFields() {
   const nextId = useRef(1);
   const [fields, setFields] = useState([{ id: 0, hasFile: false }]);
-  return <fieldset className="space-y-2">
-    <legend className="text-sm font-medium text-slate-700">Allegati</legend>
+  return <fieldset className="h-full min-w-0 space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+    <legend className="px-1 font-semibold text-[#1b3272]">Allegati</legend>
     {fields.map((field, index) => <div key={field.id} className="flex items-center gap-2">
       <input
         aria-label={`Allegato ${index + 1}`}
@@ -645,6 +670,7 @@ export function EventEmailPanel({
   parts: EventPart[];
 }) {
   const [createState, createAction, createPending] = useArchiveAction(createEmailBatchAction);
+  const [target, setTarget] = useState("selected");
   const [attachmentError, setAttachmentError] = useState("");
   const [partMode, setPartMode] = useState("any");
   const [partIds, setPartIds] = useState<string[]>([]);
@@ -695,7 +721,11 @@ export function EventEmailPanel({
 
       <form action={createAction} onSubmit={event => {
         if (partMode === "parts" && !partIds.length) { event.preventDefault(); return; }
-        const files = new FormData(event.currentTarget).getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
+        const formData = new FormData(event.currentTarget);
+        if (formData.get("badgeEnabled") === "on" && !formData.get("badgeProof")) {
+          event.preventDefault(); setAttachmentError("Controlla l’anteprima del badge e premi Validare prima di preparare l’invio."); return;
+        }
+        const files = formData.getAll("attachments").filter((item): item is File => item instanceof File && item.size > 0);
         const error = files.some(file => file.size > 6 * 1024 * 1024)
           ? "Ogni allegato può pesare al massimo 6 MB."
           : files.reduce((total, file) => total + file.size, 0) > 6 * 1024 * 1024
@@ -721,7 +751,7 @@ export function EventEmailPanel({
         </label>
         <label className="text-sm font-medium text-slate-700">
           Destinatari
-          <select name="targetKind" defaultValue="selected" className={inputClass}>
+          <select name="targetKind" value={target} onChange={event => setTarget(event.target.value)} className={inputClass}>
             <option value="selected">Tutti i da invitare</option>
             <option value="selected_rows">Righe selezionate ({selectedRows.length})</option>
             <option value="invited_no_response">Invitati senza risposta</option>
@@ -747,7 +777,10 @@ export function EventEmailPanel({
           </label>)}</div>}
           {partMode === "parts" && !partIds.length && <p className="text-sm text-red-700">Seleziona almeno una parte.</p>}
         </fieldset>}
-        <div className="lg:col-span-2"><EmailAttachmentFields key={batches.length} />{attachmentError && <p role="alert" className="mt-2 text-sm text-red-700">{attachmentError}</p>}</div>
+        <div className="grid items-stretch gap-4 md:grid-cols-2 lg:col-span-full">
+          <div className="min-w-0"><EmailAttachmentFields key={batches.length} />{attachmentError && <p role="alert" className="mt-2 text-sm text-red-700">{attachmentError}</p>}</div>
+          <PersonalizedBadgeEditor key={batches.length} audienceKey={JSON.stringify([target, partMode, partIds, selectedListPartId, [...selectedInvitationIds].sort()])} />
+        </div>
         <div className="lg:self-end lg:justify-self-end">
           <SubmitButton pending={createPending}>Prepara invio</SubmitButton>
         </div>

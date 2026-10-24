@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 const require=createRequire(import.meta.url);
-function load(path,mocks={}){const js=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;const m={exports:{}};new Function('require','module','exports',js)(id=>id in mocks?mocks[id]:require(id),m,m.exports);return m.exports;}
+function load(path,mocks={}){const js=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;const m={exports:{}};new Function('require','module','exports',js)(id=>id in mocks?mocks[id]:require(id),m,m.exports);return m.exports;}
 let tables, deliveries, results, failLog, failInvitation, denied;
 const supabase={from(table){let filters=[],patch=null,single=false,limit=Infinity,start=0,end=Infinity,insert=null;
   const q={select(){return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},neq(k,v){filters.push(r=>r[k]!==v);return q;},is(k,v){filters.push(r=>(r[k]??null)===v);return q;},in(k,v){filters.push(r=>v.includes(r[k]));return q;},order(){return q;},limit(v){limit=v;return q;},range(a,b){start=a;end=b;return q;},maybeSingle(){single=true;return q;},single(){single=true;return q;},update(p){patch=p;return q;},insert(p){insert=Array.isArray(p)?p:[p];return q;},then(resolve){
@@ -16,6 +16,7 @@ const supabase={from(table){let filters=[],patch=null,single=false,limit=Infinit
 }};
 const links=load('../../src/lib/email/public-response-links.ts');
 const actions=load('../../src/app/dashboard/events/email-actions.ts',{
+ '@/lib/email/personalized-badge': load('../../src/lib/email/personalized-badge.ts', {'./badge-attachment': load('../../src/lib/email/badge-attachment.ts')}),
  '@/lib/email/selected-invitations':load('../../src/lib/email/selected-invitations.ts'),
  '@/lib/email/invitation-recipients': load('../../src/lib/email/invitation-recipients.ts'),
   'next/server':{after(){}}, '@/lib/email/sent-archive':{processSentArchives:async()=>({})}, 'next/cache':{revalidatePath(){}},'@/lib/invitations/event-parts':{emailPartFilterIds:()=>[],matchesInvitedParts:()=>true},
@@ -82,3 +83,39 @@ for(const test of routingCases){
 }
 assert.equal(deliveries.length,0);
 console.log('Delegate routing: part isolation, contact fallback, simple events and deduplication passed.');
+
+// Real badge renderer with isolated database/provider: validation, delegate identity and retry snapshot.
+reset(0);
+tables.email_batches=[];
+tables.events=[{id:2,title:'Evento',parts:[]}];
+tables.email_templates=[{id:3,active:true,deleted_at:null,subject:'Invito',body_text:'Gentile'}];
+tables.event_invitations=[
+ {id:7,event_id:2,contact_id:4,invitation_status:'invited',part_responses:[],delegate_email:'delegate@example.org',delegate_first_name:'Maria',delegate_last_name:'Delegata',contacts:{first_name:'Mario',last_name:'Invitato',email:'contact@example.org'}},
+ {id:8,event_id:2,contact_id:5,invitation_status:'invited',part_responses:[],contacts:{first_name:'José',last_name:'Rossi',email:'second@example.org'}},
+];
+const badgeForm=new FormData();badgeForm.set('eventId','2');badgeForm.set('templateId','3');badgeForm.set('targetKind','selected_rows');badgeForm.append('selectedInvitationIds','7');badgeForm.append('selectedInvitationIds','8');
+const source=await require('sharp')({create:{width:800,height:1205,channels:3,background:'white'}}).jpeg().toBuffer();
+badgeForm.set('badgeImage',new File([source],'badge.jpg',{type:'image/jpeg'}));
+badgeForm.set('badgeLayout',JSON.stringify({firstX:50,firstY:87,lastX:50,lastY:93,fontSize:5}));
+process.env.SUPABASE_SERVICE_ROLE_KEY='isolated-test-secret';
+const before=structuredClone(tables);
+const preview=await actions.previewPersonalizedBadgeAction(badgeForm,true);
+assert.equal(preview.status,'success');assert.match(preview.label,/Maria Delegata/);assert.deepEqual(tables,before,'preview must not write');
+assert.equal((await actions.createEmailBatchAction({},badgeForm)).status,'error','validation required');assert.deepEqual(tables,before);
+badgeForm.set('badgeProof',preview.proof);
+tables.event_invitations[1].contacts.first_name='Changed';
+assert.equal((await actions.createEmailBatchAction({},badgeForm)).status,'error','changed recipient invalidates proof');
+tables.event_invitations[1].contacts.first_name='José';
+assert.equal((await actions.createEmailBatchAction({},badgeForm)).status,'success');
+assert.equal('data:image/jpeg;base64,'+tables.email_logs[0].personalized_badge.content_base64,preview.image,'exact first-recipient preview');
+assert.notEqual(tables.email_logs[0].personalized_badge.content_base64,tables.email_logs[1].personalized_badge.content_base64);
+const snapshots=tables.email_logs.map(l=>l.personalized_badge.content_base64);
+tables.email_logs.forEach(l=>{l.attempt_count=0;l.provider_message_id=null});
+// Editing the current contact after preparation must not change the attached badge.
+tables.event_invitations[0].delegate_first_name='Different';
+results=[{errorCode:'temporary_failure'}, {messageId:'ok'}];await send();
+assert.equal(deliveries[0].attachments[0].content.toString('base64'),snapshots[0]);
+results=null;await send(true);
+assert.equal(deliveries[2].attachments[0].content.toString('base64'),snapshots[0],'retry reuses snapshot');
+denied=true;await assert.rejects(actions.previewPersonalizedBadgeAction(badgeForm,true),/Forbidden/);
+console.log('Personalized batch: read-only manager preview, signed validation, delegate identity, distinct recipient attachments, immutable retry and no cross-recipient leakage passed.');

@@ -28,7 +28,8 @@ const supabase = { from(table) {
   return builder;
 } };
 const { sendEmailBatchTestAction } = load('../../src/app/dashboard/events/email-actions.ts', {
-  '@/lib/email/selected-invitations': load('../../src/lib/email/selected-invitations.ts'),
+  '@/lib/email/personalized-badge': load('../../src/lib/email/personalized-badge.ts', {'./badge-attachment': load('../../src/lib/email/badge-attachment.ts')}),
+ '@/lib/email/selected-invitations': load('../../src/lib/email/selected-invitations.ts'),
   '@/lib/email/invitation-recipients': load('../../src/lib/email/invitation-recipients.ts'),
   'next/server':{after(){}}, '@/lib/email/sent-archive':{processSentArchives:async()=>({})}, 'next/cache': {}, '@/lib/invitations/event-parts': {},
   '@/lib/auth/profile': { requireManager: async () => { if (denied) throw Error('Forbidden'); } },

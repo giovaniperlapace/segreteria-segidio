@@ -145,3 +145,13 @@ export async function getEmailBatchPreviewAction(
     return { status: "error", message: "Impossibile caricare i dettagli delle email." };
   }
 }
+
+export async function getSavedBadgeAction(eventId: number, logId: number) {
+  await requireManager();
+  if (![eventId, logId].every(value => Number.isSafeInteger(value) && value > 0)) return { error: "Badge non valido." };
+  const { data, error } = await createSupabaseServiceClient().from("email_logs")
+    .select("personalized_badge").eq("id", logId).eq("event_id", eventId).maybeSingle();
+  if (error || !data) return { error: "Impossibile caricare il badge." };
+  const badge = data.personalized_badge;
+  return badge ? { image: `data:image/jpeg;base64,${badge.content_base64}` } : { error: "Questo messaggio non ha un badge personalizzato." };
+}

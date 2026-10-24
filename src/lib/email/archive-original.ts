@@ -1,3 +1,4 @@
+import { badgeMailAttachment } from './badge-attachment';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { createSupabaseServiceClient } from '../supabase/service';
 import { syncDeliveryEvidence } from './delivery-evidence';
@@ -16,7 +17,7 @@ export function completeOriginal(raw: string) {
 export async function restoreArchiveOriginal(logId: number, providerId: string, raw: string, original: { messageId: string; originalDate: string }) {
   if (completeOriginal(raw)) return raw;
   const db = createSupabaseServiceClient();
-  const { data: log, error } = await db.from('email_logs').select('batch_id,to_email,subject').eq('id', logId).single();
+  const { data: log, error } = await db.from('email_logs').select('batch_id,to_email,subject,personalized_badge').eq('id', logId).single();
   if (error || !log) throw new Error('archive_original_incomplete');
   const details = await syncDeliveryEvidence(providerId, log.to_email);
   if (details.Subject !== log.subject || typeof details.TextBody !== 'string' || details.TextBody.includes('[MESSAGE TRUNCATED]') || String(details.HtmlBody ?? '').includes('[MESSAGE TRUNCATED]')) throw new Error('archive_original_incomplete');
@@ -29,6 +30,7 @@ export async function restoreArchiveOriginal(logId: number, providerId: string, 
     if (content.length !== a.file_size_bytes) throw new Error('archive_attachment_size_mismatch');
     return [{ filename: a.file_name as string, contentType: a.content_type as string, content }];
   });
+  attachments.push(...badgeMailAttachment(log.personalized_badge));
   const names = details.Attachments;
   if (!Array.isArray(names) || names.some(name => typeof name !== 'string') || JSON.stringify([...names].sort()) !== JSON.stringify(attachments.map(a => a.filename).sort())) throw new Error('archive_attachment_mismatch');
   const headers = raw.split(/\r?\n\r?\n/, 1)[0].replace(/\r?\n[ \t]+/g, ' ');

@@ -4,7 +4,7 @@ const MAX_UPLOAD = 4 * 1024 * 1024;
 // Use the same resized file for previews, validation and batch preparation.
 export async function prepareBadgeImage(file: File): Promise<File> {
   if (file.size <= MAX_UPLOAD) return file;
-  if (file.size > 30 * 1024 * 1024) throw new Error("Il JPG supera 30 MB. Riduci le dimensioni del file prima di caricarlo.");
+  if (file.size > 10 * 1024 * 1024) throw new Error("Il JPG supera 10 MB. Riduci le dimensioni del file prima di caricarlo.");
   const signature = new Uint8Array(await file.slice(0, 3).arrayBuffer());
   if (signature[0] !== 0xff || signature[1] !== 0xd8 || signature[2] !== 0xff) throw new Error("Carica un’immagine JPG valida.");
   const bitmap = await createImageBitmap(file);

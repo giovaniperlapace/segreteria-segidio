@@ -116,7 +116,7 @@ export function PersonalizedBadgeEditor({ audienceKey }: { audienceKey: string }
         </button>
       </div>}
       <p role="status" className={`text-sm ${valid ? "text-green-700" : "text-amber-800"}`}>{valid ? "Badge validato: pronto per preparare l’invio." : "Prima di preparare l’invio, controlla il primo destinatario e premi Validare."}</p>
-      <p className="text-xs text-slate-500">I JPG oltre 4 MB vengono ridimensionati automaticamente (massimo 30 MB e 24 milioni di pixel). I nomi lunghi vengono ridotti per rientrare nell’immagine. Badge e allegati comuni: massimo 6 MB per email. Modifiche alla selezione richiedono una nuova validazione.</p>
+      <p className="text-xs text-slate-500">I JPG oltre 4 MB vengono ridimensionati automaticamente (massimo 10 MB e 24 milioni di pixel). I nomi lunghi vengono ridotti per rientrare nell’immagine. Badge e allegati comuni: massimo 6 MB per email. Modifiche alla selezione richiedono una nuova validazione.</p>
     </>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
   </fieldset>;

@@ -1,3 +1,4 @@
+import { candidateSortKey } from "@/lib/exports/candidate-sort";
 import { addCandidateCountries, loadAllCandidates, candidateSearchArgs, ids, one, matchMode, type SearchParams } from "@/lib/exports/candidates";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -78,6 +79,7 @@ export default async function BuildEventInvitationsPage({
   if (pageSize === "all") page = 1;
   const supabase = createSupabaseServiceClient();
   const offset = (page - 1) * limit;
+  const sort = candidateSortKey(one(query, "sort"));
 
   const [
     eventResult,
@@ -88,7 +90,7 @@ export default async function BuildEventInvitationsPage({
     approvedProposalsResult,
   ] = await Promise.all([
     supabase.from("events").select("parts,id,title,starts_at").eq("id", eventId).maybeSingle(),
-    supabase.rpc("event_candidate_contacts_page", {
+    sort || pageSize === "all" ? Promise.resolve({ data: [], error: null }) : supabase.rpc("event_candidate_contacts_page", {
       ...candidateSearchArgs(eventId, query),
       p_limit: limit,
       p_offset: offset,
@@ -116,7 +118,7 @@ export default async function BuildEventInvitationsPage({
 
   let candidateRows = (candidatesResult.data ?? []) as unknown as CandidateSearchRow[];
   // An old URL can point beyond the remaining results after invitations are added.
-  if (!candidateRows.length && page > 1) {
+  if (!sort && !candidateRows.length && page > 1) {
     const firstPage = await supabase.rpc("event_candidate_contacts_page", {
       ...candidateSearchArgs(eventId, query), p_limit: limit, p_offset: 0,
     });
@@ -124,12 +126,14 @@ export default async function BuildEventInvitationsPage({
     candidateRows = (firstPage.data ?? []) as unknown as CandidateSearchRow[];
     page = 1;
   }
-  const candidates = pageSize === "all"
-    ? await loadAllCandidates(supabase, eventId, query)
-    : await addCandidateCountries(supabase, candidateRows.map((row) => row.candidate));
-  const totalCandidates = pageSize === "all" ? candidates.length : Number(candidateRows[0]?.total_count ?? 0);
+  const allCandidates = sort || pageSize === "all"
+    ? await loadAllCandidates(supabase, eventId, query) : null;
+  const totalCandidates = allCandidates ? allCandidates.length : Number(candidateRows[0]?.total_count ?? 0);
   const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalCandidates / limit));
   const safePage = Math.min(page, totalPages);
+  const candidates = allCandidates
+    ? pageSize === "all" ? allCandidates : allCandidates.slice((safePage - 1) * limit, safePage * limit)
+    : await addCandidateCountries(supabase, candidateRows.map((row) => row.candidate));
   const groupOptions = (groupsResult.data ?? []).map((group) => ({
     id: Number(group.id),
     label: `${group.name}${group.active ? "" : " (non attivo)"}`,
@@ -187,6 +191,8 @@ export default async function BuildEventInvitationsPage({
 
         <form className="mb-6 grid gap-3 rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm md:grid-cols-3">
           <input type="hidden" name="pageSize" value={pageSize} />
+          <input type="hidden" name="sort" value={sort ?? ""} />
+          <input type="hidden" name="direction" value={one(query, "direction") === "desc" ? "desc" : "asc"} />
           <label className="text-sm font-medium text-slate-700">
             Logica tra campi
             <select name="match" defaultValue={filterMatchMode} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5">

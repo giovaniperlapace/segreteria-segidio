@@ -1,5 +1,6 @@
 "use client";
 
+import { CandidateSortHeaders } from "./candidate-sort-headers";
 import { CandidatePagination, type CandidatePaginationProps } from "./candidate-pagination";
 import { PartSelection } from "@/components/events/event-parts-fields";
 import type { EventPart } from "@/lib/invitations/event-parts";
@@ -130,12 +131,7 @@ export function BuildSelection({
             <thead className="bg-slate-50 text-left text-xs text-slate-600">
               <tr>
                 <th className="px-3 py-3">Sel.</th>
-                <th className="px-3 py-3">Contatto</th>
-                <th className="px-3 py-3">Paese</th>
-                <th className="px-3 py-3">Gruppi</th>
-                <th className="px-3 py-3">Referenti</th>
-                <th className="px-3 py-3">Stato dati</th>
-                <th className="px-3 py-3">Proposte</th>
+                <CandidateSortHeaders />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

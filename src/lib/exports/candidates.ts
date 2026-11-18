@@ -1,3 +1,4 @@
+import { candidateSortKey, sortCandidates } from "./candidate-sort";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CandidateContact } from "@/app/dashboard/events/[eventId]/build/build-selection";
 
@@ -80,5 +81,7 @@ export async function loadAllCandidates(supabase: SupabaseClient, eventId: numbe
   if (new Set(candidates.map((row) => row.id)).size !== candidates.length) {
     throw new Error("Elenco modificato durante l'esportazione. Riprovare.");
   }
-  return addCandidateCountries(supabase, candidates);
+  const enriched = await addCandidateCountries(supabase, candidates);
+  const sort = candidateSortKey(one(query, "sort"));
+  return sort ? sortCandidates(enriched, sort, one(query, "direction") === "desc") : enriched;
 }

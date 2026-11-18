@@ -535,6 +535,31 @@ async function loadUpdatedContactRecord(supabase: ArchiveSupabaseClient, contact
   };
 }
 
+export async function loadEmailRecipientContactAction(eventId: number, batchId: number, logId: number) {
+  await requireManager();
+  if (![eventId, batchId, logId].every(id => Number.isSafeInteger(id) && id > 0)) {
+    return { status: "error" as const, message: "Destinatario non valido." };
+  }
+  try {
+    const db = createSupabaseServiceClient();
+    const log = await db.from("email_logs").select("contact_id")
+      .eq("id", logId).eq("batch_id", batchId).eq("event_id", eventId).maybeSingle();
+    if (log.error) throw log.error;
+    if (!log.data?.contact_id) return { status: "error" as const, message: "Contatto non trovato." };
+    const [contact, groups, references, languages] = await Promise.all([
+      loadUpdatedContactRecord(db, Number(log.data.contact_id)),
+      fetchAllSupabaseRows(() => db.from("groups").select("id,name,active").order("name").order("id")),
+      fetchAllSupabaseRows(() => db.from("internal_references").select("id,full_name,active").is("deleted_at", null).order("full_name").order("id")),
+      fetchAllSupabaseRows(() => db.from("contact_languages").select("id,name,active").order("name").order("id")),
+    ]);
+    if (!contact) return { status: "error" as const, message: "Contatto non più disponibile." };
+    return { status: "success" as const, contact, groups, languages,
+      references: references.map(reference => ({ id: reference.id, name: reference.full_name, active: reference.active })) };
+  } catch {
+    return { status: "error" as const, message: "Impossibile caricare la scheda contatto." };
+  }
+}
+
 export async function createContactAction(
   _previousState: ArchiveActionState,
   formData: FormData,

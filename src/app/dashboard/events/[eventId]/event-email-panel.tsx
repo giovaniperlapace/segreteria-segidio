@@ -1,12 +1,14 @@
 "use client";
 
 import { prepareCorrectedRecipientsAction } from "../email-recovery-actions";
+import { RecipientContactDialog } from "./recipient-contact-dialog";
+import type { ContactRecord } from "../../contacts/contact-management";
 import { MissingEmailDialog } from "./missing-email-dialog";
 import { PersonalizedBadgeEditor } from "./personalized-badge-editor";
 import { recoverSentEmailAction } from "../email-archive-actions";
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
 import { matchesInvitedParts, type EventPart } from "@/lib/invitations/event-parts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionMessage, inputClass, PendingSpinner, SubmitButton, useArchiveAction } from "../../archive-ui";
 import {
   getEmailBatchPreviewAction,
@@ -266,6 +268,7 @@ function BatchRecipientsButton({
   label: string;
   statuses: EmailDeliveryStatus[];
 }) {
+  const [viewing, setViewing] = useState<EmailBatchPreviewMessage | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [editing, setEditing] = useState<EmailBatchPreviewMessage | null>(null);
@@ -278,11 +281,21 @@ function BatchRecipientsButton({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !editing) setOpen(false);
+      if (event.key === "Escape" && !editing && !viewing) setOpen(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, editing]);
+  }, [open, editing, viewing]);
+
+  const viewingId = viewing?.id;
+  const updateViewedContact = useCallback((contact: ContactRecord) => {
+    setMessages(current => current.map(message => message.id === viewingId ? {
+      ...message,
+      contact_name: [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.institution || "Contatto senza nome",
+      contact_email: contact.email,
+      institution: contact.institution,
+    } : message));
+  }, [viewingId]);
 
   async function openRecipients() {
     setOpen(true);
@@ -381,13 +394,23 @@ function BatchRecipientsButton({
                     <li key={message.id} className="p-3 text-sm">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          {message.status === "skipped" && message.to_email === "email-mancante" ? (
-                            <button type="button" onClick={() => setEditing(message)}
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => setViewing(message)}
                               className="text-left font-semibold text-[#1b3272] underline decoration-slate-300 underline-offset-2 hover:decoration-[#1b3272]"
-                              aria-label={`Modifica email di ${message.contact_name}`}>
+                              aria-label={`Apri scheda di ${message.contact_name}`}>
                               {message.contact_name}
                             </button>
-                          ) : <p className="font-semibold text-slate-900">{message.contact_name}</p>}
+                            {message.status === "skipped" && message.to_email === "email-mancante" ? (
+                              <button type="button" onClick={() => setEditing(message)}
+                                title="Modifica solo l’email" aria-label={`Modifica email di ${message.contact_name}`}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-[#1b3272] hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2">
+                                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                                  <path d="m3 7 9 6 9-6" />
+                                </svg>
+                              </button>
+                            ) : null}
+                          </div>
                           <p className="break-all text-slate-600">{message.to_email === "email-mancante" ? message.contact_email || "Email mancante" : message.to_email}</p>
                           {message.to_email === "email-mancante" && message.contact_email ? (
                             <p className="text-xs text-emerald-700">Email presente in archivio · invio da preparare</p>
@@ -415,6 +438,10 @@ function BatchRecipientsButton({
           </div>
         </div>
       ) : null}
+      {viewing ? <RecipientContactDialog key={viewing.id}
+        eventId={eventId} batchId={batch.id} logId={viewing.id} name={viewing.contact_name}
+        onClose={() => setViewing(null)} onUpdated={updateViewedContact}
+      /> : null}
       {editing ? <MissingEmailDialog key={editing.id}
         eventId={eventId} batchId={batch.id} logId={editing.id}
         name={editing.contact_name} email={editing.contact_email}

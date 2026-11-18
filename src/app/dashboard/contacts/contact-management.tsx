@@ -1633,6 +1633,7 @@ export function ContactEditor({
   languages,
   isManager,
   onContactUpdated,
+  updateContactUrl = true,
 }: {
   contact: ContactRecord;
   groups: Option[];
@@ -1641,6 +1642,7 @@ export function ContactEditor({
   isManager: boolean;
   onContactUpdated?: (contact: ContactRecord) => void;
   open?: boolean;
+  updateContactUrl?: boolean;
 }) {
   const router = useRouter();
   const [state, action, pending] = useArchiveAction(updateContactAction);
@@ -1650,14 +1652,16 @@ export function ContactEditor({
   useEffect(() => {
     if (state.status !== "success" || !state.contactId) return;
 
-    const url = new URL(window.location.href);
-    url.searchParams.set("contactId", String(state.contactId));
-    window.history.replaceState(null, "", url);
+    if (updateContactUrl) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("contactId", String(state.contactId));
+      window.history.replaceState(null, "", url);
+    }
     if (state.contact) {
       onContactUpdated?.(state.contact as ContactRecord);
     }
     router.refresh();
-  }, [onContactUpdated, router, state.contact, state.contactId, state.status]);
+  }, [onContactUpdated, updateContactUrl, router, state.contact, state.contactId, state.status]);
 
   return (
     <div className="space-y-4">

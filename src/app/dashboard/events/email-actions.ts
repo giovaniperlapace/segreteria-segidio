@@ -957,13 +957,13 @@ export async function sendEmailBatchAction(
     revalidatePath("/dashboard/events");
     revalidatePath(`/dashboard/events/${eventId}`);
     return {
-      status: failed > 0 || stopped || counters.uncertainCount > 0 ? "error" : "success",
+      status: stopped || counters.uncertainCount > 0 ? "error" : "success",
       message:
-        failed > 0 || stopped || counters.uncertainCount > 0
+        stopped || counters.uncertainCount > 0
           ? `${sent} email accettate da Postmark. Invio fermato: ${batchErrorMessage ?? "controlla gli errori prima di riprovare."}`
           : counters.remainingCount > 0
-            ? `${sent} email inviate. Proseguo automaticamente con le ${counters.remainingCount} rimaste.`
-            : `${sent} email inviate. Invio completato.`,
+            ? `${sent} email accettate da Postmark.${failed > 0 ? ` ${failed} non inviate per errore, da correggere separatamente.` : ""} Proseguo automaticamente con le ${counters.remainingCount} rimaste.`
+            : `${sent} email accettate da Postmark. ${counters.failed_count > 0 ? `Coda completata con ${counters.failed_count} email non inviate per errore, da correggere separatamente.` : "Invio completato."}`,
       batchId,
       remainingCount: counters.remainingCount,
     };

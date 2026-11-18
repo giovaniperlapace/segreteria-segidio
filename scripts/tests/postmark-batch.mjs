@@ -34,6 +34,23 @@ function reset(count=2){deliveries=[];results=null;failLog=false;failInvitation=
 };}
 function send(retry=false){const form=new FormData();form.set('batchId','1');form.set('eventId','2');form.set('omitPublicResponseLink','on');if(retry)form.set('includeFailed','on');return actions.sendEmailBatchAction({},form);}
 reset();assert.equal((await send()).status,'success');assert.equal(deliveries.length,2);assert.equal(tables.email_batches[0].sent_count,2);assert.ok(tables.event_invitations.every(i=>i.invitation_status==='invited'));await send(true);assert.equal(deliveries.length,2);
+// A rejected recipient must not stop subsequent queued chunks or be retried automatically.
+reset(26);results=[{errorCode:'postmark_300'}];
+const firstChunk=await send();
+assert.equal(firstChunk.status,'success');
+assert.equal(firstChunk.remainingCount,1);
+assert.match(firstChunk.message,/Proseguo automaticamente/);
+assert.equal(tables.email_logs[0].status,'failed');
+results=null;
+const lastChunk=await send();
+assert.equal(lastChunk.status,'success');
+assert.equal(lastChunk.remainingCount,0);
+assert.equal(deliveries.length,26);
+assert.equal(tables.email_logs[0].attempt_count,1);
+assert.equal(tables.email_batches[0].status,'completed_with_errors');
+assert.match(lastChunk.message,/1 email non inviate per errore/);
+reset();results=[{errorCode:'postmark_413',disposition:'blocked'},{errorCode:'postmark_batch_deferred',disposition:'retry'}];
+assert.equal((await send()).status,'error','provider-wide failures still stop automatic sending');
 reset();await Promise.all([send(),send()]);assert.equal(deliveries.length,2,'concurrent callers must not duplicate delivery');
 reset();results=[{messageId:'ok'},{errorCode:'postmark_406'}];await send();assert.equal(tables.email_logs[1].status,'skipped');await send(true);assert.equal(deliveries.length,2,'suppressed address never retried');
 reset();results=[{messageId:'ok'},{errorCode:'postmark_delivery_unknown',disposition:'unknown'}];assert.equal((await send()).status,'error');assert.equal(tables.email_logs[1].status,'sending');assert.equal(tables.email_batches[0].status,'sending');await send(true);assert.equal(deliveries.length,2,'unknown outcome never retried');

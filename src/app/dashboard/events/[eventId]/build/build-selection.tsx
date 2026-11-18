@@ -1,5 +1,6 @@
 "use client";
 
+import { CandidatePagination, type CandidatePaginationProps } from "./candidate-pagination";
 import { PartSelection } from "@/components/events/event-parts-fields";
 import type { EventPart } from "@/lib/invitations/event-parts";
 import { useMemo, useState } from "react";
@@ -42,6 +43,7 @@ export function BuildSelection({
   references,
   approvedProposalCount,
   exportQuery,
+  pagination,
 }: {
   parts: EventPart[];
   eventId: number;
@@ -49,6 +51,7 @@ export function BuildSelection({
   references: ReferenceOption[];
   approvedProposalCount: number;
   exportQuery: string;
+  pagination: CandidatePaginationProps;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [inviteState, inviteAction, invitePending] = useArchiveAction(bulkAddInvitationsAction);
@@ -121,6 +124,7 @@ export function BuildSelection({
           </div>
         </div>
 
+        <CandidatePagination {...pagination} position="top" />
         <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-600">
@@ -172,6 +176,7 @@ export function BuildSelection({
         {candidates.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">Nessun candidato corrisponde ai filtri.</p>
         ) : null}
+        <CandidatePagination {...pagination} position="bottom" />
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">

@@ -1,4 +1,4 @@
-import { addCandidateCountries, candidateSearchArgs, ids, one, matchMode, type SearchParams } from "@/lib/exports/candidates";
+import { addCandidateCountries, loadAllCandidates, candidateSearchArgs, ids, one, matchMode, type SearchParams } from "@/lib/exports/candidates";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/profile";
@@ -7,9 +7,6 @@ import { BuildSelection, type CandidateContact } from "./build-selection";
 import { SearchableCheckboxFilter } from "./searchable-checkbox-filter";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 100;
-
 
 const STATUS_LABELS: Record<string, string> = {
   active: "Attivi",
@@ -73,9 +70,14 @@ export default async function BuildEventInvitationsPage({
   const pastEventIds = ids(query, "pastEventIds");
   const pastResponse = one(query, "pastResponse") || "all";
   const pastAttendance = one(query, "pastAttendance") || "all";
-  const page = Math.max(1, Number(one(query, "page")) || 1);
+  const requestedPage = Number(one(query, "page"));
+  let page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const pageSize = ["25", "50", "100", "all"].includes(one(query, "pageSize"))
+    ? one(query, "pageSize") : "50";
+  const limit = pageSize === "all" ? 100 : Number(pageSize);
+  if (pageSize === "all") page = 1;
   const supabase = createSupabaseServiceClient();
-  const offset = (page - 1) * PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const [
     eventResult,
@@ -88,7 +90,7 @@ export default async function BuildEventInvitationsPage({
     supabase.from("events").select("parts,id,title,starts_at").eq("id", eventId).maybeSingle(),
     supabase.rpc("event_candidate_contacts_page", {
       ...candidateSearchArgs(eventId, query),
-      p_limit: PAGE_SIZE,
+      p_limit: limit,
       p_offset: offset,
     }),
     supabase.from("groups").select("id,name,active").order("active", { ascending: false }).order("name"),
@@ -112,10 +114,21 @@ export default async function BuildEventInvitationsPage({
     if (result.error) throw result.error;
   }
 
-  const candidateRows = (candidatesResult.data ?? []) as unknown as CandidateSearchRow[];
-  const candidates = await addCandidateCountries(supabase, candidateRows.map((row) => row.candidate));
-  const totalCandidates = Number(candidateRows[0]?.total_count ?? 0);
-  const totalPages = Math.max(1, Math.ceil(totalCandidates / PAGE_SIZE));
+  let candidateRows = (candidatesResult.data ?? []) as unknown as CandidateSearchRow[];
+  // An old URL can point beyond the remaining results after invitations are added.
+  if (!candidateRows.length && page > 1) {
+    const firstPage = await supabase.rpc("event_candidate_contacts_page", {
+      ...candidateSearchArgs(eventId, query), p_limit: limit, p_offset: 0,
+    });
+    if (firstPage.error) throw firstPage.error;
+    candidateRows = (firstPage.data ?? []) as unknown as CandidateSearchRow[];
+    page = 1;
+  }
+  const candidates = pageSize === "all"
+    ? await loadAllCandidates(supabase, eventId, query)
+    : await addCandidateCountries(supabase, candidateRows.map((row) => row.candidate));
+  const totalCandidates = pageSize === "all" ? candidates.length : Number(candidateRows[0]?.total_count ?? 0);
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalCandidates / limit));
   const safePage = Math.min(page, totalPages);
   const groupOptions = (groupsResult.data ?? []).map((group) => ({
     id: Number(group.id),
@@ -173,6 +186,7 @@ export default async function BuildEventInvitationsPage({
         </header>
 
         <form className="mb-6 grid gap-3 rounded-2xl border border-[#d9e1f2] bg-white p-5 shadow-sm md:grid-cols-3">
+          <input type="hidden" name="pageSize" value={pageSize} />
           <label className="text-sm font-medium text-slate-700">
             Logica tra campi
             <select name="match" defaultValue={filterMatchMode} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5">
@@ -274,6 +288,8 @@ export default async function BuildEventInvitationsPage({
           </div>
         </section>
         <BuildSelection
+          key={pageHref(safePage)}
+          pagination={{ page: safePage, totalPages, pageSize, total: totalCandidates }}
           parts={eventResult.data.parts}
           eventId={eventId}
           candidates={candidates}
@@ -283,13 +299,6 @@ export default async function BuildEventInvitationsPage({
             .map((reference) => ({ id: Number(reference.id), name: String(reference.full_name) }))}
           approvedProposalCount={approvedProposalsResult.count ?? 0}
         />
-
-        {totalPages > 1 ? (
-          <nav className="mt-6 flex items-center justify-between text-sm">
-            <Link href={pageHref(Math.max(1, safePage - 1))} className={safePage === 1 ? "pointer-events-none opacity-40" : "font-semibold text-[#1b3272]"}>← Precedente</Link>
-            <Link href={pageHref(Math.min(totalPages, safePage + 1))} className={safePage === totalPages ? "pointer-events-none opacity-40" : "font-semibold text-[#1b3272]"}>Successiva →</Link>
-          </nav>
-        ) : null}
       </div>
     </main>
   );

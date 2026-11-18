@@ -143,3 +143,21 @@ più 75 notifiche, totale 197 copie complete rilette nella Posta inviata; restan
 state rimosse dalla Posta inviata e spostate nel Cestino. Prossima esecuzione del
 recupero verificata in systemd: 23 ottobre 2026, ore 12:00 UTC / 14:00 Europe/Rome.
 Il totale comprende la copia già recuperata durante il collaudo iniziale.
+
+## Recupero destinatari corretti — 2026-11-18
+
+Nell’elenco delle saltate, “Prepara invio ai contatti corretti” prepara un nuovo
+blocco solo dalle righe `skipped / email-mancante`, usando gli indirizzi attuali.
+Non invia email. Copia i riferimenti agli allegati originali e la preferenza del
+link pubblico; personalizza il template originale solo se non è stato modificato.
+I blocchi con badge personalizzati o eventi compositi richiedono preparazione
+manuale, perché lo storico non conserva il modello badge o il filtro parti.
+
+La RPC service-role `prepare_corrected_email_recipients` verifica il manager,
+serializza i recuperi per evento e crea blocco, allegati e log nella stessa
+transazione. Esclude inviti con log già preparati, inviati, falliti o soppressi
+per lo stesso evento/template. Lo storico originale resta invariato.
+La migration `20261118120000_prepare_corrected_recipients.sql` è stata
+applicata al database condiviso dopo test isolato.
+Test: `node scripts/tests/email-recovery.mjs`; fixture e test SQL
+`email-recovery-fixture.sql` / `email-recovery.sql` solo su database isolato.

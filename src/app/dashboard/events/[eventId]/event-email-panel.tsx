@@ -1,5 +1,6 @@
 "use client";
 
+import { prepareCorrectedRecipientsAction } from "../email-recovery-actions";
 import { MissingEmailDialog } from "./missing-email-dialog";
 import { PersonalizedBadgeEditor } from "./personalized-badge-editor";
 import { recoverSentEmailAction } from "../email-archive-actions";
@@ -265,6 +266,8 @@ function BatchRecipientsButton({
   label: string;
   statuses: EmailDeliveryStatus[];
 }) {
+  const [preparing, setPreparing] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [editing, setEditing] = useState<EmailBatchPreviewMessage | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -336,6 +339,27 @@ function BatchRecipientsButton({
                 Chiudi
               </button>
             </div>
+
+            {statuses.includes("skipped") ? (
+              <div className="mt-4 space-y-2">
+                <button type="button" disabled={preparing || loading}
+                  aria-busy={preparing}
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#1b3272] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  onClick={async () => {
+                    setPreparing(true); setRecoveryMessage("");
+                    try {
+                      const result = await prepareCorrectedRecipientsAction(eventId, batch.id);
+                      setRecoveryMessage(result.message);
+                    } catch { setRecoveryMessage("Impossibile preparare l’invio. Riprova."); }
+                    finally { setPreparing(false); }
+                  }}>
+                  {preparing ? <PendingSpinner /> : null}
+                  Prepara invio ai contatti corretti
+                </button>
+                <p className="text-xs text-slate-500">Recupera gli indirizzi aggiornati e gli allegati del blocco. Esclude i contatti già preparati o inviati. Nessuna email parte finché non premi “Invia tutte”.</p>
+                {recoveryMessage ? <p role="status" className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{recoveryMessage}</p> : null}
+              </div>
+            ) : null}
 
             {loading ? (
               <p className="mt-6 flex items-center gap-2 text-sm text-slate-600">

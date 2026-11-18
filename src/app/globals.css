@@ -58,10 +58,10 @@ html[data-interaction-pending="true"] .interaction-feedback-bar {
 }
 
 :where(a[href], button, input[type="submit"], input[type="button"], [role="button"])[data-pending-interaction="true"] {
-  color: #ffffff !important;
-  background-color: #d43c2f !important;
-  border-color: #d43c2f !important;
-  box-shadow: 0 0 0 3px rgb(212 60 47 / 0.18) !important;
+  color: #334155 !important;
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 0 0 2px rgb(148 163 184 / 0.16) !important;
   cursor: progress !important;
   opacity: 1 !important;
   text-decoration: none !important;

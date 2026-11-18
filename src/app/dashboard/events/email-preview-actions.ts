@@ -9,6 +9,7 @@ export type EmailBatchPreviewMessage = {
   id: number;
   to_email: string;
   contact_name: string;
+  contact_email: string | null;
   institution: string | null;
   subject: string;
   rendered_text: string;
@@ -63,7 +64,7 @@ export async function getEmailBatchPreviewAction(
     let logsQuery = supabase
       .from("email_logs")
       .select(
-        "id,invitation_id,to_email,subject,rendered_text,response_url,status,sent_at,error_message,provider_message_id,contacts(first_name,last_name,institution)",
+        "id,invitation_id,to_email,subject,rendered_text,response_url,status,sent_at,error_message,provider_message_id,contacts(first_name,last_name,institution,email)",
         { count: "exact" },
       )
       .eq("batch_id", batchId)
@@ -126,6 +127,7 @@ export async function getEmailBatchPreviewAction(
           id: Number(message.id),
           to_email: String(message.to_email),
           contact_name: contactName || "Contatto senza nome",
+          contact_email: contact?.email ? String(contact.email) : null,
           institution: contact?.institution ? String(contact.institution) : null,
           subject: String(message.subject),
           rendered_text: renderedText,

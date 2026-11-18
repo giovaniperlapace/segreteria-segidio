@@ -1,5 +1,6 @@
 "use client";
 
+import { MissingEmailDialog } from "./missing-email-dialog";
 import { PersonalizedBadgeEditor } from "./personalized-badge-editor";
 import { recoverSentEmailAction } from "../email-archive-actions";
 import { canEmailSelectedInvitation } from "@/lib/email/selected-invitations";
@@ -264,6 +265,7 @@ function BatchRecipientsButton({
   label: string;
   statuses: EmailDeliveryStatus[];
 }) {
+  const [editing, setEditing] = useState<EmailBatchPreviewMessage | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<EmailBatchPreviewMessage[]>([]);
@@ -273,11 +275,11 @@ function BatchRecipientsButton({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape" && !editing) setOpen(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
+  }, [open, editing]);
 
   async function openRecipients() {
     setOpen(true);
@@ -355,8 +357,17 @@ function BatchRecipientsButton({
                     <li key={message.id} className="p-3 text-sm">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-slate-900">{message.contact_name}</p>
-                          <p className="break-all text-slate-600">{message.to_email}</p>
+                          {message.status === "skipped" && message.to_email === "email-mancante" ? (
+                            <button type="button" onClick={() => setEditing(message)}
+                              className="text-left font-semibold text-[#1b3272] underline decoration-slate-300 underline-offset-2 hover:decoration-[#1b3272]"
+                              aria-label={`Modifica email di ${message.contact_name}`}>
+                              {message.contact_name}
+                            </button>
+                          ) : <p className="font-semibold text-slate-900">{message.contact_name}</p>}
+                          <p className="break-all text-slate-600">{message.to_email === "email-mancante" ? message.contact_email || "Email mancante" : message.to_email}</p>
+                          {message.to_email === "email-mancante" && message.contact_email ? (
+                            <p className="text-xs text-emerald-700">Email presente in archivio · invio da preparare</p>
+                          ) : null}
                           {message.institution ? (
                             <p className="text-xs text-slate-500">{message.institution}</p>
                           ) : null}
@@ -366,7 +377,9 @@ function BatchRecipientsButton({
                         </span>
                       </div>
                       {message.error_message ? (
-                        <p className="mt-2 text-xs text-red-700">{message.error_message}</p>
+                        <p className="mt-2 text-xs text-red-700">
+                          {message.to_email === "email-mancante" && message.contact_email ? "Motivo dell’invio saltato: " : ""}{message.error_message}
+                        </p>
                       ) : null}
                     </li>
                   ))}
@@ -378,6 +391,15 @@ function BatchRecipientsButton({
           </div>
         </div>
       ) : null}
+      {editing ? <MissingEmailDialog key={editing.id}
+        eventId={eventId} batchId={batch.id} logId={editing.id}
+        name={editing.contact_name} email={editing.contact_email}
+        onClose={() => setEditing(null)}
+        onSaved={(email) => {
+          setMessages((current) => current.map((message) => message.id === editing.id ? { ...message, contact_email: email } : message));
+          setEditing(null);
+        }}
+      /> : null}
     </>
   );
 }

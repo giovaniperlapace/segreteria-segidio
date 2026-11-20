@@ -79,6 +79,7 @@ export default async function BuildEventInvitationsPage({
   if (pageSize === "all") page = 1;
   const supabase = createSupabaseServiceClient();
   const offset = (page - 1) * limit;
+  const searchArgs = candidateSearchArgs(eventId, query);
   const sort = candidateSortKey(one(query, "sort"));
 
   const [
@@ -91,7 +92,7 @@ export default async function BuildEventInvitationsPage({
   ] = await Promise.all([
     supabase.from("events").select("parts,id,title,starts_at").eq("id", eventId).maybeSingle(),
     sort || pageSize === "all" ? Promise.resolve({ data: [], error: null }) : supabase.rpc("event_candidate_contacts_page", {
-      ...candidateSearchArgs(eventId, query),
+      ...searchArgs,
       p_limit: limit,
       p_offset: offset,
     }),
@@ -120,7 +121,7 @@ export default async function BuildEventInvitationsPage({
   // An old URL can point beyond the remaining results after invitations are added.
   if (!sort && !candidateRows.length && page > 1) {
     const firstPage = await supabase.rpc("event_candidate_contacts_page", {
-      ...candidateSearchArgs(eventId, query), p_limit: limit, p_offset: 0,
+      ...searchArgs, p_limit: limit, p_offset: 0,
     });
     if (firstPage.error) throw firstPage.error;
     candidateRows = (firstPage.data ?? []) as unknown as CandidateSearchRow[];
@@ -294,7 +295,7 @@ export default async function BuildEventInvitationsPage({
           </div>
         </section>
         <BuildSelection
-          key={pageHref(safePage)}
+          key={JSON.stringify(searchArgs)}
           pagination={{ page: safePage, totalPages, pageSize, total: totalCandidates }}
           parts={eventResult.data.parts}
           eventId={eventId}

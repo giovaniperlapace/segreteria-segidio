@@ -55,7 +55,18 @@ export function BuildSelection({
   pagination: CandidatePaginationProps;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [inviteState, inviteAction, invitePending] = useArchiveAction(bulkAddInvitationsAction);
+  const [inviteState, inviteAction, invitePending] = useArchiveAction(async (previous, formData) => {
+    const result = await bulkAddInvitationsAction(previous, formData);
+    if (result.status === "success") {
+      const addedIds = formData.getAll("contactIds").map(Number);
+      setSelected((current) => {
+        const next = new Set(current);
+        for (const id of addedIds) next.delete(id);
+        return next;
+      });
+    }
+    return result;
+  });
   const [proposalState, proposalAction, proposalPending] = useArchiveAction(bulkCreateProposalsAction);
   const [approvedState, approvedAction, approvedPending] = useArchiveAction(addApprovedProposalsAction);
   const selectedIds = useMemo(() => [...selected], [selected]);
@@ -89,7 +100,7 @@ export function BuildSelection({
           <div>
             <h2 className="text-lg font-semibold text-[#1b3272]">Risultati filtrati</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {selectedIds.length} selezionati nella pagina corrente
+              {selectedIds.length} contatti selezionati in totale
             </p>
           </div>
           <div className="flex items-center gap-2">

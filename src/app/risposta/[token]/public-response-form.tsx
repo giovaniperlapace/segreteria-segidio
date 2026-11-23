@@ -11,11 +11,11 @@ import {
 } from "@/lib/email/public-response-links";
 import { submitPublicInvitationResponse, submitPublicPartResponses } from "./actions";
 
-function ResponseSubmitButton({ complete, composite = false }: { complete: boolean; composite?: boolean }) {
+function ResponseSubmitButton({ complete, saved = false, composite = false }: { complete: boolean; saved?: boolean; composite?: boolean }) {
   const { pending } = useFormStatus();
-  return <button type="submit" disabled={!complete || pending} aria-busy={pending}
+  return <button type="submit" disabled={!complete || pending || saved} aria-busy={pending}
     className="w-full rounded-xl bg-[#1b3272] px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-    {pending ? "Invio in corso…" : composite ? "Invia risposte" : "Invia risposta"}
+    {pending ? "Invio in corso…" : saved ? "Risposta già registrata" : composite ? "Invia risposte" : "Invia risposta"}
   </button>;
 }
 
@@ -33,6 +33,9 @@ export function PublicResponseForm({
   partResponses = [],
   token,
   initialChoice,
+  savedPublicResponse,
+  initialCount,
+  initialNames,
   delegateFirstName,
   delegateLastName,
   delegateEmail,
@@ -41,6 +44,9 @@ export function PublicResponseForm({
   parts?: EventPart[];
   partResponses?: PartResponse[];
   token: string;
+  savedPublicResponse: boolean;
+  initialCount: number;
+  initialNames: string;
   initialChoice: PublicResponseChoice | null;
   delegateFirstName: string;
   delegateLastName: string;
@@ -48,6 +54,17 @@ export function PublicResponseForm({
   delegateRole: string;
 }) {
   const [choice, setChoice] = useState<PublicResponseChoice | null>(initialChoice);
+  const [delegate, setDelegate] = useState({ delegateFirstName, delegateLastName, delegateRole, delegateEmail });
+  const sameDelegate = delegate.delegateFirstName.trim() === delegateFirstName &&
+    delegate.delegateLastName.trim() === delegateLastName && delegate.delegateRole.trim() === delegateRole &&
+    delegate.delegateEmail.trim().toLowerCase() === delegateEmail.toLowerCase();
+  const [withCompanions, setWithCompanions] = useState(initialCount > 0);
+  const [count, setCount] = useState(String(initialCount || 1));
+  const [names, setNames] = useState(initialNames);
+  const sameCompanions = (withCompanions ? Number(count) : 0) === initialCount &&
+    (!withCompanions || names.trim() === initialNames.trim());
+  const saved = savedPublicResponse && choice === initialChoice && (choice !== "delegated" || sameDelegate) &&
+    (choice !== "attending" || sameCompanions);
   const delegated = choice === "delegated";
   const [responses, setResponses] = useState(partResponses);
   let complete = false;
@@ -95,13 +112,37 @@ export function PublicResponseForm({
                 </span>
               </span>
             </label>
+            {status === "attending" && choice === "attending" && (
+              <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="withCompanions" checked={withCompanions}
+                    onChange={event => setWithCompanions(event.target.checked)} />
+                  Vengo con accompagnatori
+                </label>
+                {withCompanions && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label>Numero di accompagnatori (da 1 a 20)
+                      <input type="number" name="companionCount" min="1" max="20" required
+                        value={count} onChange={event => setCount(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2" />
+                    </label>
+                    <label>Nomi degli accompagnatori (facoltativo)
+                      <textarea name="companionNames" maxLength={2000} value={names}
+                        onChange={event => setNames(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-300 p-2" />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
             {status === "delegated" && delegated ? (
               <div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">
                   Nome del delegato
                   <input
                     name="delegateFirstName"
-                    defaultValue={delegateFirstName}
+                    value={delegate.delegateFirstName}
+                    onChange={event => setDelegate({ ...delegate, delegateFirstName: event.target.value })}
                     maxLength={200}
                     autoComplete="given-name"
                     required
@@ -112,7 +153,8 @@ export function PublicResponseForm({
                   Cognome del delegato
                   <input
                     name="delegateLastName"
-                    defaultValue={delegateLastName}
+                    value={delegate.delegateLastName}
+                    onChange={event => setDelegate({ ...delegate, delegateLastName: event.target.value })}
                     maxLength={200}
                     autoComplete="family-name"
                     required
@@ -123,7 +165,8 @@ export function PublicResponseForm({
                   Ruolo/Carica del delegato <span className="font-normal text-slate-500">(facoltativo)</span>
                   <input
                     name="delegateRole"
-                    defaultValue={delegateRole}
+                    value={delegate.delegateRole}
+                    onChange={event => setDelegate({ ...delegate, delegateRole: event.target.value })}
                     maxLength={200}
                     autoComplete="organization-title"
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900"
@@ -134,7 +177,8 @@ export function PublicResponseForm({
                   <input
                     name="delegateEmail"
                     type="email"
-                    defaultValue={delegateEmail}
+                    value={delegate.delegateEmail}
+                    onChange={event => setDelegate({ ...delegate, delegateEmail: event.target.value })}
                     maxLength={320}
                     autoComplete="email"
                     required
@@ -149,12 +193,7 @@ export function PublicResponseForm({
           </div>
         ))}
       </fieldset>
-      <button
-        type="submit"
-        className="w-full rounded-xl bg-[#1b3272] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#263f86]"
-      >
-        Invia risposta
-      </button>
+      <ResponseSubmitButton complete={choice !== null} saved={saved} />
     </form>
   );
 }

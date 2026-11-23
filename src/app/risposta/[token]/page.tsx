@@ -81,9 +81,9 @@ export default async function PublicInvitationResponsePage({
             </div>
           </div>
 
-          {outcome === "ok" ? (
+          {outcome === "ok" || outcome === "invariata" ? (
             <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Risposta registrata: <strong>{submittedLabel ?? "grazie"}</strong>.
+              {outcome === "invariata" ? "Risposta già registrata." : <>Risposta registrata: <strong>{submittedLabel ?? "grazie"}</strong>.</>}
             </div>
           ) : null}
           {outcome === "errore" ? (
@@ -102,12 +102,15 @@ export default async function PublicInvitationResponsePage({
               {context.event.title}
             </h1>
             {!context.event.parts.length && <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong>
+              Valore attuale nell&apos;archivio: <strong>{currentResponse}</strong>{context.invitation.companion_count > 0 && ` · Accompagnatori: ${context.invitation.companion_count}`}
             </p>}
           </div>
 
           <PublicResponseForm
-            key={JSON.stringify(context.invitation.part_responses)}
+            key={JSON.stringify(context.invitation)}
+            initialCount={context.invitation.companion_count}
+            initialNames={context.invitation.companion_names ?? ""}
+            savedPublicResponse={context.invitation.response_source === "public_link"}
             parts={context.event.parts.filter(part => context.invitation.part_responses.some(row => row.id === part.id))}
             partResponses={context.invitation.part_responses}
             token={token}

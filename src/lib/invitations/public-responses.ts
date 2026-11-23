@@ -25,6 +25,9 @@ type InvitationRow = {
   event_id: number;
   contact_id: number;
   invitation_status: string;
+  response_source: string | null;
+  companion_count: number;
+  companion_names: string | null;
   response_status: "no_response" | "attending" | "declined" | "maybe";
   delegate_first_name: string | null;
   delegate_last_name: string | null;
@@ -98,7 +101,7 @@ export async function readPublicResponseContext(rawToken: string) {
     await Promise.all([
       supabase
         .from("event_invitations")
-        .select("part_responses,id,event_id,contact_id,invitation_status,response_status,delegate_first_name,delegate_last_name,delegate_email,delegate_role")
+        .select("part_responses,id,event_id,contact_id,invitation_status,response_source,response_status,companion_count,companion_names,delegate_first_name,delegate_last_name,delegate_email,delegate_role")
         .eq("id", typedToken.invitation_id)
         .maybeSingle(),
       supabase
@@ -239,72 +242,34 @@ export async function recordPublicInvitationResponse(
   rawToken: string,
   choice: PublicResponseChoice,
   rawDelegate: PublicResponseDelegate | null = null,
+  companionCount = 0,
+  companionNames: string | null = null,
 ) {
   const context = await readPublicResponseContext(rawToken);
   if (!context || context.event.parts.length) return null;
 
   const supabase = createSupabaseServiceClient();
-  const now = new Date().toISOString();
-  const previousResponse = context.invitation.response_status;
   const response: PublicResponseStatus = choice === "delegated" ? "declined" : choice;
   const delegate = choice === "delegated" ? normalizedDelegate(rawDelegate) : null;
   if (choice === "delegated" && !delegate) throw new Error("Dati del delegato mancanti.");
-  const { error: updateError } = await supabase
-    .from("event_invitations")
-    .update({
-      invitation_status: "invited",
-      response_status: response,
-      response_source: "public_link",
-      attendance_status: "unknown",
-      response_note: null,
-      companion_count: 0,
-      companion_names: null,
-      delegate_first_name: delegate?.firstName ?? null,
-      delegate_last_name: delegate?.lastName ?? null,
-      delegate_email: delegate?.email ?? null,
-      delegate_role: delegate?.role ?? null,
-      response_recorded_at: now,
-      response_recorded_by_profile_id: null,
-      invited_at: context.invitation.invitation_status === "invited" ? undefined : now,
-    })
-    .eq("id", context.invitation.id);
-  if (updateError) throw updateError;
-
-  const [{ error: historyError }, { error: tokenError }] = await Promise.all([
-    supabase.from("invitation_responses").insert({
-      invitation_id: context.invitation.id,
-      event_id: context.event.id,
-      contact_id: context.contact.id,
-      response_status: response,
-      source: "public_link",
-      response_token_id: context.token.id,
-      previous_response_status: previousResponse,
-      delegate_first_name: delegate?.firstName ?? null,
-      delegate_last_name: delegate?.lastName ?? null,
-      delegate_email: delegate?.email ?? null,
-      delegate_role: delegate?.role ?? null,
-    }),
-    supabase
-      .from("invitation_response_tokens")
-      .update({
-        used_at: context.token.used_at ?? now,
-        last_response_at: now,
-      })
-      .eq("id", context.token.id),
-  ]);
-  if (historyError) throw historyError;
-  if (tokenError) throw tokenError;
+  const { data, error } = await supabase.rpc("record_simple_public_response", {
+    p_token_hash: hashPublicResponseToken(rawToken.trim()),
+    p_response: response,
+    p_delegate: delegate,
+    p_count: companionCount,
+    p_names: companionNames,
+  });
+  if (error) throw error;
+  if (data === "unchanged") return "unchanged";
+  if (data !== "recorded") return null;
 
   try {
-    await notifySelectedManagers(context, choice, delegate);
+    await notifySelectedManagers(context, choice, delegate, choice === "attending" ? `Accompagnatori: ${companionCount}` : undefined);
   } catch (error) {
     console.error("Public response notification failed", error);
   }
 
-  return {
-    ...context,
-    selectedResponse: choice,
-  };
+  return "recorded";
 }
 
 export async function recordPublicPartResponses(rawToken: string, value: string) {

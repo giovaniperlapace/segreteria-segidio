@@ -39,11 +39,18 @@ export async function submitPublicInvitationResponse(formData: FormData) {
     redirect(`${target}?esito=dati-delegato`);
   }
 
-  const result = await recordPublicInvitationResponse(token, response, delegate);
+  const withCompanions = response === "attending" && formData.has("withCompanions");
+  const count = withCompanions ? Number(formText(formData, "companionCount")) : 0;
+  const names = withCompanions ? formText(formData, "companionNames") || null : null;
+  if (withCompanions && (!Number.isInteger(count) || count < 1 || count > 20 || (names?.length ?? 0) > 2000)) {
+    redirect(`${target}?esito=errore`);
+  }
+  const result = await recordPublicInvitationResponse(token, response, delegate, count, names);
   if (!result) {
     redirect(`${target}?esito=errore`);
   }
 
+  if (result === "unchanged") redirect(`${target}?esito=invariata`);
   redirect(`${target}?esito=ok&risposta=${response}`);
 }
 

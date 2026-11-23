@@ -324,6 +324,10 @@ export default async function ContactsPage({
               ? "Gestisci l'archivio, le associazioni e i dati mancanti."
               : "Visualizza e aggiorna i contatti assegnati al tuo profilo."}
           </p>
+          {profile.role === "manager" && <Link href="/dashboard/contacts/disiscrizioni" prefetch={false}
+            className="mt-3 inline-block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#1b3272] hover:border-[#1b3272]">
+            Disiscrizioni dagli inviti
+          </Link>}
         </header>
         <ContactManagement
           contacts={contactRecords}

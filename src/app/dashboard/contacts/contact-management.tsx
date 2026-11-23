@@ -1,5 +1,6 @@
 "use client";
 
+import { contactUnsubscriptions } from "./disiscrizioni/actions";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -1626,6 +1627,21 @@ function ExportLinkGroup({
   );
 }
 
+function UnsubscriptionBadge({ contactId }: { contactId: number }) {
+  const [emails, setEmails] = useState<string[] | null>([]);
+  useEffect(() => {
+    let active = true;
+    contactUnsubscriptions(contactId).then(value => { if (active) setEmails(value); })
+      .catch(() => { if (active) setEmails(null); });
+    return () => { active = false; };
+  }, [contactId]);
+  if (!emails) return <p className="text-sm text-slate-600">Stato disiscrizione non disponibile.</p>;
+  if (!emails.length) return null;
+  return <p className="inline-block rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-950">
+    Disiscrizione dagli inviti · {emails.join(", ")}
+  </p>;
+}
+
 export function ContactEditor({
   contact,
   groups,
@@ -1665,6 +1681,7 @@ export function ContactEditor({
 
   return (
     <div className="space-y-4">
+      <UnsubscriptionBadge key={`${contact.id}:${contact.email}:${contact.email_2}`} contactId={contact.id} />
       <form action={action} className="space-y-4">
         <input type="hidden" name="contactId" value={contact.id} />
         {contact.missing_fields.length > 0 ? (

@@ -686,7 +686,9 @@ function BatchCard({
                 ).join(", ")}`
               : "Allegati comuni: nessuno"}
           </p>
-          {batch.last_error ? <p className="mt-1 text-xs text-red-700">{batch.last_error}</p> : null}
+          {batch.last_error && !(batch.failed_count > 0 && batch.last_error.startsWith("Invio non effettuato:")) ? (
+            <p className="mt-1 text-xs text-red-700">{batch.last_error}</p>
+          ) : null}
         </div>
         <BatchActions
           eventId={eventId}
@@ -749,7 +751,7 @@ export function EventEmailPanel({
   const [partIds, setPartIds] = useState<string[]>([]);
   const requiredPartIds = partMode === "all" ? parts.map(part => part.id) : partMode === "parts" ? partIds : [];
   const filteredInvitations = invitations.filter(invitation => (partMode !== "parts" || partIds.length > 0) && matchesInvitedParts(invitation.part_responses ?? [], requiredPartIds));
-  const [showCompletedBatches, setShowCompletedBatches] = useState(false);
+  const [showPreviousBatches, setShowPreviousBatches] = useState(false);
   const selectedRows = useMemo(
     () =>
       invitations.filter(
@@ -766,14 +768,7 @@ export function EventEmailPanel({
     (invitation) =>
       invitation.invitation_status === "invited" && (invitation.response_status === "no_response" || invitation.part_responses?.some(part => part.response === "no_response")),
   ).length;
-  const activeBatches = batches.filter((batch) => {
-    const pendingCount = Math.max(
-      0,
-      batch.recipient_count - batch.sent_count - batch.failed_count - batch.skipped_count,
-    );
-    return pendingCount > 0 || batch.failed_count > 0 || batch.status === "draft" || batch.status === "sending";
-  });
-  const completedBatches = batches.filter((batch) => !activeBatches.includes(batch));
+  const [latestBatch, ...previousBatches] = batches;
 
   return (
     <section className="rounded-xl border border-[#d9e1f2] bg-white p-4 shadow-sm">
@@ -862,33 +857,26 @@ export function EventEmailPanel({
         <ActionMessage state={createState} />
       </div>
 
-      {batches.length > 0 ? (
+      {latestBatch ? (
         <div className="mt-5 space-y-3">
-          {activeBatches.map((batch) => (
-            <BatchCard key={batch.id} eventId={eventId} batch={batch} />
-          ))}
-          {activeBatches.length === 0 ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              Nessun blocco ancora da inviare.
-            </p>
-          ) : null}
-          {completedBatches.length > 0 ? (
+          <BatchCard key={latestBatch.id} eventId={eventId} batch={latestBatch} />
+          {previousBatches.length > 0 ? (
             <div className="pt-1">
               <button
                 type="button"
-                onClick={() => setShowCompletedBatches((value) => !value)}
+                onClick={() => setShowPreviousBatches((value) => !value)}
                 className="text-sm font-semibold text-[#1b3272] underline decoration-slate-300 underline-offset-4 hover:decoration-[#1b3272]"
-                aria-expanded={showCompletedBatches}
+                aria-expanded={showPreviousBatches}
               >
-                {showCompletedBatches
-                  ? "Nascondi gli invii conclusi"
-                  : `Altro… (${completedBatches.length} ${completedBatches.length === 1 ? "invio concluso" : "invii conclusi"})`}
+                {showPreviousBatches
+                  ? "Nascondi gli invii precedenti"
+                  : "Altro..."}
               </button>
             </div>
           ) : null}
-          {showCompletedBatches ? (
+          {showPreviousBatches ? (
             <div className="space-y-3 border-t border-slate-200 pt-3">
-              {completedBatches.map((batch) => (
+              {previousBatches.map((batch) => (
                 <BatchCard key={batch.id} eventId={eventId} batch={batch} />
               ))}
             </div>
